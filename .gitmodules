@@ -1,0 +1,3 @@
+[submodule "MoGe"]
+	path = MoGe
+	url = git@github.com:Ahmetcanyvz/MoGe.git
