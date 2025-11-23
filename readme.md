@@ -179,6 +179,7 @@ GT generation configured via YAML files in `gt_creation/configs/`:
 - inference/ (MoGe integration, prediction)
 - evaluation/ (metrics, visualization)
 - exploration/ (notebook organization)
+- training/ (carry MoGe/train_moge_4heads_planarity_fixed.py to appropriate place)
 
 ## Notes
 
