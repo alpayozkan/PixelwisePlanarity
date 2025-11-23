@@ -1,52 +1,20 @@
 import sys
-sys.path.append("/cluster/home/aoezkan/planeseg/3d_vision/planarity_2_segmentation")
-
-
-
-import numpy as np
-import matplotlib.pyplot as plt
-import os
-from tqdm import tqdm
-import glob
-import re
-
-from PIL import Image
-import cv2
-
-from utils import *
-import plan2seg
-import visualize
-
-from transform import extract_zdepth, extract_zdepth
-import process
-import process_remi
-# from utils import *
-
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import numpy as np
 import matplotlib.pyplot as plt
-import os
-from tqdm import tqdm
-import glob
-import re
-
-from PIL import Image
-import cv2
-
-# from utils import *
-import plan2seg
-import visualize
-from skimage import measure, morphology
-from skimage.util import view_as_windows
-
-from natsort import natsorted
 import os
 import cv2
 import time
-import numpy as np
-import matplotlib.pyplot as plt
-from IPython.display import clear_output
+from tqdm import tqdm
+import glob
+
+from PIL import Image
+from natsort import natsorted
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+
+from shared.utils import visualize_top_components_v1
 
 
 def merge_plane_masks(seg_pred):
@@ -164,8 +132,8 @@ for scene_id in tqdm(scene_id_list):
         indx_fig+=1
         n = len(np.unique(plane_gt_arr))
         n1 = min(10, n)
-        seg_top_gt = visualize.visualize_top_components_v1(
-            plane_gt_arr, top_n=n1, colormap='hls', reverse=True, visualize=False
+        seg_top_gt = visualize_top_components_v1(
+            plane_gt_arr, k=n1, return_colors=True
         )
         axs[indx_fig].imshow(seg_top_gt)
         axs[indx_fig].set_title("plane GT: Top-{}".format(n1))
@@ -174,8 +142,8 @@ for scene_id in tqdm(scene_id_list):
         indx_fig+=1
         n = len(np.unique(plane_ours))
         n1 = min(10, n)
-        seg_pred = visualize.visualize_top_components_v1(
-            plane_ours, top_n=n1, colormap='hls', reverse=True, visualize=False
+        seg_pred = visualize_top_components_v1(
+            plane_ours, k=n1, return_colors=True
         )
         axs[indx_fig].imshow(seg_pred)
         axs[indx_fig].set_title("plane_ours: Top-{}".format(n1))
@@ -184,8 +152,8 @@ for scene_id in tqdm(scene_id_list):
         indx_fig+=1
         n = len(np.unique(plane_rcnn))
         n1 = min(10, n)
-        seg_pred = visualize.visualize_top_components_v1(
-            plane_rcnn, top_n=n1, colormap='hls', reverse=True, visualize=False
+        seg_pred = visualize_top_components_v1(
+            plane_rcnn, k=n1, return_colors=True
         )
         axs[indx_fig].imshow(seg_pred)
         axs[indx_fig].set_title("plane_rcnn: Top-{}".format(n1))
@@ -194,8 +162,8 @@ for scene_id in tqdm(scene_id_list):
         indx_fig+=1
         n = len(np.unique(plane_zero))
         n1 = min(10, n)
-        seg_pred = visualize.visualize_top_components_v1(
-            plane_zero, top_n=n1, colormap='hls', reverse=True, visualize=False
+        seg_pred = visualize_top_components_v1(
+            plane_zero, k=n1, return_colors=True
         )
         axs[indx_fig].imshow(seg_pred)
         axs[indx_fig].set_title("plane_zero: Top-{}".format(n1))

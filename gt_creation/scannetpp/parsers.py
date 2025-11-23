@@ -1,6 +1,12 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
 import open3d as o3d
 from plyfile import PlyData
-import numpy as np, json, os
+import numpy as np
+import json
+import os
 
 import os, json, numpy as np
 

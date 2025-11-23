@@ -1,13 +1,21 @@
-from visualize_planes_v1 import *
-from utils import *
-from parse_scannetpp import *
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from mesh_utils import *
-from render import *
-
+from shared.rendering import load_mesh_with_vertex_labels, raycast_semantic
+from shared.utils import save_label_image
 from plyfile import PlyData, PlyElement
 import open3d as o3d
 import imageio
+import numpy as np
+import json
+import os
+import argparse
+from tqdm import tqdm
+
+def remap_semantic(semantic_img):
+    """Remap semantic labels, replacing -1 with 0."""
+    return np.where(semantic_img < 0, 0, semantic_img)
 
 
 if __name__ == "__main__":

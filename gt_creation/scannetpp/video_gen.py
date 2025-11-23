@@ -1,6 +1,8 @@
 import sys
-sys.path.append('/cluster/home/aoezkan/planeseg/3d_vision/planarity_2_segmentation')
-from visualize import visualize_top_components_v1
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from shared.utils import visualize_top_components_v1
 
 import os
 import h5py

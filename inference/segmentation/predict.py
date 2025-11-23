@@ -1,66 +1,31 @@
-import numpy as np
-import matplotlib.pyplot as plt
-import os
-from tqdm import tqdm
-import glob
-import re
-
-from PIL import Image
-import cv2
-
-from utils import *
-import plan2seg
-import visualize
-
-from transform import extract_zdepth, extract_zdepth
-import process
-import process_remi
-# from utils import *
-
-
-import numpy as np
-import matplotlib.pyplot as plt
-import os
-from tqdm import tqdm
-import glob
-import re
-
-from PIL import Image
-import cv2
-
-# from utils import *
-import plan2seg
-import visualize
-from skimage import measure, morphology
-from skimage.util import view_as_windows
-
-from natsort import natsorted
-
-
-
-import sys
-sys.path.append("/cluster/home/aoezkan/planeseg/MoGe")
-
-
-import os
 import sys
 from pathlib import Path
-import glob
-import argparse
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
 import numpy as np
+import matplotlib.pyplot as plt
+import os
+from tqdm import tqdm
+import glob
+import re
+
+from PIL import Image
+import cv2
+
+from shared.segmentation import compute_vectorized_planar_segments_v1, filter_small_segments, remove_small_components
+from shared.utils import depth_to_normal_remi, extract_zdepth, visualize_top_components_v1
+
+import argparse
 import torch
 import torch.nn.functional as F
-import cv2
-from tqdm import tqdm
-import matplotlib.pyplot as plt
-from PIL import Image
+from natsort import natsorted
 
-# Add MoGe to path
-# if (_package_root := str(Path(__file__).absolute().parents[0])) not in sys.path:
-#     sys.path.insert(0, _package_root)
-
-from moge.model.v2 import MoGeModel
-# from moge.model.v2 import MoGeModelPlanarity
+# External dependency - MoGe model
+try:
+    from moge.model.v2 import MoGeModel
+except ImportError:
+    print("[WARN] MoGe not found. Install from: https://github.com/microsoft/MoGe")
+    MoGeModel = None
 
 
 class MoGePlanarityInference:
@@ -528,7 +493,7 @@ for scene_id in tqdm(scene_id_list):
 
         # calculate segmentation
         normal_threshold_rad = np.deg2rad(normal_threshold_deg)
-        labels, n_components = plan2seg.compute_vectorized_planar_segments_v3(
+        labels, n_components = compute_vectorized_planar_segments_v1(
             planarity_mask, normal, depth,
             normal_threshold_rad, depth_threshold,
             neighbor_match_count_thresh=neighbor_match_count_thresh
@@ -576,11 +541,11 @@ for scene_id in tqdm(scene_id_list):
         n = len(np.unique(res_seg))
         n1 = min(10, n)
         n2 = max(n//2, 1)
-        seg_top1 = visualize.visualize_top_components_v1(
-            res_seg, top_n=n1, colormap='hls', reverse=True, visualize=False
+        seg_top1 = visualize_top_components_v1(
+            res_seg, k=n1, return_colors=True
         )
-        seg_top2 = visualize.visualize_top_components_v1(
-            res_seg, top_n=n2, colormap='hls', reverse=True, visualize=False
+        seg_top2 = visualize_top_components_v1(
+            res_seg, k=n2, return_colors=True
         )
         
         axs[5].imshow(seg_top1)

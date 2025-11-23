@@ -1,67 +1,37 @@
-from eval import segmentation_covering, evaluate_planarity
-import pandas as pd
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import cv2
 import numpy as np
-import pandas as pd
-
-import time
-
-import sys
-sys.path.append("/cluster/home/aoezkan/planeseg/3d_vision/planarity_2_segmentation")
-import plan2seg
-import utils
-import postprocess
-import visualize_seg
-
 import time
 import copy
 import json
 import imageio
-
 import h5py
-from sklearn.metrics import rand_score
-from skimage.metrics import variation_of_information
-
-sys.path.append("/cluster/home/aoezkan/planeseg/3d_vision/homography")
-from homog_utils import remap_labels
-# from homog import *
-# from homog_warp import *
-
-sys.path.append("/cluster/home/aoezkan/planeseg/3d_vision/plane_fitting")
-from planefit_visualize import *
-from planefit import *
-from planefit_utils import *
-from planefit_metrics import *
-from planeseg_visualize import *
-
-sys.path.append("/cluster/home/aoezkan/planeseg/3d_vision/monocular/moge")
-from inference import MoGePlanarityInference
 import argparse
 import torch
-from PIL import Image
-
-import torch
 import torch.nn.functional as F
-
-from natsort import natsorted
-from tqdm import tqdm
-import glob
-from PIL import Image
-
-import poselib
 import os
-
-
-import torch
-import numpy as np
 import random
 
-sys.path.append('/cluster/home/aoezkan/planeseg/3d_vision/dataset/scannetpp')
-from dataset_scannet_plane import ScanNetPPPlaneDataset  # <- replace with your actual import
+from sklearn.metrics import rand_score
+from skimage.metrics import variation_of_information
+from natsort import natsorted
+from tqdm import tqdm
+from PIL import Image
 from torch.utils.data import DataLoader
+
+from shared.segmentation import compute_vectorized_planar_segments_v1, remove_small_components
+from shared.plane_fitting import backproject_v1 as backproject, fit_planes_per_label_v1, mark_planes_below_threshold_as_outliers, compute_precision_recall_v1, project_labels_to_image
+from shared.datasets import ScanNetPPPlaneDataset
+from shared.utils import remap_labels
+
+# Evaluation functions
+from evaluation.quantitative.evaluator import segmentation_covering
 
 
 

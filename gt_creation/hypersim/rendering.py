@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import sys
-sys.path.append('/cluster/home/aoezkan/planeseg/3d_vision/gt_gen')
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import argparse
 import os
@@ -10,10 +11,12 @@ import pandas as pd
 import open3d as o3d
 from tqdm import tqdm
 
-from visualize_planes_v1 import *
-from utils import *
-from mesh_utils import *
-from render import *
+from shared.rendering import read_ply_faces_with_plane_ids, raycast_semantic_face_labels
+
+
+def remap_semantic(semantic_img):
+    """Remap semantic labels, replacing -1 with 0."""
+    return np.where(semantic_img < 0, 0, semantic_img)
 
 
 def compute_intrinsics_from_proj(M_proj, width, height):
