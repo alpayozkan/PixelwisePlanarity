@@ -1,0 +1,176 @@
+# plane_config.yml
+
+# --- Input/output paths ---
+input_root: "/cluster/scratch/agavryushin/Hypersim"
+output_root: "/cluster/scratch/aoezkan/dataset/Hypersim/plane_ours_gt"
+
+# Optional mesh path (must be set even if unused, to satisfy argparse logic)
+mesh: ""
+
+# Output files
+out_json_name: planes.json
+out_ply_name: planes.ply
+palette_seed: 7
+
+# Progress, parallelism
+progress: 1
+jobs: 8
+backend: threads
+
+# --- Plane growth (RG) ---
+rg_theta_deg: 8.0
+rg_dist_m: 0.015
+rg_dihedral_deg: 55.0
+rg_refit_every: 15
+rg_gate_mode: kof3
+
+# --- Sweep ---
+sweep_normal_deg: 9.0
+sweep_dist_m: 0.012
+sweep_frac_vertices: 1.0
+gate_mode: kof3
+
+# --- EM refinement ---
+em_max_iters: 4
+em_min_growth: 0.005
+
+# --- Patch constraints ---
+min_faces_patch: 60
+min_area_patch: 0.10
+
+# --- Plane quality thresholds ---
+p95_final_max: 0.03
+inlier_frac_min: 0.80
+dist_thr: 0.012
+normal_p95_deg_max: 8.0
+thickness_max_mul: 1.6
+min_width_m: 0.06
+fill_frac_min: 0.18
+
+# --- Merging ---
+merge_theta_deg: 10.0
+merge_dist_m: 0.02
+
+# --- Recovery phase (gentle grow) ---
+recover_enable: 1
+rg_theta_deg_small: 12.0
+rg_dist_m_small: 0.02
+rg_dihedral_deg_small: 60.0
+rg_refit_every_small: 20
+sweep_normal_deg_small: 12.0
+sweep_dist_m_small: 0.015
+sweep_frac_vertices_small: 0.66
+em_max_iters_small: 4
+em_min_growth_small: 0.003
+min_faces_patch_small: 28
+min_area_patch_small: 0.04
+normal_p95_deg_max_small: 12.0
+thickness_max_small_mul: 2.2
+min_width_m_small: 0.04
+fill_frac_min_small: 0.10
+
+# --- Label saturation (strict assign) ---
+sat_rounds: 2
+sat_normal_deg: 12.0
+sat_dist_m: 0.020
+sat_frac_vertices: 0.66
+sat_normal_p95_deg_max: 10.0
+sat_thickness_max_mul: 2.0
+sat_min_width_m: 0.05
+sat_fill_frac_min: 0.15
+
+# --- IRLS (robust norm fitting) ---
+irls_max_iters: 8
+irls_eps: 1e-6
+
+# --- Relaxed final grow ---
+last_enable: 1
+last_dist_m: 0.020
+last_normal_deg: 18.0
+last_unlabeled_ratio: 1.0
+last_steal_factor: 5.0
+last_rg_iters: 1
+
+# --- Large-label splitting ---
+large_split_enable: 1
+large_split_recursive: 1
+large_split_verts: 700000
+large_split_max_parts: 8
+large_split_min_faces: 50000
+large_split_mode: axis
+
+# --- Labeling policies ---
+policy_single_plane_labels: ""
+policy_skip_labels: []
+
+# === Area tiering ===
+tier_small_area_m2: 1.0
+tier_normal_hi_m2: 10.0
+tier_big_hi_m2: 60.0
+
+# === Big-RANSAC ===
+big_ransac_enable: 1
+big_ransac_max_iters: 300
+big_ransac_dist_m: 0.010
+big_ransac_normal_deg: 10.0
+big_ransac_min_inlier_frac: 0.50
+big_min_faces_patch: 1
+big_min_area_patch: 0.02
+
+# === Big-quality relaxation ===
+big_p95_final_max: 0.05
+big_inlier_frac_min: 0.50
+big_normal_p95_deg_max: 12.0
+big_thickness_max_mul: 3.0
+big_min_width_m: 0.03
+big_fill_frac_min: 0.02
+
+# === Merge big after split ===
+merge_big_theta_deg: 8.0
+merge_big_dist_m: 0.015
+
+# === Small-claim (optional) ===
+small_claim_enable: 0
+small_claim_normal_deg: 14.0
+small_claim_dist_m: 0.012
+small_claim_require_adjacent: 0
+small_claim_refit: 0
+
+# === Post-RANSAC ===
+post_ransac_enable: 1
+post_ransac_dist_m: 0.012
+post_ransac_normal_deg: 12.0
+post_ransac_max_iters: 400
+post_ransac_min_inlier_frac: 0.10
+post_min_faces_patch: 30
+post_min_area_m2: 7.5
+post_ransac_max_planes_per_comp: 8
+
+# === Area histogram ===
+save_area_hist: 0
+area_hist_bins: 120
+area_hist_png_name: face_area_hist_abs.png
+
+# === HDF5 pipeline control ===
+normalize_group_names: 1
+h5_palette_seed: 42
+generate_legend_if_missing: 1
+
+# --- Additional input ---
+scene_csv: ""                 # New scene metadata CSV
+scale: original               # Options: original, downsampled, etc.
+
+# --- Merging params (advanced global merge) ---
+merge_params_enable: 1
+merge_params_scope: global
+merge_params_normal_deg: 1.0
+merge_params_d_m: 0.01
+merge_params_refit: 1
+merge_params_debug: 0
+
+# --- Normals log output (for debug/training supervision) ---
+normals_log_enable: 0
+normals_log_name: normals.log
+normals_log_include_per_plane: 1
+normals_log_include_label_fits: 1
+meters_per_asset_unit: -1

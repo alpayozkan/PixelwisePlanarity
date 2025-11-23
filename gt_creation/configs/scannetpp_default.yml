@@ -1,0 +1,96 @@
+# plane_config.yml
+
+# --- Input files are handled per-scene and passed separately ---
+input_root: "/cluster/project/cvg/Shared_datasets/scannetpp_v2/data"
+output_root: "/cluster/scratch/aoezkan/dataset/scannetpp/plane_ours_gt"
+
+# I/O
+out_json_name: "planes.json"
+out_ply_name: "planes.ply"
+palette_seed: 7
+progress: 1
+jobs: 8
+backend: "threads"
+
+# --- Label-Strict Region Growing ---
+rg_theta_deg: 8.0
+rg_dist_m: 0.015
+rg_dihedral_deg: 55.0
+rg_refit_every: 15
+rg_gate_mode: "kof3"
+
+# --- EM Sweep ---
+sweep_normal_deg: 9.0
+sweep_dist_m: 0.012
+sweep_frac_vertices: 1.0
+gate_mode: "kof3"
+em_max_iters: 4
+em_min_growth: 0.005
+
+# --- Patch Thresholds ---
+min_faces_patch: 60
+min_area_patch: 0.10
+
+# --- Plane Quality ---
+p95_final_max: 0.03
+inlier_frac_min: 0.80
+dist_thr: 0.012
+normal_p95_deg_max: 8.0
+thickness_max_mul: 1.6
+min_width_m: 0.06
+fill_frac_min: 0.18
+
+# --- Merge ---
+merge_theta_deg: 10.0
+merge_dist_m: 0.02
+
+# --- Recovery ---
+recover_enable: 1
+rg_theta_deg_small: 12.0
+rg_dist_m_small: 0.02
+rg_dihedral_deg_small: 60.0
+rg_refit_every_small: 20
+sweep_normal_deg_small: 12.0
+sweep_dist_m_small: 0.015
+sweep_frac_vertices_small: 0.66
+em_max_iters_small: 4
+em_min_growth_small: 0.003
+min_faces_patch_small: 28
+min_area_patch_small: 0.04
+normal_p95_deg_max_small: 12.0
+thickness_max_small_mul: 2.2
+min_width_m_small: 0.04
+fill_frac_min_small: 0.10
+
+# --- Saturation ---
+sat_rounds: 2
+sat_normal_deg: 12.0
+sat_dist_m: 0.020
+sat_frac_vertices: 0.66
+sat_normal_p95_deg_max: 10.0
+sat_thickness_max_mul: 2.0
+sat_min_width_m: 0.05
+sat_fill_frac_min: 0.15
+
+# --- IRLS ---
+irls_max_iters: 8
+irls_eps: 1e-6
+
+# --- Final RG ---
+last_enable: 1
+last_dist_m: 0.020
+last_normal_deg: 18.0
+last_unlabeled_ratio: 1.0
+last_steal_factor: 5.0
+last_rg_iters: 1
+
+
+# --- NEW ---
+policy_single_plane_labels: "floor"
+policy_skip_labels: []           # can be empty list or e.g. ["wall", "ceiling"]
+large_split_enable: 1
+large_split_recursive: 1
+large_split_verts: 700000
+large_split_max_parts: 8
+large_split_min_faces: 50000
+large_split_mode: "axis"
