@@ -2,7 +2,7 @@
 
 # --- Input/output paths ---
 input_root: "/cluster/scratch/agavryushin/Hypersim"
-output_root: "/cluster/scratch/aoezkan/dataset/Hypersim/plane_ours_gt"
+output_root: "/cluster/scratch/ayavuz/dataset/Hypersim_GT"
 
 # Optional mesh path (must be set even if unused, to satisfy argparse logic)
 mesh: ""
