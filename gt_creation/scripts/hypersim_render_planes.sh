@@ -9,15 +9,13 @@
 #SBATCH --output=logs/hypersim_render_%j.out
 #SBATCH --error=logs/hypersim_render_%j.err
 
-# Get script directory (works even when called from different locations)
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-
 # Configuration
-SCENE_LIST="${1:-/cluster/home/ayavuz/PixelwisePlanarity/splits/hypersim/all_scenes.txt}"
+SCENE_LIST="${1:-scene_list.txt}"
 INPUT_ROOT="${2:-/cluster/scratch/ayavuz/dataset/Hypersim_params}"
 PLANE_ROOT="${3:-/cluster/scratch/ayavuz/dataset/Hypersim_ours}"
 OUTPUT_ROOT="${4:-/cluster/scratch/ayavuz/dataset/Hypersim_rendered}"
-FRAME_SKIP="${5:-1}"
+FRAME_SKIP="${5:-25}"
+PYTHON_SCRIPT="${6:-/cluster/home/ayavuz/PixelwisePlanarity/clean_structure/gt_creation/hypersim/rendering.py}"
 
 # Validate inputs
 if [[ ! -f "$SCENE_LIST" ]]; then
@@ -40,7 +38,7 @@ while IFS= read -r scene_id; do
 
     echo "================================================================"
     echo "[INFO] Rendering planes for scene: $scene_id"
-    python "$SCRIPT_DIR/../hypersim/rendering.py" "$scene_id" \
+    python "$PYTHON_SCRIPT" "$scene_id" \
         --input_root "$INPUT_ROOT" \
         --plane_root "$PLANE_ROOT" \
         --output_root "$OUTPUT_ROOT" \
