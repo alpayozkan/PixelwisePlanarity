@@ -6,6 +6,11 @@
 #SBATCH --time=72:00:00
 #SBATCH --cpus-per-task=16
 #SBATCH --mem-per-cpu=32G
+#SBATCH --output=logs/scannetpp_extract_%j.out
+#SBATCH --error=logs/scannetpp_extract_%j.err
+
+# Get script directory (works from any location)
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Configuration
 SCENE_LIST="${1:-scene_list.txt}"
@@ -33,8 +38,8 @@ while IFS= read -r scene_id; do
 
     echo "================================================================"
     echo "[INFO] Processing scene: $scene_id"
-    python ../scannetpp/scene_runner.py "$scene_id" \
-        --config "$CONFIG" \
+    python "$SCRIPT_DIR/../scannetpp/scene_runner.py" "$scene_id" \
+        --config "$SCRIPT_DIR/$CONFIG" \
         --input_root "$INPUT_ROOT" \
         --output_root "$OUTPUT_ROOT"
 

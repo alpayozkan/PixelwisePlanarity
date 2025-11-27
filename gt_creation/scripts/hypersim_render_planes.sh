@@ -6,15 +6,18 @@
 #SBATCH --time=72:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem-per-cpu=16G
-#SBATCH --output=logs/render/hypersim_render_%j.out
-#SBATCH --error=logs/render/hypersim_render_%j.err
+#SBATCH --output=logs/hypersim_render_%j.out
+#SBATCH --error=logs/hypersim_render_%j.err
+
+# Get script directory (works even when called from different locations)
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Configuration
-SCENE_LIST="${1:-/cluster/home/ayavuz/PixelwisePlanarity/splits/hypersim/scene_splits/split_0/scene_list_0.txt}"
+SCENE_LIST="${1:-/cluster/home/ayavuz/PixelwisePlanarity/splits/hypersim/all_scenes.txt}"
 INPUT_ROOT="${2:-/cluster/scratch/ayavuz/dataset/Hypersim_params}"
 PLANE_ROOT="${3:-/cluster/scratch/ayavuz/dataset/Hypersim_ours}"
 OUTPUT_ROOT="${4:-/cluster/scratch/ayavuz/dataset/Hypersim_rendered}"
-FRAME_SKIP="${5:-25}"
+FRAME_SKIP="${5:-1}"
 
 # Validate inputs
 if [[ ! -f "$SCENE_LIST" ]]; then
@@ -37,7 +40,7 @@ while IFS= read -r scene_id; do
 
     echo "================================================================"
     echo "[INFO] Rendering planes for scene: $scene_id"
-    python /cluster/home/ayavuz/PixelwisePlanarity/gt_creation/hypersim/rendering.py "$scene_id" \
+    python "$SCRIPT_DIR/../hypersim/rendering.py" "$scene_id" \
         --input_root "$INPUT_ROOT" \
         --plane_root "$PLANE_ROOT" \
         --output_root "$OUTPUT_ROOT" \

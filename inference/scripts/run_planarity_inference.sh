@@ -10,6 +10,9 @@
 #SBATCH --output=logs/planarity_inference_%j.out
 #SBATCH --error=logs/planarity_inference_%j.err
 
+# Get script directory (works from any location)
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
 # Configuration - Original cluster paths as defaults
 MODEL_PATH="${1:-/cluster/scratch/aoezkan/MoGe/checkpoints/final_planarity_4heads_model.pt}"
 INPUT_DIR="${2:-/path/to/input/images}"
@@ -43,7 +46,7 @@ echo "[INFO] Cache dir: $CACHE_DIR"
 mkdir -p "$OUTPUT_DIR"
 
 # Run inference
-python ../planarity/run_inference.py \
+python "$SCRIPT_DIR/../planarity/run_inference.py" \
     --model_path "$MODEL_PATH" \
     --input_dir "$INPUT_DIR" \
     --output_dir "$OUTPUT_DIR" \

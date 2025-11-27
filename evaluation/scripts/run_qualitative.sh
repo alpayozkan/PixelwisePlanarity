@@ -9,6 +9,9 @@
 #SBATCH --output=logs/qualitative_%j.out
 #SBATCH --error=logs/qualitative_%j.err
 
+# Get script directory (works from any location)
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
 # Configuration - Original cluster paths as defaults
 RGB_ROOT="${1:-/cluster/scratch/aoezkan/dataset/scannet_new/scans}"
 RESULTS_ROOT="${2:-/cluster/scratch/aoezkan/results/scannet}"
@@ -25,7 +28,7 @@ echo "[INFO] Output root: $OUTPUT_ROOT"
 echo "[INFO] Frame skip: $FRAME_SKIP"
 
 # Build command
-CMD="python ../qualitative/visualize_comparison.py \
+CMD="python \"$SCRIPT_DIR/../qualitative/visualize_comparison.py\" \
     --rgb_root \"$RGB_ROOT\" \
     --results_root \"$RESULTS_ROOT\" \
     --gt_root \"$GT_ROOT\" \

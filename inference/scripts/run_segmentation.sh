@@ -10,6 +10,9 @@
 #SBATCH --output=logs/segmentation_%j.out
 #SBATCH --error=logs/segmentation_%j.err
 
+# Get script directory (works from any location)
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
 # Configuration - Original cluster paths as defaults
 MODEL_PATH="${1:-/cluster/scratch/aoezkan/MoGe/checkpoints/final_planarity_4heads_model.pt}"
 INPUT_ROOT="${2:-/cluster/scratch/aoezkan/dataset/scannet_new/scans}"
@@ -45,7 +48,7 @@ echo "[INFO] Cache dir: $CACHE_DIR"
 mkdir -p "$OUTPUT_ROOT"
 
 # Run prediction
-python ../segmentation/predict.py \
+python "$SCRIPT_DIR/../segmentation/predict.py" \
     --model_path "$MODEL_PATH" \
     --input_root "$INPUT_ROOT" \
     --output_root "$OUTPUT_ROOT" \

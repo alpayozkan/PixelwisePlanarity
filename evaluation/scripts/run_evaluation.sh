@@ -10,6 +10,9 @@
 #SBATCH --output=logs/evaluation_%j.out
 #SBATCH --error=logs/evaluation_%j.err
 
+# Get script directory (works from any location)
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
 # Configuration - Original cluster paths as defaults
 METHOD="${1:-moge}"
 MODEL_PATH="${2:-/cluster/scratch/aoezkan/MoGe/checkpoints/final_planarity_4heads_model.pt}"
@@ -35,7 +38,7 @@ echo "[INFO] Max scenes: $MAX_SCENES"
 mkdir -p "$SAVE_DIR"
 
 # Run evaluation
-python ../run_evaluation.py \
+python "$SCRIPT_DIR/../run_evaluation.py" \
     --method "$METHOD" \
     --model_path "$MODEL_PATH" \
     --model_size "$MODEL_SIZE" \

@@ -9,6 +9,9 @@
 #SBATCH --output=logs/scannetpp_render_%j.out
 #SBATCH --error=logs/scannetpp_render_%j.err
 
+# Get script directory (works from any location)
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
 # Configuration - Original cluster paths as defaults
 SCENE_LIST="${1:-scene_list.txt}"
 INPUT_ROOT="${2:-/cluster/project/cvg/Shared_datasets/scannetpp_v2/data}"
@@ -37,7 +40,7 @@ while IFS= read -r scene_id; do
 
     echo "================================================================"
     echo "[INFO] Raycasting planes for scene: $scene_id"
-    python ../scannetpp/rendering.py "$scene_id" \
+    python "$SCRIPT_DIR/../scannetpp/rendering.py" "$scene_id" \
         --input_root "$INPUT_ROOT" \
         --plane_root "$PLANE_ROOT" \
         --output_root "$OUTPUT_ROOT" \

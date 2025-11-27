@@ -9,6 +9,9 @@
 #SBATCH --output=logs/scannetpp_video_%j.out
 #SBATCH --error=logs/scannetpp_video_%j.err
 
+# Get script directory (works from any location)
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
 # Configuration - Original cluster paths as defaults
 SCENE_LIST="${1:-scene_list.txt}"
 H5_ROOT="${2:-/cluster/scratch/aoezkan/dataset/scannetpp/plane_ours_gt}"
@@ -37,7 +40,7 @@ while IFS= read -r scene_id; do
 
     echo "================================================================"
     echo "[INFO] Generating video for scene: $scene_id"
-    python ../scannetpp/video_gen.py "$scene_id" \
+    python "$SCRIPT_DIR/../scannetpp/video_gen.py" "$scene_id" \
         --h5_root "$H5_ROOT" \
         --rgb_root "$RGB_ROOT" \
         --output_root "$OUTPUT_ROOT" \
