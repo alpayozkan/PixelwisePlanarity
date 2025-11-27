@@ -1,7 +1,20 @@
 #!/usr/bin/env python3
+"""
+Hypersim Plane Rendering Script
+
+Renders extracted planes to HDF5 files for each camera in a Hypersim scene.
+Uses raycasting to project 3D plane meshes to 2D images.
+
+Usage:
+    python rendering.py ai_001_001 --input_root /data/hypersim --plane_root /data/planes --output_root /data/output
+"""
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+# Add project root to path for imports
+script_dir = Path(__file__).resolve().parent
+project_root = script_dir.parent.parent
+sys.path.insert(0, str(project_root))
 
 import argparse
 import os
@@ -31,20 +44,43 @@ def compute_intrinsics_from_proj(M_proj, width, height):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("scene_id", type=str)
-    args_cli = parser.parse_args()
-    scene_id = args_cli.scene_id
+    parser = argparse.ArgumentParser(
+        description="Render Hypersim planes to HDF5 for each camera"
+    )
+    parser.add_argument("scene_id", type=str, help="Scene ID (e.g., ai_001_001)")
+    parser.add_argument("--input_root", type=str, required=True,
+                        help="Root directory of Hypersim dataset")
+    parser.add_argument("--plane_root", type=str, required=True,
+                        help="Root directory containing extracted planes (planes.ply)")
+    parser.add_argument("--output_root", type=str, required=True,
+                        help="Root directory to save rendered plane HDF5 files")
+    parser.add_argument("--frame_skip", type=int, default=1,
+                        help="Frame skip interval (default: 1 = all frames)")
+    parser.add_argument("--metadata_csv", type=str, default=None,
+                        help="Path to metadata_camera_parameters.csv (default: input_root/metadata_camera_parameters.csv)")
+    args = parser.parse_args()
+
+    scene_id = args.scene_id
+    input_root = args.input_root
+    plane_root = args.plane_root
+    output_root = args.output_root
+    frame_skip = args.frame_skip
 
     print(f"[INFO] Rendering Hypersim scene: {scene_id}")
+    print(f"[INFO] Input root: {input_root}")
+    print(f"[INFO] Plane root: {plane_root}")
+    print(f"[INFO] Output root: {output_root}")
 
     # === Paths ===
-    root_dir = "/cluster/scratch/ayavuz/dataset/Hypersim"
-    root_save_dir = "/cluster/scratch/aoezkan/dataset/Hypersim"
-    mesh_path = f"{root_save_dir}/plane_ours_gt/{scene_id}/planes.ply"
+    mesh_path = os.path.join(plane_root, scene_id, "planes.ply")
 
     if not os.path.exists(mesh_path):
-        mesh_path = f"{root_dir}/plane_ours_gt/{scene_id}/planes.ply"
+        # Try alternative path structure
+        mesh_path = os.path.join(plane_root, "plane_ours_gt", scene_id, "planes.ply")
+
+    if not os.path.exists(mesh_path):
+        print(f"[ERROR] Mesh file not found: {mesh_path}")
+        sys.exit(1)
 
     print(f"[INFO] Reading mesh: {mesh_path}")
     V, F, plane_id_face, _ = read_ply_faces_with_plane_ids(mesh_path)
@@ -56,11 +92,19 @@ if __name__ == "__main__":
     sem_mesh.triangles = o3d.utility.Vector3iVector(F)
     sem_mesh.compute_vertex_normals()
 
-    scene_dir = os.path.join(root_dir, scene_id)
+    scene_dir = os.path.join(input_root, scene_id)
     detail_dir = os.path.join(scene_dir, "_detail")
 
     # === Intrinsics ===
-    meta_cam_file = os.path.join(root_dir, "metadata_camera_parameters.csv")
+    if args.metadata_csv:
+        meta_cam_file = args.metadata_csv
+    else:
+        meta_cam_file = os.path.join(input_root, "metadata_camera_parameters.csv")
+
+    if not os.path.exists(meta_cam_file):
+        print(f"[ERROR] Metadata file not found: {meta_cam_file}")
+        sys.exit(1)
+
     df_meta = pd.read_csv(meta_cam_file, index_col="scene_name")
     df_scene = df_meta.loc[scene_id]
     width = int(df_scene["settings_output_img_width"])
@@ -69,11 +113,17 @@ if __name__ == "__main__":
     K = compute_intrinsics_from_proj(M_proj, width, height)
 
     # === Find available cameras ===
+    if not os.path.exists(detail_dir):
+        print(f"[ERROR] Detail directory not found: {detail_dir}")
+        sys.exit(1)
+
     cam_names = sorted([d for d in os.listdir(detail_dir)
                         if d.startswith("cam_") and os.path.isdir(os.path.join(detail_dir, d))])
     print(f"[INFO] Found {len(cam_names)} cameras: {cam_names}")
 
-    frame_skip = 1  # e.g., use 2 or 4 to subsample frames
+    if len(cam_names) == 0:
+        print(f"[ERROR] No cameras found in {detail_dir}")
+        sys.exit(1)
 
     for cam_name in cam_names:
         print(f"\n[INFO] Processing {cam_name}...")
@@ -94,7 +144,7 @@ if __name__ == "__main__":
         total_frames = len(cam_positions)
         frame_ids, planes_list = [], []
 
-        print(f"[INFO] Raycasting {total_frames} frames for {cam_name}...")
+        print(f"[INFO] Raycasting {total_frames} frames for {cam_name} (skip={frame_skip})...")
         for frame_id in tqdm(range(total_frames), desc=f"{cam_name}"):
             if frame_id % frame_skip != 0:
                 continue
@@ -125,10 +175,11 @@ if __name__ == "__main__":
             planes_list.append(semantic_img)
 
         # === Save HDF5 for this camera ===
-        h5_save_path = f"{root_save_dir}/plane_ours_gt/{scene_id}/rendered_planes_{cam_name}.h5"
-        os.makedirs(os.path.dirname(h5_save_path), exist_ok=True)
+        h5_save_dir = os.path.join(output_root, scene_id)
+        os.makedirs(h5_save_dir, exist_ok=True)
+        h5_save_path = os.path.join(h5_save_dir, f"rendered_planes_{cam_name}.h5")
 
-        print(f"[SAVE] → {h5_save_path}")
+        print(f"[SAVE] -> {h5_save_path}")
         with h5py.File(h5_save_path, "w") as f:
             f.create_dataset("planes", data=np.stack(planes_list), compression="gzip")
             f.create_dataset("frame_ids", data=np.array(frame_ids, dtype='S'))
