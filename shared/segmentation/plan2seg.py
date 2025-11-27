@@ -16,7 +16,7 @@ def compute_vectorized_planar_segments_v1(
     depth: np.ndarray,
     normal_threshold_rad: float,
     depth_threshold: float,
-    neighbor_match_count_thresh: int = 1
+    neighbor_match_count_thresh: int = 8
 ) -> Tuple[np.ndarray, int]:
     """
     Compute planar segments using 8-connected neighbor matching.
