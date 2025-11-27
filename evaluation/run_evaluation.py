@@ -1,136 +1,171 @@
+#!/usr/bin/env python3
+"""
+Evaluation Runner Script
+
+Runs planarity/segmentation evaluation on ScanNet++ dataset.
+
+Usage:
+    python run_evaluation.py --method moge --model_path /path/to/model.pt --dataset_root /path/to/scannetpp
+"""
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
-import cv2
 import numpy as np
-import time
-import copy
-import json
-import imageio
-import h5py
 import argparse
 import torch
-import torch.nn.functional as F
 import os
 import random
 
-from sklearn.metrics import rand_score
-from skimage.metrics import variation_of_information
-from natsort import natsorted
-from tqdm import tqdm
-from PIL import Image
 from torch.utils.data import DataLoader
 
-from shared.segmentation import compute_vectorized_planar_segments_v1, remove_small_components
-from shared.plane_fitting import backproject_v1 as backproject, fit_planes_per_label_v1, mark_planes_below_threshold_as_outliers, compute_precision_recall_v1, project_labels_to_image
 from shared.datasets import ScanNetPPPlaneDataset
-from shared.utils import remap_labels
-
-# Evaluation functions
-from evaluation.quantitative.evaluator import segmentation_covering
-
-
-
-
+from inference.planarity.moge_inference import MoGePlanarityInference
+from evaluation.quantitative.evaluator import evaluate_planarity
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Evaluate planarity metrics")
+    parser = argparse.ArgumentParser(
+        description="Evaluate planarity/segmentation metrics on ScanNet++"
+    )
 
-    # === General args ===
-    parser.add_argument("--method", type=str, required=True, choices=["moge", "planercnn", "zeroplane", "gt", "monoplane"],
-                        help="Which method to evaluate (moge, planercnn, zeroplane, gt)")
-    parser.add_argument("--model_path", type=str,
-                        help="Path to trained MoGe checkpoint (.pt) if method=moge")
-    parser.add_argument("--model_size", type=str, default="middle",
+    # === Method selection ===
+    parser.add_argument("--method", type=str, required=True,
+                        choices=["moge", "planercnn", "zeroplane", "gt", "monoplane"],
+                        help="Which method to evaluate")
+
+    # === Model args (for moge/monoplane) ===
+    parser.add_argument("--model_path", type=str, default=None,
+                        help="Path to trained MoGe checkpoint (.pt)")
+    parser.add_argument("--model_size", type=str, default="large",
                         choices=["small", "middle", "large"],
-                        help="MoGe model size (if method=moge)")
+                        help="MoGe model size")
+    parser.add_argument("--cache_dir", type=str, default=None,
+                        help="Cache directory for MoGe weights (or set MOGE_CACHE_DIR)")
     parser.add_argument("--device", type=str, default="cuda")
 
-    parser.add_argument("--max_scenes", type=int, default=5)
-    parser.add_argument("--save_dir", type=str, default="./results")
+    # === Dataset paths ===
+    parser.add_argument("--rgb_root", type=str, required=True,
+                        help="Root directory of ScanNet++ RGB images")
+    parser.add_argument("--dataset_root", type=str, required=True,
+                        help="Root directory containing plane_ours_gt, semantic_gt, etc.")
+    parser.add_argument("--split_dir", type=str, default=None,
+                        help="Directory containing split files (default: dataset_root/splits)")
+
+    # === Evaluation settings ===
+    parser.add_argument("--split", type=str, default="val",
+                        choices=["train", "val", "test"])
+    parser.add_argument("--max_scenes", type=int, default=5,
+                        help="Maximum number of scenes to evaluate")
     parser.add_argument("--res_h", type=int, default=480)
     parser.add_argument("--res_w", type=int, default=640)
 
+    # === Output ===
+    parser.add_argument("--save_dir", type=str, default="./results",
+                        help="Directory to save evaluation results")
+
+    # === DataLoader settings ===
+    parser.add_argument("--num_workers", type=int, default=4)
+    parser.add_argument("--seed", type=int, default=42)
+
     args = parser.parse_args()
 
+    # Set split_dir default
+    if args.split_dir is None:
+        args.split_dir = os.path.join(args.dataset_root, "splits")
 
-    dataset_dir = '/cluster/scratch/aoezkan/dataset/scannetpp'
+    print("=" * 60)
+    print("Evaluation Runner")
+    print("=" * 60)
+    print(f"Method: {args.method}")
+    print(f"RGB root: {args.rgb_root}")
+    print(f"Dataset root: {args.dataset_root}")
+    print(f"Split: {args.split}")
+    print(f"Max scenes: {args.max_scenes}")
+    print(f"Resolution: {args.res_h}x{args.res_w}")
+    print("-" * 60)
 
-    val_dataset = ScanNetPPPlaneDataset(
-        rgb_root="/cluster/project/cvg/Shared_datasets/scannet++/data",
-        plane_label_root=os.path.join(dataset_dir, "plane_ours_gt"),
-        sem_label_root=os.path.join(dataset_dir, "semantic_gt"),
-        depth_label_root=os.path.join(dataset_dir, "depth_gt_rendered"),
-        split_txt_dir=os.path.join(dataset_dir, "splits"),
-        split="val",
-        max_scenes=args.max_scenes,
-    )
-
-    num_workers = 4
-    batch_size = 1
-
-    seed = 42
-    torch.manual_seed(seed)
-    np.random.seed(seed)
-    random.seed(seed)
+    # === Setup seeds ===
+    torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
+    random.seed(args.seed)
 
     def seed_worker(worker_id):
-        worker_seed = seed + worker_id
+        worker_seed = args.seed + worker_id
         np.random.seed(worker_seed)
         random.seed(worker_seed)
 
+    # === Load dataset ===
+    print("[INFO] Loading dataset...")
+    val_dataset = ScanNetPPPlaneDataset(
+        rgb_root=args.rgb_root,
+        plane_label_root=os.path.join(args.dataset_root, "plane_ours_gt"),
+        sem_label_root=os.path.join(args.dataset_root, "semantic_gt"),
+        depth_label_root=os.path.join(args.dataset_root, "depth_gt_rendered"),
+        split_txt_dir=args.split_dir,
+        split=args.split,
+        max_scenes=args.max_scenes,
+    )
 
     val_loader = DataLoader(
         val_dataset,
-        batch_size=batch_size,
+        batch_size=1,
         shuffle=False,
-        num_workers=num_workers,
+        num_workers=args.num_workers,
         pin_memory=True,
         worker_init_fn=seed_worker
     )
 
+    print(f"[INFO] Loaded {len(val_dataset)} samples")
 
-    if args.method == "moge":
-        assert args.model_path is not None, "Please provide --model_path for MoGe"
+    # === Load model if needed ===
+    inference_model = None
+
+    if args.method in ["moge", "monoplane"]:
+        if args.model_path is None:
+            print("[ERROR] --model_path required for moge/monoplane methods")
+            sys.exit(1)
+
+        print(f"[INFO] Loading MoGe model: {args.model_path}")
         inference_model = MoGePlanarityInference(
-            args.model_path, model_size='large', device=args.device
+            args.model_path,
+            model_size=args.model_size,
+            device=args.device,
+            cache_dir=args.cache_dir
         )
-        
-        # self.model = MoGeModel.from_pretrained("Ruicheng/moge-2-vitl-normal").to(self.device)
+
+        # Optimizations
         inference_model.model.encoder.use_memory_efficient_attention = False
         torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction = False
         inference_model.model = inference_model.model.half()
-        inference_model.model.encoder.enable_pytorch_native_sdpa()
+        if hasattr(inference_model.model.encoder, 'enable_pytorch_native_sdpa'):
+            inference_model.model.encoder.enable_pytorch_native_sdpa()
 
-    elif args.method == "monoplane":
-        assert args.model_path is not None, "Please provide --model_path for MoGe"
-        inference_model = MoGePlanarityInference(
-            args.model_path, model_size=args.model_size, device=args.device
-        )
-        inference_model.model.encoder.use_memory_efficient_attention = False
-        torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction = False
-        inference_model.model = inference_model.model.half()
-        inference_model.model.encoder.enable_pytorch_native_sdpa()
+        print("[INFO] Model loaded")
 
-    else:
-        inference_model = None
-        
-
-    # save_dir = '/cluster/scratch/aoezkan/dataset/scannetpp/results/metrics'
-
-    H,W = 480, 640
-    # df_moge = evaluate_planarity(val_loader, inference_model, tag="moge", img_res=(H,W))
-    # df_moge.to_csv(f"{save_dir}/eval_moge.csv", index=False)
-    print('METHOD: ', args.method)
+    # === Run evaluation ===
+    print("-" * 60)
+    print(f"[INFO] Running evaluation with method: {args.method}")
 
     os.makedirs(args.save_dir, exist_ok=True)
-    df = evaluate_planarity(val_loader, inference_model, tag=args.method, img_res=(args.res_h, args.res_w))
-    
+
+    df = evaluate_planarity(
+        val_loader,
+        inference_model,
+        tag=args.method,
+        img_res=(args.res_h, args.res_w)
+    )
+
+    # === Save results ===
     csv_path = os.path.join(args.save_dir, f"eval_{args.method}_{args.max_scenes}.csv")
     df.to_csv(csv_path, index=False)
-    print(f"[SAVED] → {csv_path}")
+
+    print("=" * 60)
+    print(f"[SUCCESS] Evaluation complete")
+    print(f"[SAVED] {csv_path}")
+
+    # Print summary
+    print("-" * 60)
+    print("Summary:")
+    print(df.describe())
