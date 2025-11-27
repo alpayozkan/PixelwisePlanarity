@@ -6,6 +6,8 @@
 #SBATCH --time=72:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem-per-cpu=16G
+#SBATCH --output=logs/render/hypersim_render_%j.out
+#SBATCH --error=logs/render/hypersim_render_%j.err
 
 # Configuration
 SCENE_LIST="${1:-/cluster/home/ayavuz/PixelwisePlanarity/splits/hypersim/scene_splits/split_0/scene_list_0.txt}"
