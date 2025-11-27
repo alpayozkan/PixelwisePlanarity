@@ -1,6 +1,6 @@
 # Planar Surface Detection and Segmentation
 
-Clean, restructured codebase for planar surface detection and segmentation from RGB-D images.
+Clean, restructured codebase for planar surface detection and segmentation from RGB images.
 
 ## Structure
 
