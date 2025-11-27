@@ -27,7 +27,8 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-from shared.segmentation import compute_vectorized_planar_segments_v1, remove_small_components
+from shared.segmentation import compute_vectorized_planar_segments_v4
+from shared.utils.label_utils import remap_labels
 from shared.utils import visualize_top_components_v1
 from inference.planarity.moge_inference import MoGePlanarityInference
 
@@ -65,12 +66,13 @@ def process_scene(scene_id, image_list, inference_model, output_dir, args):
 
         # Compute segmentation
         normal_threshold_rad = np.deg2rad(args.normal_threshold_deg)
-        labels, n_components = compute_vectorized_planar_segments_v1(
+        labels, n_components = compute_vectorized_planar_segments_v4(
             planarity_mask, normal, depth,
             normal_threshold_rad, args.depth_threshold,
             neighbor_match_count_thresh=args.neighbor_match_count_thresh
         )
-        filtered_segmentation = remove_small_components(labels.copy(), min_size=args.min_segment_size)
+        filtered_segmentation = labels.copy()
+        filtered_segmentation, _ = remap_labels(filtered_segmentation)
 
         # Save segmentation
         seg_save_path = os.path.join(seg_dir, f"{base_name}_seg_pred.npy")
@@ -154,7 +156,6 @@ def main():
     parser.add_argument("--normal_threshold_deg", type=float, default=10.0)
     parser.add_argument("--depth_threshold", type=float, default=0.05)
     parser.add_argument("--neighbor_match_count_thresh", type=int, default=24)
-    parser.add_argument("--min_segment_size", type=int, default=500)
 
     # Output options
     parser.add_argument("--save_visualization", action="store_true",

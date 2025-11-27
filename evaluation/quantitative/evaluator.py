@@ -129,17 +129,19 @@ def moge_planarity_infer(inference_model, rgb_path, img_res):
     planarity = cv2.resize(planarity.astype(np.float32), (W, H), interpolation=cv2.INTER_LINEAR)
 
     # Compute segmentation
-    from shared.segmentation import compute_vectorized_planar_segments_v1, remove_small_components
+    from shared.segmentation import compute_vectorized_planar_segments_v4
+    from shared.utils.label_utils import remap_labels
 
     planarity_mask = (planarity > 0.6).astype(np.int16)
     normal_threshold_rad = np.deg2rad(10.0)
 
-    labels, _ = compute_vectorized_planar_segments_v1(
+    labels, _ = compute_vectorized_planar_segments_v4(
         planarity_mask, normal, depth,
         normal_threshold_rad, 0.05,
         neighbor_match_count_thresh=24
     )
-    filtered_segmentation = remove_small_components(labels.copy(), min_size=500)
+    filtered_segmentation = labels.copy()
+    filtered_segmentation, _ = remap_labels(filtered_segmentation)
 
     return filtered_segmentation
 
