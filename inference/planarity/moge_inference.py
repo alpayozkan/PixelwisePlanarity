@@ -1,64 +1,69 @@
-import sys
+#!/usr/bin/env python3
+"""
+MoGe Planarity Inference Module
 
-# Add a directory to the Python module search path
-sys.path.append("/cluster/home/aoezkan/planeseg/MoGe")
-
+Provides the MoGePlanarityInference class for running planarity prediction
+using trained MoGe 4-head models.
+"""
 import os
 import sys
 from pathlib import Path
-import glob
-import argparse
+
+# Add project root to path
+script_dir = Path(__file__).resolve().parent
+project_root = script_dir.parent.parent
+sys.path.insert(0, str(project_root))
+
 import numpy as np
 import torch
 import torch.nn.functional as F
 import cv2
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from PIL import Image
 
-# Add MoGe to path
-# if (_package_root := str(Path(__file__).absolute().parents[0])) not in sys.path:
-#     sys.path.insert(0, _package_root)
-
-from moge.model.v2 import MoGeModel
-# from moge.model.v2 import MoGeModelPlanarity
+from MoGe.moge.model.v2 import MoGeModel
 
 
 class MoGePlanarityInference:
     """Class for performing inference with trained MoGe 4-head planarity model."""
-    
-    def __init__(self, model_path, model_size='large', device='cuda'):
+
+    def __init__(self, model_path, model_size='large', device='cuda', cache_dir=None):
         """
         Args:
             model_path: Path to trained model checkpoint (.pt file)
-            device: Device for inference
+            model_size: Model size ('small', 'middle', 'large')
+            device: Device for inference ('cuda' or 'cpu')
+            cache_dir: Directory for caching pretrained models (or set MOGE_CACHE_DIR env var)
         """
+        # Get cache directory from arg or env var
+        if cache_dir is None:
+            cache_dir = os.environ.get("MOGE_CACHE_DIR")
+
         self.device = torch.device(device if torch.cuda.is_available() else 'cpu')
         print(f"Using device: {self.device}")
-        
+
         # Load the trained model
         print(f"Loading model from: {model_path}")
         checkpoint = torch.load(model_path, map_location=self.device)
-        
-        # Initialize model - need to use the same base model that was used for training
-        # self.model = MoGeModel.from_pretrained("Ruicheng/moge-2-vitl-normal").to(self.device)
-        # self.model = MoGeModelPlanarity.from_pretrained("Ruicheng/moge-2-vitl-normal").to(self.device)
 
-        # LARGE
-        if model_size=='large':
-            self.model = MoGeModel.from_pretrained("Ruicheng/moge-2-vitl-normal", 
-                                      cache_dir="/cluster/scratch/aoezkan/MoGe/checkpoints/").to(device)      
-        # MIDDLE
-        elif model_size=='middle':
-            self.model = MoGeModel.from_pretrained("Ruicheng/moge-2-vitb-normal", 
-                                      cache_dir="/cluster/scratch/aoezkan/MoGe/checkpoints/").to(device)      
-        # SMALL
-        elif model_size=='small':
-            self.model = MoGeModel.from_pretrained("Ruicheng/moge-2-vits-normal", 
-                                      cache_dir="/cluster/scratch/aoezkan/MoGe/checkpoints/").to(device)    
+        # Model name mapping
+        model_names = {
+            'large': "Ruicheng/moge-2-vitl-normal",
+            'middle': "Ruicheng/moge-2-vitb-normal",
+            'small': "Ruicheng/moge-2-vits-normal"
+        }
+
+        if model_size not in model_names:
+            raise ValueError(f"model_size must be one of {list(model_names.keys())}, got '{model_size}'")
+
+        # Load pretrained model
+        model_name = model_names[model_size]
+        print(f"Loading pretrained model: {model_name}")
+        if cache_dir:
+            self.model = MoGeModel.from_pretrained(model_name, cache_dir=cache_dir).to(device)
         else:
-            raise ValueError()
-            
+            self.model = MoGeModel.from_pretrained(model_name).to(device)
+
         # Load the state dict (this should include the planarity head)
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.model.eval()
@@ -126,7 +131,7 @@ class MoGePlanarityInference:
         features = [features, None, None, None, None]
 
         # Concat UVs for aspect ratio input
-        from moge.model.v2 import normalized_view_plane_uv
+        from MoGe.moge.model.v2 import normalized_view_plane_uv
         for level in range(5):
             uv = normalized_view_plane_uv(width=base_w * 2 ** level, height=base_h * 2 ** level, aspect_ratio=aspect_ratio, dtype=dtype, device=device)
             uv = uv.permute(2, 0, 1).unsqueeze(0).expand(batch_size, -1, -1, -1)
