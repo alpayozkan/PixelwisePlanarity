@@ -1,237 +1,231 @@
-# Shell Scripts Location Guide
+# Shell Scripts Reference
 
-All shell scripts have been created and organized in their respective `scripts/` directories.
+All shell scripts are organized in `scripts/` directories within each module.
 
-## Location Overview
+## Directory Structure
 
 ```
 clean_structure/
-├── gt_creation/scripts/          # 6 shell scripts + README
+├── gt_creation/scripts/           # Ground truth generation
 │   ├── scannetpp_plane_extraction.sh
 │   ├── scannetpp_render_planes.sh
+│   ├── scannetpp_video_gen.sh
 │   ├── hypersim_plane_extraction.sh
 │   ├── hypersim_render_planes.sh
-│   ├── batch_submit.sh
-│   └── README.md
+│   └── batch_submit.sh
 │
-├── evaluation/scripts/            # 3 shell scripts + README
+├── inference/scripts/             # Model inference
+│   ├── run_planarity_inference.sh
+│   └── run_segmentation.sh
+│
+├── evaluation/scripts/            # Evaluation
 │   ├── run_evaluation.sh
-│   ├── batch_evaluate.sh
-│   └── README.md
+│   ├── run_qualitative.sh
+│   └── batch_evaluate.sh
 │
-└── inference/scripts/             # (Future: inference runners)
+└── run_tests.sh                   # Tests
 ```
 
 ---
 
 ## GT Creation Scripts
 
-**Location:** `gt_creation/scripts/`
+### ScanNet++
 
-### ScanNet++ Workflows
-
-**1. Extract planes from meshes:**
+#### 1. Plane Extraction
+Extract planes from meshes.
 ```bash
-cd gt_creation/scripts
-./scannetpp_plane_extraction.sh scene_list.txt
+./scannetpp_plane_extraction.sh <scene_list> [config] [input_root] [output_root]
 ```
 
-**2. Render planes to images:**
+**Defaults:**
+- `config`: `../configs/scannetpp_default.yml`
+- `input_root`: `/path/to/scannetpp/data`
+- `output_root`: `/path/to/output`
+
+#### 2. Render Planes
+Render extracted planes to PNG images.
 ```bash
-./scannetpp_render_planes.sh scene_list.txt
+./scannetpp_render_planes.sh <scene_list> [input_root] [plane_root] [output_root] [frame_skip]
 ```
 
-### Hypersim Workflows
+**Defaults:**
+- `input_root`: `/cluster/project/cvg/Shared_datasets/scannetpp_v2/data`
+- `plane_root`: `/cluster/scratch/aoezkan/dataset/scannetpp/plane_ours_gt`
+- `output_root`: `/cluster/scratch/aoezkan/dataset/scannetpp/plane_ours_gt`
+- `frame_skip`: `25`
 
-**1. Extract planes from meshes:**
+#### 3. Video Generation
+Generate visualization videos from rendered planes.
 ```bash
-./hypersim_plane_extraction.sh scene_list.txt
+./scannetpp_video_gen.sh <scene_list> [h5_root] [rgb_root] [output_root] [fps]
 ```
 
-**2. Render planes to HDF5:**
+**Defaults:**
+- `h5_root`: `/cluster/scratch/aoezkan/dataset/scannetpp/plane_ours_gt`
+- `rgb_root`: `/cluster/project/cvg/Shared_datasets/scannet++/data`
+- `output_root`: `/cluster/scratch/aoezkan/dataset/scannetpp/visual`
+- `fps`: `5`
+
+---
+
+### Hypersim
+
+#### 1. Plane Extraction
+Extract planes from Hypersim meshes.
 ```bash
-./hypersim_render_planes.sh scene_list.txt
+./hypersim_plane_extraction.sh <scene_list> [config] [input_root] [output_root]
 ```
 
-### Batch Processing (SLURM)
-
-**Submit multiple splits to cluster:**
+#### 2. Render Planes
+Render planes to HDF5 files.
 ```bash
-./batch_submit.sh scene_splits/ scannetpp_plane_extraction.sh scannetpp
+./hypersim_render_planes.sh <scene_list> [input_root] [plane_root] [output_root] [frame_skip]
 ```
 
-**Full Documentation:** See `gt_creation/scripts/README.md`
+**Defaults:**
+- `input_root`: `/cluster/scratch/ayavuz/dataset/Hypersim_params`
+- `plane_root`: `/cluster/scratch/ayavuz/dataset/Hypersim_ours`
+- `output_root`: `/cluster/scratch/ayavuz/dataset/Hypersim_rendered`
+- `frame_skip`: `25`
+
+---
+
+## Inference Scripts
+
+### 1. Planarity Inference
+Run MoGe planarity prediction on images.
+```bash
+./run_planarity_inference.sh <model_path> <input_dir> <output_dir> [model_size] [cache_dir]
+```
+
+**Defaults:**
+- `model_path`: `/cluster/scratch/aoezkan/MoGe/checkpoints/final_planarity_4heads_model.pt`
+- `model_size`: `large`
+- `cache_dir`: `/cluster/scratch/aoezkan/MoGe/checkpoints`
+
+**Environment Variables:**
+- `MOGE_CACHE_DIR`: Set automatically from `cache_dir`
+
+**Outputs:**
+- `raw/` - Raw probability maps (`.npy`)
+- `binary/` - Binary masks (`.png`)
+- `vis/` - Visualizations (`.png`)
+
+---
+
+### 2. Segmentation Prediction
+Full pipeline: RGB → MoGe → plane segmentation.
+```bash
+./run_segmentation.sh <model_path> <input_root> <output_root> [model_size] [cache_dir] [frame_skip]
+```
+
+**Defaults:**
+- `model_path`: `/cluster/scratch/aoezkan/MoGe/checkpoints/final_planarity_4heads_model.pt`
+- `input_root`: `/cluster/scratch/aoezkan/dataset/scannet_new/scans`
+- `output_root`: `/cluster/scratch/aoezkan/results/scannet/moge`
+- `model_size`: `large`
+- `cache_dir`: `/cluster/scratch/aoezkan/MoGe/checkpoints`
+- `frame_skip`: `50`
+
+**Outputs:**
+- `seg_pred/{scene_id}/` - Segmentation arrays (`.npy`)
+- `seg_vis/{scene_id}/` - Visualizations (`.png`)
 
 ---
 
 ## Evaluation Scripts
 
-**Location:** `evaluation/scripts/`
-
-### Single Method Evaluation
-
+### 1. Quantitative Evaluation
+Run metrics evaluation on ScanNet++.
 ```bash
-cd evaluation/scripts
-./run_evaluation.sh moge test ./results/moge_test
+./run_evaluation.sh <method> [model_path] [rgb_root] [dataset_root] [save_dir] [max_scenes] [model_size] [cache_dir]
 ```
 
-**Methods:** `gt`, `moge`, `planercnn`, `monoplane`
+**Methods:** `gt`, `moge`, `planercnn`, `zeroplane`, `monoplane`
 
-### Batch Evaluation
+**Defaults:**
+- `method`: `moge`
+- `model_path`: `/cluster/scratch/aoezkan/MoGe/checkpoints/final_planarity_4heads_model.pt`
+- `rgb_root`: `/cluster/project/cvg/Shared_datasets/scannet++/data`
+- `dataset_root`: `/cluster/scratch/aoezkan/dataset/scannetpp`
+- `save_dir`: `/cluster/scratch/aoezkan/dataset/scannetpp/results/metrics`
+- `max_scenes`: `5`
 
-**Evaluate all methods:**
-```bash
-./batch_evaluate.sh test ./results
-```
-
-**Full Documentation:** See `evaluation/scripts/README.md`
+**Output:** `eval_{method}_{max_scenes}.csv`
 
 ---
 
-## Quick Start Examples
-
-### Example 1: Generate GT for 5 ScanNet++ scenes
-
+### 2. Qualitative Comparison
+Generate side-by-side comparison videos.
 ```bash
-cd gt_creation/scripts
-
-# Create scene list
-cat > test_scenes.txt << EOF
-0a5c013435
-0a7cc12c0e
-0ad96a1552
-EOF
-
-# Extract planes
-./scannetpp_plane_extraction.sh test_scenes.txt \
-    ../configs/scannetpp_default.yml \
-    /path/to/scannetpp/data \
-    /path/to/output
-
-# Render to images
-./scannetpp_render_planes.sh test_scenes.txt \
-    /path/to/scannetpp/data \
-    /path/to/output \
-    /path/to/rendered
+./run_qualitative.sh [rgb_root] [results_root] [gt_root] [output_root] [frame_skip] [max_scenes]
 ```
 
-### Example 2: Evaluate MoGe on test set
+**Defaults:**
+- `rgb_root`: `/cluster/scratch/aoezkan/dataset/scannet_new/scans`
+- `results_root`: `/cluster/scratch/aoezkan/results/scannet`
+- `gt_root`: `/cluster/scratch/aoezkan/dataset/planercnn/scannet_planeseg`
+- `output_root`: `/cluster/scratch/aoezkan/results/scannet`
+- `frame_skip`: `50`
 
-```bash
-cd evaluation/scripts
-
-# Set model path
-export MOGE_MODEL_PATH=/path/to/moge/checkpoint.pth
-
-# Run evaluation
-./run_evaluation.sh moge test ./results/moge_test
-```
-
-### Example 3: Batch processing on SLURM cluster
-
-```bash
-cd gt_creation/scripts
-
-# Organize scenes into splits
-mkdir -p scene_splits/split_{0,1,2}
-split -l 50 all_scenes.txt scene_splits/split_
-for i in 0 1 2; do
-    mv scene_splits/split_a$i scene_splits/split_$i/scene_list_$i.txt
-done
-
-# Submit all splits
-./batch_submit.sh scene_splits/ scannetpp_plane_extraction.sh scannetpp
-
-# Monitor
-squeue -u $USER
-tail -f logs/split_0.out
-```
+**Output:** `comparison_videos/{scene_id}_baseline.mp4`
 
 ---
 
-## Script Features
+## SLURM Configuration
 
-### All scripts support:
--  **SLURM integration** - Comment/uncomment `#SBATCH` directives
--  **Local execution** - Work without SLURM
--  **Command-line args** - Configurable paths
--  **Error handling** - Validates inputs, reports failures
--  **Progress logging** - Clear status messages
--  **Batch processing** - Process multiple scenes
--  **Scene list format** - One scene ID per line, comments allowed
+All scripts include SLURM directives (commented by default):
+```bash
+#SBATCH --time=8:00:00
+#SBATCH --cpus-per-task=4
+#SBATCH --mem-per-cpu=8G
+#SBATCH --gpus=1
+#SBATCH --output=logs/{script_name}_%j.out
+#SBATCH --error=logs/{script_name}_%j.err
+```
 
-### Example scene list format:
+To use with SLURM:
+1. Uncomment the `#SBATCH` lines
+2. Create `logs/` directory: `mkdir -p logs`
+3. Submit: `sbatch script.sh [args]`
+
+---
+
+## Scene List Format
+
+All scripts accept scene list files:
 ```txt
-# ScanNet++ test scenes
-0a5c013435
-0a7cc12c0e
-# Skip problematic scenes
-# 0ad96a1552
-0b22fa63d2
+# Comments start with #
+scene_id_1
+scene_id_2
+# Skipped scene:
+# scene_id_3
+scene_id_4
 ```
 
 ---
 
-## Script Dependencies
+## Quick Reference
 
-### GT Creation Scripts require:
-- Python environment with dependencies
-- `scene_runner.py` in `gt_creation/scannetpp/` or `hypersim/`
-- Config YAML files in `gt_creation/configs/`
-- Dataset paths (ScanNet++, Hypersim)
-
-### Evaluation Scripts require:
-- `run_evaluation.py` in `evaluation/`
-- Model checkpoints (for MoGe, etc.)
-- Ground truth data
-- GPU (optional, for MoGe)
-
----
-
-## Full Documentation
-
-Each `scripts/` directory has a detailed `README.md`:
-
-1. **`gt_creation/scripts/README.md`**
-   - Pipeline order
-   - SLURM configuration
-   - Troubleshooting
-   - Parameter tuning
-
-2. **`evaluation/scripts/README.md`**
-   - Metrics explained
-   - Output format
-   - Visualization
-   - Troubleshooting
+| Task | Script | Key Args |
+|------|--------|----------|
+| Extract ScanNet++ planes | `scannetpp_plane_extraction.sh` | scene_list, config |
+| Render ScanNet++ planes | `scannetpp_render_planes.sh` | scene_list, frame_skip |
+| Generate videos | `scannetpp_video_gen.sh` | scene_list, fps |
+| Extract Hypersim planes | `hypersim_plane_extraction.sh` | scene_list, config |
+| Render Hypersim planes | `hypersim_render_planes.sh` | scene_list, frame_skip |
+| Planarity inference | `run_planarity_inference.sh` | model_path, input_dir |
+| Segmentation | `run_segmentation.sh` | model_path, input_root |
+| Evaluate metrics | `run_evaluation.sh` | method, model_path |
+| Comparison videos | `run_qualitative.sh` | rgb_root, results_root |
 
 ---
 
-## Script Checklist
+## Environment Variables
 
-All scripts are:
--  **Executable** (`chmod +x`)
--  **Documented** (inline comments + README)
--  **Tested format** (valid bash syntax)
--  **SLURM-ready** (with commented directives)
--  **Standalone** (can run independently)
-
----
-
-## Migration from Old Scripts
-
-### Old structure:
-```
-gt_gen/run_processing.sh
-gt_gen/run_raycast_plane.sh
-gt_gen/submit_all_splits.sh
-plane_fitting/eval_run.sh
-```
-
-### New structure:
-```
-gt_creation/scripts/scannetpp_plane_extraction.sh
-gt_creation/scripts/scannetpp_render_planes.sh
-gt_creation/scripts/batch_submit.sh
-evaluation/scripts/run_evaluation.sh
-```
-
+| Variable | Used By | Description |
+|----------|---------|-------------|
+| `MOGE_CACHE_DIR` | inference scripts | HuggingFace cache for MoGe weights |
+| `SCANNETPP_RGB_ROOT` | evaluator.py | RGB images root (fallback) |
+| `BASELINE_ROOT` | evaluator.py | Baseline methods root (fallback) |
