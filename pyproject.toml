@@ -1,0 +1,20 @@
+[project]
+name = "my_library"
+version = "0.1.0"
+description = "My editable pip-installable library"
+authors = [
+    { name="Your Name", email="you@email.com" }
+]
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+dependencies = [
+    # List your dependencies here
+    "numpy",
+    "open3d",
+]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"

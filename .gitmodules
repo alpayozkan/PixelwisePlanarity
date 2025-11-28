@@ -1,6 +1,3 @@
-[submodule "moge"]
-    path = planamono/moge
-    url = git@github.com:Ahmetcanyvz/MoGe-private.git
 [submodule "planamono/moge"]
 	path = planamono/moge
 	url = git@github.com:Ahmetcanyvz/MoGe-private.git
