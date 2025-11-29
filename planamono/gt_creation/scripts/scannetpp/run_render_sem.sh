@@ -30,7 +30,8 @@ while IFS= read -r scene_id; do
     echo "[INFO] Running rendering for scene: $scene_id"
     # python render_scene_depth.py "$scene_id"
     # python render_scene_depth_h5.py "$scene_id"
-    python render_scene_depth.py "$scene_id"
+    # python render_scene_depth.py "$scene_id"
+    python render_scene_sem.py "$scene_id"
     
 done < "$SCENE_LIST"
 
