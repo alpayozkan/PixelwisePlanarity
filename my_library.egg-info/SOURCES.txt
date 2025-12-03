@@ -12,6 +12,7 @@ planamono/evaluation/qualitative/__init__.py
 planamono/evaluation/qualitative/visualize_comparison.py
 planamono/evaluation/quantitative/__init__.py
 planamono/evaluation/quantitative/evaluator.py
+planamono/gt_creation/__init__.py
 planamono/gt_creation/hypersim/__init__.py
 planamono/gt_creation/hypersim/mesh_processing.py
 planamono/gt_creation/hypersim/plane_extraction.py
@@ -20,8 +21,12 @@ planamono/gt_creation/hypersim/scene_runner.py
 planamono/gt_creation/scannetpp/__init__.py
 planamono/gt_creation/scannetpp/parsers.py
 planamono/gt_creation/scannetpp/plane_extraction.py
+planamono/gt_creation/scannetpp/render_scene.py
+planamono/gt_creation/scannetpp/render_scene_depth.py
+planamono/gt_creation/scannetpp/render_scene_sem.py
 planamono/gt_creation/scannetpp/rendering.py
 planamono/gt_creation/scannetpp/scene_runner.py
+planamono/gt_creation/scannetpp/test.py
 planamono/gt_creation/scannetpp/video_gen.py
 planamono/inference/__init__.py
 planamono/inference/planarity/__init__.py
@@ -103,7 +108,10 @@ planamono/moge/moge/utils/webzipfile.py
 planamono/shared/__init__.py
 planamono/shared/datasets/__init__.py
 planamono/shared/datasets/hypersim.py
+planamono/shared/datasets/mixed.py
 planamono/shared/datasets/scannetpp.py
+planamono/shared/parsers/__init__.py
+planamono/shared/parsers/parse_scannetpp.py
 planamono/shared/plane_fitting/__init__.py
 planamono/shared/plane_fitting/metrics.py
 planamono/shared/plane_fitting/planefit.py
@@ -111,6 +119,7 @@ planamono/shared/plane_fitting/projection.py
 planamono/shared/plane_fitting/visualize.py
 planamono/shared/rendering/__init__.py
 planamono/shared/rendering/mesh_io.py
+planamono/shared/rendering/mesh_utils.py
 planamono/shared/rendering/render.py
 planamono/shared/segmentation/__init__.py
 planamono/shared/segmentation/plan2seg.py
@@ -119,6 +128,8 @@ planamono/shared/utils/__init__.py
 planamono/shared/utils/depth_normal.py
 planamono/shared/utils/io_utils.py
 planamono/shared/utils/label_utils.py
+planamono/shared/utils/utils.py
 planamono/shared/utils/visualization.py
 planamono/splits/create_train_val_test_splits.py
 planamono/splits/hypersim/split_scenes.py
+planamono/splits/scannetpp/split_scenes.py

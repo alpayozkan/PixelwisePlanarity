@@ -105,7 +105,8 @@ class ScanNetPPPlanarityDataset(Dataset):
         # --- Semantic label ---
         try:
             with h5py.File(sem_h5, "r") as f:
-                sem = f["rendered_sem"][frame_idx]
+                # sem = f["rendered_sem"][frame_idx]
+                sem = f["sem"][frame_idx]
             sem = torch.from_numpy(sem.astype(np.int64)).unsqueeze(0)  # [1, H, W]
         except Exception as e:
             print(f"[WARN] Failed semantic label from {sem_h5} [{frame_idx}]: {e}")
@@ -128,7 +129,18 @@ class ScanNetPPPlanarityDataset(Dataset):
         image = cv2.resize(image, (W, H), interpolation=cv2.INTER_LINEAR)
         image = torch.tensor(image / 255.0, dtype=torch.float32).permute(2, 0, 1)  # [3, H, W]
 
-        return image, depth, plane, sem, rgb_path
+        # return image, depth, plane, sem, rgb_path
+        fid = os.path.splitext(os.path.basename(rgb_path))[0]
+        scene_id = rgb_path.split("/")[-4]
+        return {
+            "image": image,
+            "depth": depth,
+            "plane": plane,
+            "sem": sem,
+            "rgb_path": rgb_path,
+            "scene_id": scene_id,
+            "frame_idx": fid,
+        }
 
 class ScanNetPPPlaneDataset(Dataset):
     def __init__(self,
@@ -228,7 +240,8 @@ class ScanNetPPPlaneDataset(Dataset):
         # --- Semantic label ---
         try:
             with h5py.File(sem_h5, "r") as f:
-                sem = f["rendered_sem"][frame_idx]
+                # sem = f["rendered_sem"][frame_idx]
+                sem = f["sem"][frame_idx]
             sem = torch.from_numpy(sem.astype(np.int64)).unsqueeze(0)  # [1, H, W]
         except Exception as e:
             print(f"[WARN] Failed semantic label from {sem_h5} [{frame_idx}]: {e}")
@@ -252,8 +265,21 @@ class ScanNetPPPlaneDataset(Dataset):
         image = torch.tensor(image / 255.0, dtype=torch.float32).permute(2, 0, 1)  # [3, H, W]
 
         # return image, depth, plane, sem, rgb_path, torch.from_numpy(K)
-        return image, depth, plane, sem, rgb_path, torch.from_numpy(K), torch.from_numpy(c2w)
+        # return image, depth, plane, sem, rgb_path, torch.from_numpy(K), torch.from_numpy(c2w)
+        fid = os.path.splitext(os.path.basename(rgb_path))[0]
+        scene_id = rgb_path.split("/")[-4]
 
+        return {
+            "image": image,
+            "depth": depth,
+            "plane": plane,
+            "sem": sem,
+            "rgb_path": rgb_path,
+            "K": torch.from_numpy(K),
+            "c2w": torch.from_numpy(c2w),
+            "scene_id": scene_id,
+            "frame_idx": fid,
+        }
 
 class ScanNetPPPlanarityDataset_v0(Dataset):
     """ScanNet++ dataset for planarity learning (RGB + rendered plane masks)."""
@@ -363,5 +389,9 @@ class ScanNetPPPlanarityDataset_v0(Dataset):
         image = cv2.resize(image, (label_W, label_H), interpolation=cv2.INTER_LINEAR)
         image = torch.tensor(image / 255.0, dtype=torch.float32).permute(2, 0, 1)  # Shape: [3, H, W]
     
-        return image, label, rgb_path
-    
+        # return image, label, rgb_path
+        return {
+        "image": image,
+        "plane": label,
+        "rgb_path": rgb_path,
+       }
