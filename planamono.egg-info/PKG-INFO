@@ -1,9 +1,8 @@
 Metadata-Version: 2.4
-Name: my_library
+Name: planamono
 Version: 0.1.0
 Summary: My editable pip-installable library
 Author-email: Your Name <you@email.com>
-License: MIT
 Requires-Python: >=3.10
 Description-Content-Type: text/markdown
 Requires-Dist: numpy

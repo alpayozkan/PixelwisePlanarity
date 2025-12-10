@@ -1,11 +1,11 @@
 pyproject.toml
-my_library.egg-info/PKG-INFO
-my_library.egg-info/SOURCES.txt
-my_library.egg-info/dependency_links.txt
-my_library.egg-info/requires.txt
-my_library.egg-info/top_level.txt
 planamono/__init__.py
 planamono/paths.py
+planamono.egg-info/PKG-INFO
+planamono.egg-info/SOURCES.txt
+planamono.egg-info/dependency_links.txt
+planamono.egg-info/requires.txt
+planamono.egg-info/top_level.txt
 planamono/evaluation/__init__.py
 planamono/evaluation/run_evaluation.py
 planamono/evaluation/qualitative/__init__.py

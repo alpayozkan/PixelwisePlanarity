@@ -26,7 +26,7 @@ import glob
 from tqdm import tqdm
 from natsort import natsorted
 
-from inference.planarity.moge_inference import MoGePlanarityInference
+from planamono.inference.planarity.moge_inference import MoGePlanarityInference
 
 
 def main():
