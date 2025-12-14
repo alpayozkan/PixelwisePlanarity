@@ -58,9 +58,21 @@ def remap_labels(
         seg_remapped: (H,W) remapped segmentation
         mapping: Dict mapping old labels -> new labels
     """
+    # unique_labels = np.unique(seg)
+    # mapping = {old: new for new, old in enumerate(unique_labels, start=start)}
+    # seg_remapped = np.full_like(seg, fill_value=-1)
+
+    # for old, new in mapping.items():
+    #     seg_remapped[seg == old] = new
+
+    # return seg_remapped, mapping
     unique_labels = np.unique(seg)
-    mapping = {old: new for new, old in enumerate(unique_labels, start=start)}
-    seg_remapped = np.full_like(seg, fill_value=-1)
+    planar_labels = unique_labels[unique_labels > 0]
+
+    mapping = {int(old): int(new)
+               for new, old in enumerate(planar_labels, start=1)}
+
+    seg_remapped = np.zeros(seg.shape, dtype=np.int32)
 
     for old, new in mapping.items():
         seg_remapped[seg == old] = new
