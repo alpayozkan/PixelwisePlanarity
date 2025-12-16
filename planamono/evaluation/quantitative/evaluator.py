@@ -16,6 +16,9 @@ import pandas as pd
 import h5py
 import os
 
+import torch
+import open3d as o3d
+from PIL import Image
 from sklearn.metrics import rand_score
 from skimage.metrics import variation_of_information
 from tqdm import tqdm
@@ -28,6 +31,25 @@ from planamono.shared.plane_fitting import (
     project_labels_to_image
 )
 from planamono.paths import *
+import os
+import argparse
+import numpy as np
+import glob
+import cv2
+from tqdm import tqdm
+from natsort import natsorted
+from PIL import Image
+import matplotlib
+# matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import torch
+
+from planamono.shared.segmentation import compute_vectorized_planar_segments_v4
+from planamono.shared.utils.label_utils import remap_labels
+from planamono.shared.utils import visualize_top_components_v1
+from planamono.inference.planarity.moge_inference import MoGePlanarityInference
+import imageio
+
 
 def segmentation_covering(gt_mask, pred_mask, ignore_label=0):
     """
@@ -91,7 +113,7 @@ def segmentation_covering(gt_mask, pred_mask, ignore_label=0):
     sc = (best_iou * gt_areas).sum() / total_area if total_area > 0 else 0.0
     return float(sc)
 
-
+    
 def get_plane_seg_baseline_from_h5(h5_path, frame_idx):
     """Load plane segmentation from baseline method HDF5 file."""
     with h5py.File(h5_path, "r") as f:
@@ -168,9 +190,6 @@ def pseudo_mono_infer(
     Returns:
         labels: (H,W) int32 with 0 = non-planar, 1..K = planes
     """
-    import torch
-    import open3d as o3d
-    from PIL import Image
 
     def _denorm_K(K_norm: np.ndarray, W: int, H: int):
         fx = float(K_norm[0, 0] * W)
@@ -445,3 +464,51 @@ def evaluate_planarity(
         })
 
     return pd.DataFrame(results)
+
+
+def process_single_frame(rgb_path, scene_id, frame_id, inference_model, png_root, args):
+    """
+    Run MoGe inference + segmentation for a single frame and save PNG.
+    """
+    img = Image.open(rgb_path).convert("RGB")
+    img_np = np.array(img)
+    H, W = img_np.shape[:2]
+
+    # MoGe prediction
+    res = inference_model.predict(
+        rgb_path, 
+        num_tokens=args.num_tokens,
+        return_all_heads=True
+    )
+
+    depth = res["points"][:, :, 2]
+    normal = np.transpose(res["normal"], (2, 0, 1))
+    planarity = res["planarity_probability"]
+
+    # resize to original resolution
+    depth = cv2.resize(depth.astype(np.float32), (W, H), interpolation=cv2.INTER_LINEAR)
+    normal = cv2.resize(normal.astype(np.float32), (W, H), interpolation=cv2.INTER_LINEAR)
+    planarity = cv2.resize(planarity.astype(np.float32), (W, H), interpolation=cv2.INTER_LINEAR)
+
+    planarity_mask = (planarity > args.threshold_planarity).astype(np.int16)
+
+    # segmentation
+    normal_th = np.deg2rad(args.normal_threshold_deg)
+    labels, _ = compute_vectorized_planar_segments_v4(
+        planarity_mask,
+        normal,
+        depth,
+        normal_th,
+        args.depth_threshold,
+        neighbor_match_count_thresh=args.neighbor_match_count_thresh
+    )
+    labels, _ = remap_labels(labels)
+
+    # save PNG
+    scene_dir = os.path.join(png_root, scene_id)
+    os.makedirs(scene_dir, exist_ok=True)
+
+    save_path = os.path.join(scene_dir, f"{frame_id}.png")
+    imageio.imwrite(save_path, labels.astype(np.uint16))
+
+    return labels
