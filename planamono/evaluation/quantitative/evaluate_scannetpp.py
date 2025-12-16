@@ -80,6 +80,7 @@ from planamono.evaluation.quantitative.evaluator import segmentation_covering
 import os
 import h5py
 import numpy as np
+import shutil
 
 # Cache opened HDF5 files per scene
 _MOGE_H5_CACHE = {}
@@ -128,10 +129,8 @@ model_path = "/cluster/scratch/aoezkan/moge_runs/scannetpp/moge_scannetpp_4heads
 dataset_dir = "/cluster/scratch/aoezkan/planeseg/dataset/scannetpp"
 num_workers = 4
 
-# max_scenes = 1
-# max_scenes = None
-# max_scenes_val = None
-max_scenes_val = 1
+max_scenes_val = None
+# max_scenes_val = 1
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -264,8 +263,13 @@ for scene_id in tqdm(scene_ids, desc="Converting scenes"):
 
     print(f"[✓] {scene_id}: {planes.shape} → {h5_path}")
 
+if os.path.isdir(output_dir):
+    shutil.rmtree(output_dir)
+    print('h5 conversion finished, removed temporary pngs')
 
 # metric-evaluation
+print('metric evaluation...')
+
 moge_h5_root = h5_root # '/cluster/scratch/aoezkan/planeseg/inference/moge_ours'
 results = {}
 thresholds=(0.01, 0.02, 0.05)
@@ -353,6 +357,7 @@ for batch in tqdm(val_loader):
         **metric_per_threshold
     }
 
+os.makedirs(csv_out_dir, exist_ok=True)
 out_path = os.path.join(csv_out_dir, 'moge_results.csv') # "/cluster/scratch/aoezkan/planeseg/eval/moge_results.csv"
 os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
@@ -362,9 +367,6 @@ df = df.set_index(["scene_id", "frame_idx"])
 df.to_csv(out_path)
 
 print(f"Saved results to {out_path}")
-
-
-os.makedirs(out_dir, exist_ok=True)
 
 # -------------------------
 # Reset index for grouping
