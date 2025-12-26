@@ -63,11 +63,24 @@ class MoGePlanarityInference:
         # Print model info if available
         if 'epoch' in checkpoint:
             print(f"Model trained for {checkpoint['epoch']} epochs")
+        # if 'val_loss' in checkpoint:
+        #     print(f"Final validation loss: {checkpoint['val_loss']:.4f}")
+        # if 'best_val_loss' in checkpoint:
+        #     print(f"Best validation loss: {checkpoint['best_val_loss']:.4f}")
         if 'val_loss' in checkpoint:
-            print(f"Final validation loss: {checkpoint['val_loss']:.4f}")
+            val_loss = checkpoint['val_loss']
+            if val_loss is not None:
+                print(f"Final validation loss: {val_loss:.4f}")
+            else:
+                print("Final validation loss: None")
+                
         if 'best_val_loss' in checkpoint:
-            print(f"Best validation loss: {checkpoint['best_val_loss']:.4f}")
-        
+            best_val_loss = checkpoint['best_val_loss']
+            if best_val_loss is not None:
+                print(f"Best validation loss: {best_val_loss:.4f}")
+            else:
+                print("Best validation loss: None")
+
     def _add_planarity_head(self):
         # Copy normal head
         self.model.planarity_head = copy.deepcopy(self.model.normal_head)
