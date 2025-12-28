@@ -19,7 +19,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import torch
 
-from planamono.evaluation.quantitative.evaluator import segmentation_covering, process_single_frame
+from planamono.evaluation.quantitative.evaluator import segmentation_covering, process_single_frame_merged
 from planamono.shared.segmentation import compute_vectorized_planar_segments_v4
 from planamono.shared.utils.label_utils import remap_labels
 from planamono.shared.utils import visualize_top_components_v1
@@ -120,10 +120,10 @@ def load_plane_pred_from_moge_h5(moge_h5_root, scene_id, frame_idx):
     return planes[idx].astype(np.int32)
 
 
-csv_out_dir = "/cluster/scratch/aoezkan/planeseg/scannetpp/eval/moge_ours"
+csv_out_dir = "/cluster/scratch/aoezkan/planeseg/scannetpp/eval/moge_ours_merged"
 # csv_out_dir = "/cluster/scratch/aoezkan/planeseg/eval/moge_results_v1.csv"
-output_dir = '/cluster/scratch/aoezkan/planeseg/scannetpp/inference/moge_ours'
-h5_root  = "/cluster/scratch/aoezkan/planeseg/scannetpp/inference/moge_ours_h5"
+output_dir = '/cluster/scratch/aoezkan/planeseg/scannetpp/inference/moge_ours_merged'
+h5_root  = "/cluster/scratch/aoezkan/planeseg/scannetpp/inference/moge_ours_merged_h5"
 # output_dir = '/cluster/scratch/aoezkan/planeseg/inference/scannetpp/moge_ours'
 # h5_root  = "/cluster/scratch/aoezkan/planeseg/inference/scannetpp/moge_ours_h5"
 
@@ -199,7 +199,7 @@ for batch in tqdm(val_loader):
 
     for i in range(B):
         labels = \
-        process_single_frame(
+        process_single_frame_merged(
             rgb_path[i],
             scene_ids[i],
             frame_ids[i],
@@ -361,7 +361,7 @@ for batch in tqdm(val_loader):
     }
 
 os.makedirs(csv_out_dir, exist_ok=True)
-out_path = os.path.join(csv_out_dir, 'moge_ours_results.csv') # "/cluster/scratch/aoezkan/planeseg/eval/moge_results.csv"
+out_path = os.path.join(csv_out_dir, 'moge_ours_merged_results.csv') # "/cluster/scratch/aoezkan/planeseg/eval/moge_results.csv"
 os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
 df = pd.DataFrame.from_records(list(results.values()))
@@ -391,7 +391,7 @@ df_scene = df_scene[cols]
 # -------------------------
 # Save
 # -------------------------
-scene_csv = os.path.join(csv_out_dir, "moge_ours_results_per_scene.csv")
+scene_csv = os.path.join(csv_out_dir, "moge_ours_merged_results_per_scene.csv")
 df_scene.to_csv(scene_csv)
 
 print(f"Saved per-scene results to {scene_csv}")
@@ -419,7 +419,7 @@ df_dataset = pd.DataFrame([dataset_stats])
 # -------------------------
 # Save
 # -------------------------
-dataset_csv = os.path.join(csv_out_dir, "moge_ours_results_dataset.csv")
+dataset_csv = os.path.join(csv_out_dir, "moge_ours_merged_results_dataset.csv")
 df_dataset.to_csv(dataset_csv, index=False)
 
 print(f"Saved dataset-level results to {dataset_csv}")
