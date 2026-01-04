@@ -44,7 +44,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import torch
 
-from planamono.shared.segmentation import compute_vectorized_planar_segments_v4
+from planamono.shared.segmentation import compute_vectorized_planar_segments_v4, plane_merge
 from planamono.shared.utils.label_utils import remap_labels
 from planamono.shared.utils import visualize_top_components_v1
 from planamono.inference.planarity.moge_inference import MoGePlanarityInference
@@ -423,7 +423,7 @@ def evaluate_planarity(
                 ignore_labels=(0,),
                 distance_threshold=thr,
                 ransac_n=3,
-                num_iterations=2000,
+                num_iterations=2000, # 200
                 min_support=100
             )
 
@@ -502,6 +502,57 @@ def process_single_frame(rgb_path, scene_id, frame_id, inference_model, png_root
         args.depth_threshold,
         neighbor_match_count_thresh=args.neighbor_match_count_thresh
     )
+    labels, _ = remap_labels(labels)
+
+    # save PNG
+    scene_dir = os.path.join(png_root, scene_id)
+    os.makedirs(scene_dir, exist_ok=True)
+
+    save_path = os.path.join(scene_dir, f"{frame_id}.png")
+    imageio.imwrite(save_path, labels.astype(np.uint16))
+
+    return labels
+
+def process_single_frame_merged(rgb_path, scene_id, frame_id, inference_model, png_root, args):
+    """
+    Run MoGe inference + segmentation for a single frame and save PNG.
+    """
+    img = Image.open(rgb_path).convert("RGB")
+    img_np = np.array(img)
+    H, W = img_np.shape[:2]
+
+    # MoGe prediction
+    res = inference_model.predict(
+        rgb_path, 
+        num_tokens=args.num_tokens,
+        return_all_heads=True
+    )
+
+    depth = res["points"][:, :, 2]
+    normal = np.transpose(res["normal"], (2, 0, 1))
+    planarity = res["planarity_probability"]
+
+    # resize to original resolution
+    depth = cv2.resize(depth.astype(np.float32), (W, H), interpolation=cv2.INTER_LINEAR)
+    normal = cv2.resize(normal.astype(np.float32), (W, H), interpolation=cv2.INTER_LINEAR)
+    planarity = cv2.resize(planarity.astype(np.float32), (W, H), interpolation=cv2.INTER_LINEAR)
+
+    planarity_mask = (planarity > args.threshold_planarity).astype(np.int16)
+
+    # segmentation
+    normal_th = np.deg2rad(args.normal_threshold_deg)
+    labels, _ = compute_vectorized_planar_segments_v4(
+        planarity_mask,
+        normal,
+        depth,
+        normal_th,
+        args.depth_threshold,
+        neighbor_match_count_thresh=args.neighbor_match_count_thresh
+    )
+    labels, _ = remap_labels(labels)
+
+    # merge planes
+    labels = plane_merge(labels, res)
     labels, _ = remap_labels(labels)
 
     # save PNG

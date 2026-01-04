@@ -1,3 +1,8 @@
 logs/
 *.err
 *.out
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+**/.ipynb_checkpoints/

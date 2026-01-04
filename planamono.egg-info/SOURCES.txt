@@ -11,6 +11,7 @@ planamono/evaluation/run_evaluation.py
 planamono/evaluation/qualitative/__init__.py
 planamono/evaluation/qualitative/visualize_comparison.py
 planamono/evaluation/quantitative/__init__.py
+planamono/evaluation/quantitative/evaluate_scannetpp.py
 planamono/evaluation/quantitative/evaluator.py
 planamono/gt_creation/__init__.py
 planamono/gt_creation/hypersim/__init__.py

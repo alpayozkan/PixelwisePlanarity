@@ -1,9 +1,9 @@
-Metadata-Version: 2.4
+Metadata-Version: 2.1
 Name: planamono
 Version: 0.1.0
 Summary: My editable pip-installable library
 Author-email: Your Name <you@email.com>
-Requires-Python: >=3.10
+Requires-Python: >=3.8
 Description-Content-Type: text/markdown
 Requires-Dist: numpy
 Requires-Dist: open3d
