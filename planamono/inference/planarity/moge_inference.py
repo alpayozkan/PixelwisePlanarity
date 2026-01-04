@@ -399,6 +399,68 @@ class MoGePlanarityInference:
         return fig
 
 
+    def preprocess_images(self, image_paths, target_height=512, target_width=768):
+        images = []
+        original_sizes = []
+
+        for p in image_paths:
+            if isinstance(p, str):
+                img = cv2.cvtColor(cv2.imread(p), cv2.COLOR_BGR2RGB)
+            else:
+                img = p
+
+            h, w = img.shape[:2]
+            original_sizes.append((h, w))
+
+            img_resized = cv2.resize(img, (target_width, target_height))
+            img_tensor = torch.tensor(
+                img_resized / 255.0, dtype=torch.float32
+            ).permute(2, 0, 1)
+
+            images.append(img_tensor)
+
+        images = torch.stack(images, dim=0).to(self.device)
+        return images, original_sizes
+            
+    def predict_batch_fast(self, image_paths, num_tokens=1024, return_all_heads=False):
+        with torch.no_grad():
+            images, original_sizes = self.preprocess_images(image_paths)
+
+            outputs = self.model(images, num_tokens=num_tokens)
+
+            B, _, H, W = images.shape
+            results = []
+
+            for i in range(B):
+                res = {}
+
+                planarity = outputs["planarity"][i].squeeze().cpu().numpy()
+                planarity_bin = (planarity > 0.5).astype(np.uint8)
+
+                h0, w0 = original_sizes[i]
+                planarity_full = cv2.resize(planarity, (w0, h0))
+                planarity_bin_full = cv2.resize(
+                    planarity_bin, (w0, h0), interpolation=cv2.INTER_NEAREST
+                )
+
+                res["planarity_probability"] = planarity
+                res["planarity_probability_full"] = planarity_full
+                res["planarity_binary"] = planarity_bin
+                res["planarity_binary_full"] = planarity_bin_full
+
+                if return_all_heads:
+                    if "normal" in outputs:
+                        normal = outputs["normal"][i].cpu().numpy().transpose(1, 2, 0)
+                        res["normal"] = normal
+                    if "points" in outputs:
+                        points = outputs["points"][i].cpu().numpy().transpose(1, 2, 0)
+                        res["points"] = points
+
+                results.append(res)
+
+            return results
+
+
 def main():
     parser = argparse.ArgumentParser(description="MoGe 4-head planarity inference")
     
