@@ -334,174 +334,92 @@ os.makedirs(save_root, exist_ok=True)
 
 print("==> Running MoGe inference")
 
-with timer("moge_inference_total"):
-    for batch in tqdm(val_loader, desc="GT-planarity inference"):
-        rgb_paths = batch["rgb_path"]
-        scene_ids = batch["scene_id"]
-        frame_ids = batch["frame_idx"]
-        gt_plane  = batch["plane"]      # ✅ ADD THIS
+# with timer("moge_inference_total"):
+#     for batch in tqdm(val_loader, desc="GT-planarity inference"):
+#         rgb_paths = batch["rgb_path"]
+#         scene_ids = batch["scene_id"]
+#         frame_ids = batch["frame_idx"]
+#         gt_plane  = batch["plane"]      # ✅ ADD THIS
 
-        with timer("moge_inference_batch"):
-            process_batch(
-                rgb_paths,
-                scene_ids,
-                frame_ids,
-                gt_plane,              # ✅ PASS GT
-                inference_model,        # still needed for depth+normal
-                output_dir,
-                args
-            )
+#         with timer("moge_inference_batch"):
+#             process_batch(
+#                 rgb_paths,
+#                 scene_ids,
+#                 frame_ids,
+#                 gt_plane,              # ✅ PASS GT
+#                 inference_model,        # still needed for depth+normal
+#                 output_dir,
+#                 args
+#             )
 
-# ============================================================
-# 2) PNG → H5 conversion
-# ============================================================
-os.makedirs(h5_root, exist_ok=True)
+# # ============================================================
+# # 2) PNG → H5 conversion
+# # ============================================================
+# os.makedirs(h5_root, exist_ok=True)
 
-with timer("png_to_h5_total"):
-    for scene_id in tqdm(os.listdir(output_dir), desc="PNG→H5"):
-        scene_dir = os.path.join(output_dir, scene_id)
-        if not os.path.isdir(scene_dir):
-            continue
+# with timer("png_to_h5_total"):
+#     for scene_id in tqdm(os.listdir(output_dir), desc="PNG→H5"):
+#         scene_dir = os.path.join(output_dir, scene_id)
+#         if not os.path.isdir(scene_dir):
+#             continue
 
-        pngs = sorted(glob.glob(os.path.join(scene_dir, "*.png")))
-        if not pngs:
-            continue
+#         pngs = sorted(glob.glob(os.path.join(scene_dir, "*.png")))
+#         if not pngs:
+#             continue
 
-        planes, frame_ids = [], []
-        with timer("png_read"):
-            for p in pngs:
-                planes.append(imageio.imread(p).astype(np.uint16))
-                frame_ids.append(os.path.splitext(os.path.basename(p))[0])
+#         planes, frame_ids = [], []
+#         with timer("png_read"):
+#             for p in pngs:
+#                 planes.append(imageio.imread(p).astype(np.uint16))
+#                 frame_ids.append(os.path.splitext(os.path.basename(p))[0])
 
-        planes = np.stack(planes, axis=0)
-        frame_ids = np.array(frame_ids, dtype="S")
+#         planes = np.stack(planes, axis=0)
+#         frame_ids = np.array(frame_ids, dtype="S")
 
-        with timer("h5_write"):
-            os.makedirs(os.path.join(h5_root, scene_id), exist_ok=True)
-            with h5py.File(os.path.join(h5_root, scene_id, "planes.h5"), "w") as f:
-                f.create_dataset("planes", data=planes, compression="gzip", compression_opts=4)
-                f.create_dataset("frame_ids", data=frame_ids)
+#         with timer("h5_write"):
+#             os.makedirs(os.path.join(h5_root, scene_id), exist_ok=True)
+#             with h5py.File(os.path.join(h5_root, scene_id, "planes.h5"), "w") as f:
+#                 f.create_dataset("planes", data=planes, compression="gzip", compression_opts=4)
+#                 f.create_dataset("frame_ids", data=frame_ids)
 
-shutil.rmtree(output_dir)
+# shutil.rmtree(output_dir)
 
 # ============================================================
 # 3) Metric evaluation
 # ============================================================
+
+# N_JOBS = 4  # start conservative on Euler
+N_JOBS = min(48, os.cpu_count())  # Euler: often 16–32
+
 results = {}
 thresholds = (0.01, 0.02, 0.05)
 
-tasks = []
-
-for batch in val_loader:
-    B = len(batch["scene_id"])
-    for i in range(B):
-        tasks.append((
-            batch["scene_id"][i],
-            batch["frame_idx"][i],
-            batch["depth"][i][0].numpy(),
-            batch["plane"][i][0].numpy(),
-            batch["K"][i].numpy(),
-            batch["c2w"][i].numpy(),
-        ))
-
-# N_JOBS = min(16, os.cpu_count())  # Euler: often 16–32
-# N_JOBS = min(12, os.cpu_count())  # Euler: often 16–32
-N_JOBS = min(48, os.cpu_count())  # Euler: often 16–32
-
 with timer("evaluation_total"):
-    with tqdm_joblib(tqdm(total=len(tasks), desc="Evaluation", unit="frame")):
+    for batch in tqdm(val_loader, desc="Evaluation"):
+        B = len(batch["scene_id"])
+
         outputs = Parallel(
             n_jobs=N_JOBS,
             backend="loky",
             batch_size=1
         )(
             delayed(evaluate_single_frame)(
-                scene_id,
-                frame_idx,
-                depths,
-                gt_plane,
-                K,
-                c2w,
+                batch["scene_id"][i],
+                batch["frame_idx"][i],
+                batch["depth"][i][0].numpy(),
+                batch["plane"][i][0].numpy(),
+                batch["K"][i].numpy(),
+                batch["c2w"][i].numpy(),
                 h5_root,
                 thresholds
             )
-            for (
-                scene_id,
-                frame_idx,
-                depths,
-                gt_plane,
-                K,
-                c2w
-            ) in tasks
+            for i in range(B)
         )
 
-for out in outputs:
-    if out is not None:
-        results[(out["scene_id"], out["frame_idx"])] = out
+        for out in outputs:
+            if out is not None:
+                results[(out["scene_id"], out["frame_idx"])] = out
         
-# with timer("evaluation_total"):
-#     for batch in tqdm(val_loader, desc="Evaluation"):
-#         B = len(batch["scene_id"])
-#         for i in range(B):
-#             with timer("eval_per_frame"):
-#                 scene_id = batch["scene_id"][i]
-#                 frame_idx = batch["frame_idx"][i]
-
-#                 depths = batch["depth"][i][0].numpy()
-#                 gt_plane = batch["plane"][i][0].numpy()
-#                 K = batch["K"][i].numpy()
-#                 c2w = batch["c2w"][i].numpy()
-
-#                 with timer("load_prediction"):
-#                     pred = load_plane_pred_from_moge_h5(
-#                         h5_root, scene_id, frame_idx
-#                     )
-#                     if pred is None:
-#                         continue
-#                     pred = cv2.resize(
-#                         pred,
-#                         (depths.shape[1], depths.shape[0]),
-#                         interpolation=cv2.INTER_NEAREST
-#                     )
-
-#                 with timer("backproject"):
-#                     pts_world, labels, _ = backproject(
-#                         depths, K, c2w, pred
-#                     )
-
-#                 metric_thr = {}
-#                 with timer("plane_fitting"):
-#                     for thr in thresholds:
-#                         _, df = fit_planes_per_label_v1(
-#                             pts_world, labels,
-#                             ignore_labels=(0,),
-#                             distance_threshold=thr,
-#                             num_iterations=2000,
-#                             min_support=100
-#                         )
-#                         if df is None or len(df) == 0:
-#                             metric_thr[f"prec@{int(thr*100)}cm"] = 0.0
-#                             metric_thr[f"rec@{int(thr*100)}cm"] = 0.0
-#                             continue
-
-#                         _, df = mark_planes_below_threshold_as_outliers(_, df, 0.5)
-#                         res = compute_precision_recall_v1(df, pts_world.shape[0])
-#                         metric_thr[f"prec@{int(thr*100)}cm"] = res["global_precision"]
-#                         metric_thr[f"rec@{int(thr*100)}cm"] = res["global_recall"]
-
-#                 with timer("clustering_metrics"):
-#                     ri = rand_score(gt_plane.flatten(), pred.flatten())
-#                     Hs, Hm = variation_of_information(gt_plane, pred)
-#                     sc = segmentation_covering(gt_plane.flatten(), pred.flatten())
-
-#                 results[(scene_id, frame_idx)] = {
-#                     "scene_id": scene_id,
-#                     "frame_idx": frame_idx,
-#                     "rand_index": ri,
-#                     "voi": Hs + Hm,
-#                     "sc": sc,
-#                     **metric_thr
-#                 }
 
 # ============================================================
 # Save CSVs (unchanged logic)
@@ -601,7 +519,7 @@ df_runtime = pd.DataFrame(runtime_rows).sort_values(
 )
 
 runtime_breakdown_path = os.path.join(
-    csv_out_dir, "runtime_breakdown.csv"
+    csv_out_dir, "runtime_breakdown_v2.csv"
 )
 df_runtime.to_csv(runtime_breakdown_path, index=False)
 
@@ -612,7 +530,7 @@ df_runtime_summary = pd.DataFrame([{
 }])
 
 runtime_summary_path = os.path.join(
-    csv_out_dir, "runtime_summary.csv"
+    csv_out_dir, "runtime_summary_v2.csv"
 )
 df_runtime_summary.to_csv(runtime_summary_path, index=False)
 

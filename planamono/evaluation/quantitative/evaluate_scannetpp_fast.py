@@ -445,70 +445,6 @@ for out in outputs:
     if out is not None:
         results[(out["scene_id"], out["frame_idx"])] = out
         
-# with timer("evaluation_total"):
-#     for batch in tqdm(val_loader, desc="Evaluation"):
-#         B = len(batch["scene_id"])
-#         for i in range(B):
-#             with timer("eval_per_frame"):
-#                 scene_id = batch["scene_id"][i]
-#                 frame_idx = batch["frame_idx"][i]
-
-#                 depths = batch["depth"][i][0].numpy()
-#                 gt_plane = batch["plane"][i][0].numpy()
-#                 K = batch["K"][i].numpy()
-#                 c2w = batch["c2w"][i].numpy()
-
-#                 with timer("load_prediction"):
-#                     pred = load_plane_pred_from_moge_h5(
-#                         h5_root, scene_id, frame_idx
-#                     )
-#                     if pred is None:
-#                         continue
-#                     pred = cv2.resize(
-#                         pred,
-#                         (depths.shape[1], depths.shape[0]),
-#                         interpolation=cv2.INTER_NEAREST
-#                     )
-
-#                 with timer("backproject"):
-#                     pts_world, labels, _ = backproject(
-#                         depths, K, c2w, pred
-#                     )
-
-#                 metric_thr = {}
-#                 with timer("plane_fitting"):
-#                     for thr in thresholds:
-#                         _, df = fit_planes_per_label_v1(
-#                             pts_world, labels,
-#                             ignore_labels=(0,),
-#                             distance_threshold=thr,
-#                             num_iterations=2000,
-#                             min_support=100
-#                         )
-#                         if df is None or len(df) == 0:
-#                             metric_thr[f"prec@{int(thr*100)}cm"] = 0.0
-#                             metric_thr[f"rec@{int(thr*100)}cm"] = 0.0
-#                             continue
-
-#                         _, df = mark_planes_below_threshold_as_outliers(_, df, 0.5)
-#                         res = compute_precision_recall_v1(df, pts_world.shape[0])
-#                         metric_thr[f"prec@{int(thr*100)}cm"] = res["global_precision"]
-#                         metric_thr[f"rec@{int(thr*100)}cm"] = res["global_recall"]
-
-#                 with timer("clustering_metrics"):
-#                     ri = rand_score(gt_plane.flatten(), pred.flatten())
-#                     Hs, Hm = variation_of_information(gt_plane, pred)
-#                     sc = segmentation_covering(gt_plane.flatten(), pred.flatten())
-
-#                 results[(scene_id, frame_idx)] = {
-#                     "scene_id": scene_id,
-#                     "frame_idx": frame_idx,
-#                     "rand_index": ri,
-#                     "voi": Hs + Hm,
-#                     "sc": sc,
-#                     **metric_thr
-#                 }
-
 # ============================================================
 # Save CSVs (unchanged logic)
 # ============================================================
@@ -624,3 +560,68 @@ df_runtime_summary.to_csv(runtime_summary_path, index=False)
 
 print(f"[✓] Saved runtime breakdown to {runtime_breakdown_path}")
 print(f"[✓] Saved runtime summary to   {runtime_summary_path}")
+
+
+# with timer("evaluation_total"):
+#     for batch in tqdm(val_loader, desc="Evaluation"):
+#         B = len(batch["scene_id"])
+#         for i in range(B):
+#             with timer("eval_per_frame"):
+#                 scene_id = batch["scene_id"][i]
+#                 frame_idx = batch["frame_idx"][i]
+
+#                 depths = batch["depth"][i][0].numpy()
+#                 gt_plane = batch["plane"][i][0].numpy()
+#                 K = batch["K"][i].numpy()
+#                 c2w = batch["c2w"][i].numpy()
+
+#                 with timer("load_prediction"):
+#                     pred = load_plane_pred_from_moge_h5(
+#                         h5_root, scene_id, frame_idx
+#                     )
+#                     if pred is None:
+#                         continue
+#                     pred = cv2.resize(
+#                         pred,
+#                         (depths.shape[1], depths.shape[0]),
+#                         interpolation=cv2.INTER_NEAREST
+#                     )
+
+#                 with timer("backproject"):
+#                     pts_world, labels, _ = backproject(
+#                         depths, K, c2w, pred
+#                     )
+
+#                 metric_thr = {}
+#                 with timer("plane_fitting"):
+#                     for thr in thresholds:
+#                         _, df = fit_planes_per_label_v1(
+#                             pts_world, labels,
+#                             ignore_labels=(0,),
+#                             distance_threshold=thr,
+#                             num_iterations=2000,
+#                             min_support=100
+#                         )
+#                         if df is None or len(df) == 0:
+#                             metric_thr[f"prec@{int(thr*100)}cm"] = 0.0
+#                             metric_thr[f"rec@{int(thr*100)}cm"] = 0.0
+#                             continue
+
+#                         _, df = mark_planes_below_threshold_as_outliers(_, df, 0.5)
+#                         res = compute_precision_recall_v1(df, pts_world.shape[0])
+#                         metric_thr[f"prec@{int(thr*100)}cm"] = res["global_precision"]
+#                         metric_thr[f"rec@{int(thr*100)}cm"] = res["global_recall"]
+
+#                 with timer("clustering_metrics"):
+#                     ri = rand_score(gt_plane.flatten(), pred.flatten())
+#                     Hs, Hm = variation_of_information(gt_plane, pred)
+#                     sc = segmentation_covering(gt_plane.flatten(), pred.flatten())
+
+#                 results[(scene_id, frame_idx)] = {
+#                     "scene_id": scene_id,
+#                     "frame_idx": frame_idx,
+#                     "rand_index": ri,
+#                     "voi": Hs + Hm,
+#                     "sc": sc,
+#                     **metric_thr
+#                 }
