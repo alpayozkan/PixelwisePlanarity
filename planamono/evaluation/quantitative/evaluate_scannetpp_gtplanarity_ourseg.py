@@ -120,11 +120,13 @@ def evaluate_single_frame(
     if pred is None:
         return None
 
-    pred = cv2.resize(
-        pred,
-        (depths.shape[1], depths.shape[0]),
-        interpolation=cv2.INTER_NEAREST
-    )
+    # FIX: Only resize if necessary, always use INTER_NEAREST for labels
+    if pred.shape[0] != depths.shape[0] or pred.shape[1] != depths.shape[1]:
+        pred = cv2.resize(
+            pred,
+            (depths.shape[1], depths.shape[0]),
+            interpolation=cv2.INTER_NEAREST
+        )
 
     pts_world, labels, _ = backproject(depths, K, c2w, pred)
 
@@ -192,16 +194,18 @@ def process_batch(
 
         depth = res["points"][:, :, 2]
         normal = res["normal"].transpose(2, 0, 1)
-        # planarity = res["planarity_probability"] # moge planarity
-        # 🔁 REPLACEMENT: use GT planarity
+
+        # Use GT planarity (binary mask)
         if gt_plan.ndim == 3:
             gt_plan = gt_plan[0]
-        gt_plan = gt_plan.cpu().numpy()          # 🔑 convert to NumPy
+        gt_plan = gt_plan.cpu().numpy()
         planarity = (gt_plan > 0).astype(np.int16)
 
-        depth = cv2.resize(depth, (W, H))
-        normal = cv2.resize(normal, (W, H))
-        planarity = cv2.resize(planarity, (W, H))
+        # Resize to RGB resolution
+        depth = cv2.resize(depth, (W, H), interpolation=cv2.INTER_LINEAR)
+        normal = cv2.resize(normal, (W, H), interpolation=cv2.INTER_LINEAR)
+        # FIX: Use INTER_NEAREST for binary mask to avoid fractional values at boundaries
+        planarity = cv2.resize(planarity, (W, H), interpolation=cv2.INTER_NEAREST)
 
         # planarity_mask = (planarity > args.threshold_planarity).astype(np.int16)
         planarity_mask = planarity
@@ -351,55 +355,55 @@ os.makedirs(save_root, exist_ok=True)
 
 print("==> Running MoGe inference")
 
-# with timer("moge_inference_total"):
-#     for batch in tqdm(val_loader, desc="GT-planarity inference"):
-#         rgb_paths = batch["rgb_path"]
-#         scene_ids = batch["scene_id"]
-#         frame_ids = batch["frame_idx"]
-#         gt_plane  = batch["plane"]      # ✅ ADD THIS
+with timer("moge_inference_total"):
+    for batch in tqdm(val_loader, desc="GT-planarity inference"):
+        rgb_paths = batch["rgb_path"]
+        scene_ids = batch["scene_id"]
+        frame_ids = batch["frame_idx"]
+        gt_plane  = batch["plane"]      # ✅ ADD THIS
 
-#         with timer("moge_inference_batch"):
-#             process_batch(
-#                 rgb_paths,
-#                 scene_ids,
-#                 frame_ids,
-#                 gt_plane,              # ✅ PASS GT
-#                 inference_model,        # still needed for depth+normal
-#                 output_dir,
-#                 args
-#             )
+        with timer("moge_inference_batch"):
+            process_batch(
+                rgb_paths,
+                scene_ids,
+                frame_ids,
+                gt_plane,              # ✅ PASS GT
+                inference_model,        # still needed for depth+normal
+                output_dir,
+                args
+            )
 
-# # ============================================================
-# # 2) PNG → H5 conversion
-# # ============================================================
-# os.makedirs(h5_root, exist_ok=True)
+# ============================================================
+# 2) PNG → H5 conversion
+# ============================================================
+os.makedirs(h5_root, exist_ok=True)
 
-# with timer("png_to_h5_total"):
-#     for scene_id in tqdm(os.listdir(output_dir), desc="PNG→H5"):
-#         scene_dir = os.path.join(output_dir, scene_id)
-#         if not os.path.isdir(scene_dir):
-#             continue
+with timer("png_to_h5_total"):
+    for scene_id in tqdm(os.listdir(output_dir), desc="PNG→H5"):
+        scene_dir = os.path.join(output_dir, scene_id)
+        if not os.path.isdir(scene_dir):
+            continue
 
-#         pngs = sorted(glob.glob(os.path.join(scene_dir, "*.png")))
-#         if not pngs:
-#             continue
+        pngs = sorted(glob.glob(os.path.join(scene_dir, "*.png")))
+        if not pngs:
+            continue
 
-#         planes, frame_ids = [], []
-#         with timer("png_read"):
-#             for p in pngs:
-#                 planes.append(imageio.imread(p).astype(np.uint16))
-#                 frame_ids.append(os.path.splitext(os.path.basename(p))[0])
+        planes, frame_ids = [], []
+        with timer("png_read"):
+            for p in pngs:
+                planes.append(imageio.imread(p).astype(np.uint16))
+                frame_ids.append(os.path.splitext(os.path.basename(p))[0])
 
-#         planes = np.stack(planes, axis=0)
-#         frame_ids = np.array(frame_ids, dtype="S")
+        planes = np.stack(planes, axis=0)
+        frame_ids = np.array(frame_ids, dtype="S")
 
-#         with timer("h5_write"):
-#             os.makedirs(os.path.join(h5_root, scene_id), exist_ok=True)
-#             with h5py.File(os.path.join(h5_root, scene_id, "planes.h5"), "w") as f:
-#                 f.create_dataset("planes", data=planes, compression="gzip", compression_opts=4)
-#                 f.create_dataset("frame_ids", data=frame_ids)
+        with timer("h5_write"):
+            os.makedirs(os.path.join(h5_root, scene_id), exist_ok=True)
+            with h5py.File(os.path.join(h5_root, scene_id, "planes.h5"), "w") as f:
+                f.create_dataset("planes", data=planes, compression="gzip", compression_opts=4)
+                f.create_dataset("frame_ids", data=frame_ids)
 
-# shutil.rmtree(output_dir)
+shutil.rmtree(output_dir)
 
 # ============================================================
 # 3) Metric evaluation
