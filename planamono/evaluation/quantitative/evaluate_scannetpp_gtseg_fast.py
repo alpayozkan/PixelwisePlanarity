@@ -53,8 +53,8 @@ h5_root = f"/cluster/scratch/aoezkan/planeseg/scannetpp/inference/{exp_name}_h5"
 dataset_dir = "/cluster/scratch/aoezkan/planeseg/dataset/scannetpp"
 num_workers = 4
 
-# max_scenes_val = None
-max_scenes_val = 5  # For testing
+max_scenes_val = None  # Use all scenes
+# max_scenes_val = 5  # For testing
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

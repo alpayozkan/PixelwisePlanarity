@@ -314,7 +314,7 @@ dataset_dir = "/cluster/scratch/aoezkan/planeseg/dataset/scannetpp"
 num_workers = 4
 
 max_scenes_val = None
-# max_scenes_val = 1  # For testing
+# max_scenes_val = 5  # For testing
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

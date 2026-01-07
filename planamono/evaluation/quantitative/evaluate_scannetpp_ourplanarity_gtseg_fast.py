@@ -57,8 +57,8 @@ model_path = "/cluster/scratch/aoezkan/moge_runs/scannetpp/moge_scannetpp_4heads
 dataset_dir = "/cluster/scratch/aoezkan/planeseg/dataset/scannetpp"
 num_workers = 4
 
-# max_scenes_val = None
-max_scenes_val = 5  # For testing
+max_scenes_val = None  # Use all scenes
+# max_scenes_val = 5  # For testing
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

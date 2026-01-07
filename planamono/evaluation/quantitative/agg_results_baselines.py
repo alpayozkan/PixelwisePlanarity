@@ -23,10 +23,15 @@ METHODS = {
 }
 
 def find_dataset_csv(folder: Path):
-    """Find the *_results_dataset.csv file in a folder."""
+    """Find the results_dataset.csv file in a folder."""
+    # First try exact match
+    exact = folder / "results_dataset.csv"
+    if exact.exists():
+        return exact
+    # Fall back to glob pattern
     files = list(folder.glob("*_results_dataset.csv"))
     if len(files) == 0:
-        raise FileNotFoundError(f"No *_results_dataset.csv in {folder}")
+        raise FileNotFoundError(f"No results_dataset.csv in {folder}")
     if len(files) > 1:
         raise RuntimeError(f"Multiple dataset CSVs in {folder}: {files}")
     return files[0]
