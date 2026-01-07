@@ -1,20 +1,13 @@
 """
-Evaluation script for: Our Planarity + Our Segmentation (full pipeline).
+Evaluation script for: GT Planarity + Our Segmentation ablation.
 
-This is the main evaluation script that runs:
-1. MoGe inference (planarity, depth, normals)
-2. Vectorized segmentation
-3. Plane fitting evaluation
-
-FAST VERSION v2 - Optimizations:
-1. Batch GPU inference (BATCH_SIZE=32)
-2. Single RANSAC pass with multi-threshold evaluation (was 3x per frame!)
-3. Vectorized segmentation_covering (~10x faster)
-4. Reduced RANSAC iterations (200 instead of 2000)
-5. Parallel CPU evaluation with joblib
-6. Direct memory accumulation (no intermediate PNG files)
-7. Fine-grained timing for profiling
-8. Optional plane metrics flag
+FAST VERSION - Optimizations:
+1. Vectorized segmentation_covering (~10x faster)
+2. Reduced RANSAC iterations (200 instead of 2000)
+3. Single RANSAC pass with multi-threshold inlier counting
+4. Optional plane metrics flag
+5. Fine-grained timing for profiling
+6. loky backend (safer, avoids segfaults)
 """
 
 import time
@@ -78,7 +71,7 @@ COMPUTE_PLANE_METRICS = True
 # RANSAC iterations (200 is sufficient for evaluation)
 RANSAC_ITERATIONS = 200
 
-exp_name = 'moge_ours_v2'
+exp_name = 'gtplanarity_ourseg_v2'
 csv_out_dir = f"/cluster/scratch/aoezkan/planeseg/scannetpp/eval/{exp_name}"
 h5_root = f"/cluster/scratch/aoezkan/planeseg/scannetpp/inference/{exp_name}_h5"
 
@@ -174,10 +167,7 @@ def fit_planes_and_evaluate_multi_threshold(
     num_iterations=200,
     min_support=100
 ):
-    """
-    OPTIMIZATION: Fit planes ONCE with base threshold, then evaluate at multiple thresholds.
-    This is ~3x faster than running RANSAC for each threshold.
-    """
+    """Fit planes ONCE, evaluate at multiple thresholds."""
     with timer("_ransac_fit"):
         results, df = fit_planes_per_label_v1(
             pts_world,
@@ -222,7 +212,7 @@ def evaluate_single_frame(
     thresholds,
     compute_plane_metrics=True
 ):
-    """Evaluate a single frame with pre-computed segmentation labels."""
+    """Evaluate a single frame."""
 
     metric_thr = {}
 
@@ -274,14 +264,14 @@ def process_batch_inference(
     rgb_paths,
     scene_ids,
     frame_ids,
-    gt_segs,
-    depths,
+    gt_planes,
+    depths_gt,
     inference_model,
     args
 ):
     """
-    Batch GPU inference for planarity, depth, and normals.
-    Then run vectorized segmentation on each frame.
+    Batch GPU inference for depth and normals.
+    Use GT planarity mask + our segmentation algorithm.
     """
     with timer("_gpu_inference"):
         results = inference_model.predict_batch_fast(
@@ -292,40 +282,40 @@ def process_batch_inference(
 
     batch_data = []
     with timer("_postprocess"):
-        for res, rgb_path, scene_id, frame_id, gt_seg, depth in zip(
-            results, rgb_paths, scene_ids, frame_ids, gt_segs, depths
+        for res, rgb_path, scene_id, frame_id, gt_plane, depth_gt in zip(
+            results, rgb_paths, scene_ids, frame_ids, gt_planes, depths_gt
         ):
             # Get image dimensions
             img = Image.open(rgb_path).convert("RGB")
             img_np = np.array(img)
             H_rgb, W_rgb = img_np.shape[:2]
 
-            # Get GT at depth resolution
-            if gt_seg.ndim == 3:
-                gt_seg = gt_seg[0]
-            gt_seg_np = gt_seg.cpu().numpy().astype(np.int32)
+            # Get GT plane segmentation at depth resolution
+            if gt_plane.ndim == 3:
+                gt_plane = gt_plane[0]
+            gt_seg_np = gt_plane.cpu().numpy().astype(np.int32)
             H_depth, W_depth = gt_seg_np.shape
 
-            depth_np = depth[0].cpu().numpy() if depth.ndim == 3 else depth.cpu().numpy()
+            depth_gt_np = depth_gt[0].cpu().numpy() if depth_gt.ndim == 3 else depth_gt.cpu().numpy()
 
-            # Get MoGe outputs
-            planarity = res["planarity_probability"]
+            # Get MoGe depth and normals at RGB resolution
             depth_moge = res["points"][:, :, 2]
             normal = res["normal"].transpose(2, 0, 1)
 
-            # Resize to RGB resolution for segmentation
-            planarity_rgb = cv2.resize(planarity, (W_rgb, H_rgb), interpolation=cv2.INTER_LINEAR)
-            depth_moge_rgb = cv2.resize(depth_moge, (W_rgb, H_rgb), interpolation=cv2.INTER_LINEAR)
-            normal_rgb = cv2.resize(normal.transpose(1, 2, 0), (W_rgb, H_rgb), interpolation=cv2.INTER_LINEAR).transpose(2, 0, 1)
+            # Create GT planarity mask (binary from GT plane labels)
+            planarity = (gt_seg_np > 0).astype(np.int16)
 
-            # Apply planarity threshold
-            planarity_mask = (planarity_rgb > args.threshold_planarity).astype(np.int32)
+            # Resize MoGe outputs to RGB resolution for segmentation
+            depth_moge = cv2.resize(depth_moge, (W_rgb, H_rgb), interpolation=cv2.INTER_LINEAR)
+            normal = cv2.resize(normal.transpose(1, 2, 0), (W_rgb, H_rgb), interpolation=cv2.INTER_LINEAR).transpose(2, 0, 1)
+            # Resize planarity to RGB resolution
+            planarity_rgb = cv2.resize(planarity, (W_rgb, H_rgb), interpolation=cv2.INTER_NEAREST)
 
-            # Run vectorized segmentation at RGB resolution
+            # Run our segmentation algorithm at RGB resolution
             labels_rgb, _ = compute_vectorized_planar_segments_v4(
-                planarity_mask,
-                normal_rgb,
-                depth_moge_rgb,
+                planarity_rgb,
+                normal,
+                depth_moge,
                 np.deg2rad(args.normal_threshold_deg),
                 args.depth_threshold,
                 neighbor_match_count_thresh=args.neighbor_match_count_thresh
@@ -339,7 +329,7 @@ def process_batch_inference(
                 "scene_id": scene_id,
                 "frame_id": frame_id,
                 "gt_seg_np": gt_seg_np,
-                "depth_np": depth_np,
+                "depth_np": depth_gt_np,
                 "labels": labels,
             })
 
@@ -428,13 +418,13 @@ if __name__ == "__main__":
             rgb_paths = batch["rgb_path"]
             scene_ids = batch["scene_id"]
             frame_ids = batch["frame_idx"]
-            gt_segs = batch["plane"]
+            gt_planes = batch["plane"]
             depths = batch["depth"]
             Ks = batch["K"]
             c2ws = batch["c2w"]
 
             batch_data = process_batch_inference(
-                rgb_paths, scene_ids, frame_ids, gt_segs, depths,
+                rgb_paths, scene_ids, frame_ids, gt_planes, depths,
                 inference_model, args
             )
 

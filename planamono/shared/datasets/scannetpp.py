@@ -42,11 +42,11 @@ class ScanNetPPPlanarityDataset(Dataset):
         scene_ids = natsorted(scene_ids)
         if max_scenes is not None:
             scene_ids = scene_ids[:max_scenes]
-        self.scene_ids = scene_ids
 
         self.valid_pairs = []  # (rgb_path, plane_h5, sem_h5, depth_h5, frame_idx)
+        valid_scene_ids = []  # Track scenes that actually have valid data
 
-        for scene_id in self.scene_ids:
+        for scene_id in scene_ids:
             rgb_dir = os.path.join(rgb_root, scene_id, "iphone", "rgb")
             # plane_h5 = os.path.join(plane_label_root, scene_id, "rendered_planes.h5")
             plane_h5 = os.path.join(plane_label_root, scene_id, "rendered.h5")
@@ -73,14 +73,21 @@ class ScanNetPPPlanarityDataset(Dataset):
                 print(f"[SKIP] Error reading frame_ids from {plane_h5}: {e}")
                 continue
 
+            scene_frame_count = 0
             for idx, fid in enumerate(frame_ids):
                 rgb_path = os.path.join(rgb_dir, f"{fid}.jpg")
                 if not os.path.exists(rgb_path):
                     continue
                 self.valid_pairs.append((rgb_path, plane_h5, sem_h5, depth_h5, idx))
+                scene_frame_count += 1
 
-            print(f"[DEBUG] Scene {scene_id} → {len(frame_ids)} matched frames")
+            # Only add to valid_scene_ids if we got at least one valid frame
+            if scene_frame_count > 0:
+                valid_scene_ids.append(scene_id)
+                print(f"[DEBUG] Scene {scene_id} → {scene_frame_count} matched frames")
 
+        # Update scene_ids to only include valid scenes
+        self.scene_ids = valid_scene_ids
         print(f"[ScanNet++] {split} split → {len(self.valid_pairs)} pairs from {len(self.scene_ids)} scenes")
 
     def __len__(self):
@@ -171,11 +178,11 @@ class ScanNetPPPlaneDataset(Dataset):
         scene_ids = natsorted(scene_ids)
         if max_scenes is not None:
             scene_ids = scene_ids[:max_scenes]
-        self.scene_ids = scene_ids
 
         self.valid_pairs = []  # (rgb_path, plane_h5, sem_h5, depth_h5, frame_idx, K)
+        valid_scene_ids = []  # Track scenes that actually have valid data
 
-        for scene_id in self.scene_ids:
+        for scene_id in scene_ids:
             rgb_dir = os.path.join(rgb_root, scene_id, "iphone", "rgb")
             # plane_h5 = os.path.join(plane_label_root, scene_id, "rendered_planes.h5")
             plane_h5 = os.path.join(plane_label_root, scene_id, "rendered.h5")
@@ -201,6 +208,7 @@ class ScanNetPPPlaneDataset(Dataset):
                 print(f"[SKIP] Error reading frame_ids from {plane_h5}: {e}")
                 continue
 
+            scene_frame_count = 0
             for idx, fid in enumerate(frame_ids):
                 rgb_path = os.path.join(rgb_dir, f"{fid}.jpg")
                 if not os.path.exists(rgb_path):
@@ -212,10 +220,15 @@ class ScanNetPPPlaneDataset(Dataset):
                 K = np.array(pose_data[fid]["intrinsic"], dtype=np.float32)  # (3, 3)
                 c2w = np.array(pose_data[fid]["aligned_pose"], dtype=np.float32)    # (4, 4)
                 self.valid_pairs.append((rgb_path, plane_h5, sem_h5, depth_h5, idx, K, c2w))
-                # self.valid_pairs.append((rgb_path, plane_h5, sem_h5, depth_h5, idx, K))
+                scene_frame_count += 1
 
-            print(f"[DEBUG] Scene {scene_id} → {len(frame_ids)} matched frames")
+            # Only add to valid_scene_ids if we got at least one valid frame
+            if scene_frame_count > 0:
+                valid_scene_ids.append(scene_id)
+                print(f"[DEBUG] Scene {scene_id} → {scene_frame_count} matched frames")
 
+        # Update scene_ids to only include valid scenes
+        self.scene_ids = valid_scene_ids
         print(f"[ScanNet++] {split} split → {len(self.valid_pairs)} pairs from {len(self.scene_ids)} scenes")
 
     def __len__(self):

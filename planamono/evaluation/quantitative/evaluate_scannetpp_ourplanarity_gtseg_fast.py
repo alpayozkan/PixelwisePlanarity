@@ -1,26 +1,19 @@
 """
-Evaluation script for: Our Planarity + Our Segmentation (full pipeline).
+Evaluation script for: Our Planarity + GT Segmentation ablation.
 
-This is the main evaluation script that runs:
-1. MoGe inference (planarity, depth, normals)
-2. Vectorized segmentation
-3. Plane fitting evaluation
-
-FAST VERSION v2 - Optimizations:
-1. Batch GPU inference (BATCH_SIZE=32)
-2. Single RANSAC pass with multi-threshold evaluation (was 3x per frame!)
-3. Vectorized segmentation_covering (~10x faster)
-4. Reduced RANSAC iterations (200 instead of 2000)
-5. Parallel CPU evaluation with joblib
-6. Direct memory accumulation (no intermediate PNG files)
-7. Fine-grained timing for profiling
-8. Optional plane metrics flag
+FAST VERSION - Optimizations:
+1. OPTIONAL plane fitting (skip RANSAC for clustering-only metrics) → ~5x speedup
+2. Reduced RANSAC iterations (500 → 200) when enabled
+3. Threading backend instead of loky (less overhead)
+4. Vectorized segmentation_covering
+5. Fine-grained timing for profiling
 """
 
 import time
 from contextlib import contextmanager
 from collections import defaultdict
 
+# Timing infrastructure
 TIMINGS = defaultdict(float)
 TIMING_COUNTS = defaultdict(int)
 GLOBAL_START = time.perf_counter()
@@ -50,7 +43,6 @@ import cv2
 from tqdm import tqdm
 import pandas as pd
 import h5py
-from PIL import Image
 
 from sklearn.metrics import rand_score
 from skimage.metrics import variation_of_information
@@ -59,10 +51,9 @@ from joblib import Parallel, delayed
 
 from planamono.shared.datasets.scannetpp import ScanNetPPPlaneDataset
 from planamono.shared.plane_fitting import (
-    backproject_v1 as backproject,
+    backproject_v1 as backproject,  # Using v1 (v2 causes segfaults with threading)
     fit_planes_per_label_v1,
 )
-from planamono.shared.segmentation import compute_vectorized_planar_segments_v4
 from planamono.shared.utils.label_utils import remap_labels
 from planamono.inference.planarity.moge_inference import MoGePlanarityInference
 from planamono.paths import *
@@ -76,9 +67,9 @@ from planamono.paths import *
 COMPUTE_PLANE_METRICS = True
 
 # RANSAC iterations (200 is sufficient for evaluation)
-RANSAC_ITERATIONS = 200
+RANSAC_ITERATIONS = 200  # Was 2000, then 500, now 200
 
-exp_name = 'moge_ours_v2'
+exp_name = 'ourplanarity_gtseg_v1'
 csv_out_dir = f"/cluster/scratch/aoezkan/planeseg/scannetpp/eval/{exp_name}"
 h5_root = f"/cluster/scratch/aoezkan/planeseg/scannetpp/inference/{exp_name}_h5"
 
@@ -174,10 +165,7 @@ def fit_planes_and_evaluate_multi_threshold(
     num_iterations=200,
     min_support=100
 ):
-    """
-    OPTIMIZATION: Fit planes ONCE with base threshold, then evaluate at multiple thresholds.
-    This is ~3x faster than running RANSAC for each threshold.
-    """
+    """Fit planes ONCE, evaluate at multiple thresholds."""
     with timer("_ransac_fit"):
         results, df = fit_planes_per_label_v1(
             pts_world,
@@ -222,7 +210,7 @@ def evaluate_single_frame(
     thresholds,
     compute_plane_metrics=True
 ):
-    """Evaluate a single frame with pre-computed segmentation labels."""
+    """Evaluate a single frame."""
 
     metric_thr = {}
 
@@ -244,6 +232,7 @@ def evaluate_single_frame(
                 metric_thr[f"prec@{int(thr*100)}cm"] = multi_metrics[thr]["precision"]
                 metric_thr[f"rec@{int(thr*100)}cm"] = multi_metrics[thr]["recall"]
     else:
+        # Skip plane metrics entirely
         for thr in thresholds:
             metric_thr[f"prec@{int(thr*100)}cm"] = np.nan
             metric_thr[f"rec@{int(thr*100)}cm"] = np.nan
@@ -279,10 +268,7 @@ def process_batch_inference(
     inference_model,
     args
 ):
-    """
-    Batch GPU inference for planarity, depth, and normals.
-    Then run vectorized segmentation on each frame.
-    """
+    """Batch GPU inference for planarity."""
     with timer("_gpu_inference"):
         results = inference_model.predict_batch_fast(
             rgb_paths,
@@ -292,15 +278,9 @@ def process_batch_inference(
 
     batch_data = []
     with timer("_postprocess"):
-        for res, rgb_path, scene_id, frame_id, gt_seg, depth in zip(
-            results, rgb_paths, scene_ids, frame_ids, gt_segs, depths
+        for res, scene_id, frame_id, gt_seg, depth in zip(
+            results, scene_ids, frame_ids, gt_segs, depths
         ):
-            # Get image dimensions
-            img = Image.open(rgb_path).convert("RGB")
-            img_np = np.array(img)
-            H_rgb, W_rgb = img_np.shape[:2]
-
-            # Get GT at depth resolution
             if gt_seg.ndim == 3:
                 gt_seg = gt_seg[0]
             gt_seg_np = gt_seg.cpu().numpy().astype(np.int32)
@@ -308,32 +288,12 @@ def process_batch_inference(
 
             depth_np = depth[0].cpu().numpy() if depth.ndim == 3 else depth.cpu().numpy()
 
-            # Get MoGe outputs
             planarity = res["planarity_probability"]
-            depth_moge = res["points"][:, :, 2]
-            normal = res["normal"].transpose(2, 0, 1)
+            planarity = cv2.resize(planarity, (W_depth, H_depth), interpolation=cv2.INTER_LINEAR)
 
-            # Resize to RGB resolution for segmentation
-            planarity_rgb = cv2.resize(planarity, (W_rgb, H_rgb), interpolation=cv2.INTER_LINEAR)
-            depth_moge_rgb = cv2.resize(depth_moge, (W_rgb, H_rgb), interpolation=cv2.INTER_LINEAR)
-            normal_rgb = cv2.resize(normal.transpose(1, 2, 0), (W_rgb, H_rgb), interpolation=cv2.INTER_LINEAR).transpose(2, 0, 1)
-
-            # Apply planarity threshold
-            planarity_mask = (planarity_rgb > args.threshold_planarity).astype(np.int32)
-
-            # Run vectorized segmentation at RGB resolution
-            labels_rgb, _ = compute_vectorized_planar_segments_v4(
-                planarity_mask,
-                normal_rgb,
-                depth_moge_rgb,
-                np.deg2rad(args.normal_threshold_deg),
-                args.depth_threshold,
-                neighbor_match_count_thresh=args.neighbor_match_count_thresh
-            )
-            labels_rgb, _ = remap_labels(labels_rgb)
-
-            # Resize labels to depth resolution for evaluation
-            labels = cv2.resize(labels_rgb, (W_depth, H_depth), interpolation=cv2.INTER_NEAREST)
+            planarity_mask = (planarity > args.threshold_planarity).astype(np.int32)
+            labels = gt_seg_np * planarity_mask
+            labels, _ = remap_labels(labels)
 
             batch_data.append({
                 "scene_id": scene_id,
@@ -442,7 +402,7 @@ if __name__ == "__main__":
                 data["K_np"] = Ks[i].numpy()
                 data["c2w_np"] = c2ws[i].numpy()
 
-            # Use loky backend (safer, avoids segfaults)
+            # Use loky backend (safer for numpy, avoids segfaults)
             outputs = Parallel(
                 n_jobs=N_JOBS,
                 backend="loky",

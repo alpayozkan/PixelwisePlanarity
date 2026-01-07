@@ -1,20 +1,16 @@
 """
-Evaluation script for: Our Planarity + Our Segmentation (full pipeline).
+Evaluation script for: GT Segmentation quality evaluation.
 
-This is the main evaluation script that runs:
-1. MoGe inference (planarity, depth, normals)
-2. Vectorized segmentation
-3. Plane fitting evaluation
+Evaluates the quality of GT plane segmentation using plane fitting metrics.
+No MoGe inference needed - just loads GT and evaluates.
 
-FAST VERSION v2 - Optimizations:
-1. Batch GPU inference (BATCH_SIZE=32)
-2. Single RANSAC pass with multi-threshold evaluation (was 3x per frame!)
-3. Vectorized segmentation_covering (~10x faster)
-4. Reduced RANSAC iterations (200 instead of 2000)
-5. Parallel CPU evaluation with joblib
-6. Direct memory accumulation (no intermediate PNG files)
-7. Fine-grained timing for profiling
-8. Optional plane metrics flag
+FAST VERSION - Optimizations:
+1. Single RANSAC pass with multi-threshold inlier counting (was 3x per frame!)
+2. Vectorized segmentation_covering (~10x faster)
+3. Reduced RANSAC iterations (200 instead of 2000)
+4. Direct memory accumulation (no intermediate PNG files)
+5. Fine-grained timing for profiling
+6. Optional plane metrics flag
 """
 
 import time
@@ -46,11 +42,9 @@ import os
 import torch
 from torch.utils.data import DataLoader
 import numpy as np
-import cv2
 from tqdm import tqdm
 import pandas as pd
 import h5py
-from PIL import Image
 
 from sklearn.metrics import rand_score
 from skimage.metrics import variation_of_information
@@ -62,9 +56,6 @@ from planamono.shared.plane_fitting import (
     backproject_v1 as backproject,
     fit_planes_per_label_v1,
 )
-from planamono.shared.segmentation import compute_vectorized_planar_segments_v4
-from planamono.shared.utils.label_utils import remap_labels
-from planamono.inference.planarity.moge_inference import MoGePlanarityInference
 from planamono.paths import *
 
 
@@ -78,11 +69,10 @@ COMPUTE_PLANE_METRICS = True
 # RANSAC iterations (200 is sufficient for evaluation)
 RANSAC_ITERATIONS = 200
 
-exp_name = 'moge_ours_v2'
+exp_name = 'gtseg_v2'
 csv_out_dir = f"/cluster/scratch/aoezkan/planeseg/scannetpp/eval/{exp_name}"
 h5_root = f"/cluster/scratch/aoezkan/planeseg/scannetpp/inference/{exp_name}_h5"
 
-model_path = "/cluster/scratch/aoezkan/moge_runs/scannetpp/moge_scannetpp_4heads_v3/final_planarity_4heads_model.pt"
 dataset_dir = "/cluster/scratch/aoezkan/planeseg/dataset/scannetpp"
 num_workers = 4
 
@@ -218,11 +208,18 @@ def evaluate_single_frame(
     gt_seg_np,
     K_np,
     c2w_np,
-    labels,
     thresholds,
     compute_plane_metrics=True
 ):
-    """Evaluate a single frame with pre-computed segmentation labels."""
+    """
+    Evaluate a single frame's GT segmentation quality.
+
+    For GT segmentation, pred = gt (we're measuring how well GT segments
+    fit to actual planar surfaces in 3D).
+    """
+    # For GT evaluation, we compare GT with itself for clustering metrics (should be perfect)
+    # and evaluate plane fitting quality on the GT segments
+    labels = gt_seg_np
 
     metric_thr = {}
 
@@ -248,7 +245,8 @@ def evaluate_single_frame(
             metric_thr[f"prec@{int(thr*100)}cm"] = np.nan
             metric_thr[f"rec@{int(thr*100)}cm"] = np.nan
 
-    # Clustering metrics (always computed)
+    # Clustering metrics: GT vs GT (should be perfect: RI=1, VOI=0, SC=1)
+    # These serve as sanity check / upper bound
     with timer("_rand_score"):
         ri = rand_score(gt_seg_np.flatten(), labels.flatten())
 
@@ -268,82 +266,6 @@ def evaluate_single_frame(
     }
 
     return metrics, labels
-
-
-def process_batch_inference(
-    rgb_paths,
-    scene_ids,
-    frame_ids,
-    gt_segs,
-    depths,
-    inference_model,
-    args
-):
-    """
-    Batch GPU inference for planarity, depth, and normals.
-    Then run vectorized segmentation on each frame.
-    """
-    with timer("_gpu_inference"):
-        results = inference_model.predict_batch_fast(
-            rgb_paths,
-            num_tokens=args.num_tokens,
-            return_all_heads=True
-        )
-
-    batch_data = []
-    with timer("_postprocess"):
-        for res, rgb_path, scene_id, frame_id, gt_seg, depth in zip(
-            results, rgb_paths, scene_ids, frame_ids, gt_segs, depths
-        ):
-            # Get image dimensions
-            img = Image.open(rgb_path).convert("RGB")
-            img_np = np.array(img)
-            H_rgb, W_rgb = img_np.shape[:2]
-
-            # Get GT at depth resolution
-            if gt_seg.ndim == 3:
-                gt_seg = gt_seg[0]
-            gt_seg_np = gt_seg.cpu().numpy().astype(np.int32)
-            H_depth, W_depth = gt_seg_np.shape
-
-            depth_np = depth[0].cpu().numpy() if depth.ndim == 3 else depth.cpu().numpy()
-
-            # Get MoGe outputs
-            planarity = res["planarity_probability"]
-            depth_moge = res["points"][:, :, 2]
-            normal = res["normal"].transpose(2, 0, 1)
-
-            # Resize to RGB resolution for segmentation
-            planarity_rgb = cv2.resize(planarity, (W_rgb, H_rgb), interpolation=cv2.INTER_LINEAR)
-            depth_moge_rgb = cv2.resize(depth_moge, (W_rgb, H_rgb), interpolation=cv2.INTER_LINEAR)
-            normal_rgb = cv2.resize(normal.transpose(1, 2, 0), (W_rgb, H_rgb), interpolation=cv2.INTER_LINEAR).transpose(2, 0, 1)
-
-            # Apply planarity threshold
-            planarity_mask = (planarity_rgb > args.threshold_planarity).astype(np.int32)
-
-            # Run vectorized segmentation at RGB resolution
-            labels_rgb, _ = compute_vectorized_planar_segments_v4(
-                planarity_mask,
-                normal_rgb,
-                depth_moge_rgb,
-                np.deg2rad(args.normal_threshold_deg),
-                args.depth_threshold,
-                neighbor_match_count_thresh=args.neighbor_match_count_thresh
-            )
-            labels_rgb, _ = remap_labels(labels_rgb)
-
-            # Resize labels to depth resolution for evaluation
-            labels = cv2.resize(labels_rgb, (W_depth, H_depth), interpolation=cv2.INTER_NEAREST)
-
-            batch_data.append({
-                "scene_id": scene_id,
-                "frame_id": frame_id,
-                "gt_seg_np": gt_seg_np,
-                "depth_np": depth_np,
-                "labels": labels,
-            })
-
-    return batch_data
 
 
 # ============================================================
@@ -378,44 +300,23 @@ if __name__ == "__main__":
         pin_memory=True
     )
 
-    from types import SimpleNamespace
-
-    args = SimpleNamespace(
-        model_path=model_path,
-        device=device,
-        num_tokens=1024,
-        threshold_planarity=0.6,
-        normal_threshold_deg=10.0,
-        depth_threshold=0.05,
-        neighbor_match_count_thresh=24,
-    )
-
-    if not os.path.isfile(args.model_path):
-        raise FileNotFoundError(f"Model not found: {args.model_path}")
-
-    inference_model = MoGePlanarityInference(args.model_path, device=args.device)
-    inference_model.model.encoder.use_memory_efficient_attention = False
-    torch.set_grad_enabled(False)
-    inference_model.model.eval()
-
     # ============================================================
-    # STREAMING PIPELINE
+    # EVALUATION PIPELINE (No GPU inference needed for GT-only)
     # ============================================================
 
-    print("==> Running streaming pipeline")
+    print("==> Running evaluation pipeline")
 
     thresholds = (0.01, 0.02, 0.05)
     N_JOBS = min(16, os.cpu_count())
 
-    def eval_frame_wrapper(frame_data, thresholds):
+    def eval_frame_wrapper(scene_id, frame_idx, depth_np, gt_seg_np, K_np, c2w_np, thresholds):
         return evaluate_single_frame(
-            frame_data["scene_id"],
-            frame_data["frame_id"],
-            frame_data["depth_np"],
-            frame_data["gt_seg_np"],
-            frame_data["K_np"],
-            frame_data["c2w_np"],
-            frame_data["labels"],
+            scene_id,
+            frame_idx,
+            depth_np,
+            gt_seg_np,
+            K_np,
+            c2w_np,
             thresholds,
             compute_plane_metrics=COMPUTE_PLANE_METRICS
         )
@@ -423,37 +324,57 @@ if __name__ == "__main__":
     results = {}
     scene_predictions = {}
 
-    with timer("streaming_pipeline"):
-        for batch in tqdm(val_loader, desc="Processing"):
-            rgb_paths = batch["rgb_path"]
+    with timer("evaluation_pipeline"):
+        for batch in tqdm(val_loader, desc="Evaluating"):
             scene_ids = batch["scene_id"]
             frame_ids = batch["frame_idx"]
-            gt_segs = batch["plane"]
+            gt_planes = batch["plane"]
             depths = batch["depth"]
             Ks = batch["K"]
             c2ws = batch["c2w"]
 
-            batch_data = process_batch_inference(
-                rgb_paths, scene_ids, frame_ids, gt_segs, depths,
-                inference_model, args
-            )
+            B = len(scene_ids)
 
-            for i, data in enumerate(batch_data):
-                data["K_np"] = Ks[i].numpy()
-                data["c2w_np"] = c2ws[i].numpy()
+            # Prepare batch data
+            batch_items = []
+            for i in range(B):
+                gt_seg = gt_planes[i]
+                if gt_seg.ndim == 3:
+                    gt_seg = gt_seg[0]
+                gt_seg_np = gt_seg.cpu().numpy().astype(np.int32)
 
-            # Use loky backend (safer, avoids segfaults)
+                depth = depths[i]
+                depth_np = depth[0].cpu().numpy() if depth.ndim == 3 else depth.cpu().numpy()
+
+                batch_items.append({
+                    "scene_id": scene_ids[i],
+                    "frame_idx": frame_ids[i],
+                    "depth_np": depth_np,
+                    "gt_seg_np": gt_seg_np,
+                    "K_np": Ks[i].numpy(),
+                    "c2w_np": c2ws[i].numpy(),
+                })
+
+            # Parallel evaluation
             outputs = Parallel(
                 n_jobs=N_JOBS,
                 backend="loky",
             )(
-                delayed(eval_frame_wrapper)(frame_data, thresholds)
-                for frame_data in batch_data
+                delayed(eval_frame_wrapper)(
+                    item["scene_id"],
+                    item["frame_idx"],
+                    item["depth_np"],
+                    item["gt_seg_np"],
+                    item["K_np"],
+                    item["c2w_np"],
+                    thresholds
+                )
+                for item in batch_items
             )
 
-            for (metrics, labels), frame_data in zip(outputs, batch_data):
-                scene_id = frame_data["scene_id"]
-                frame_id = frame_data["frame_id"]
+            for (metrics, labels), item in zip(outputs, batch_items):
+                scene_id = item["scene_id"]
+                frame_id = item["frame_idx"]
 
                 results[(scene_id, frame_id)] = metrics
 
@@ -461,10 +382,10 @@ if __name__ == "__main__":
                     scene_predictions[scene_id] = []
                 scene_predictions[scene_id].append((frame_id, labels))
 
-    print(f"[PIPELINE] Processed {len(results)} frames")
+    print(f"[PIPELINE] Evaluated {len(results)} frames")
 
     # ============================================================
-    # WRITE H5 FILES
+    # WRITE H5 FILES (GT labels for reference)
     # ============================================================
 
     print("==> Writing H5 files")
