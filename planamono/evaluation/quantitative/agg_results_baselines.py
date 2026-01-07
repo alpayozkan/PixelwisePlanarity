@@ -1,0 +1,185 @@
+"""
+Aggregate results from all baseline fast evaluation scripts.
+
+This script looks for results in:
+/cluster/scratch/aoezkan/planeseg/scannetpp/eval/{exp_name}/
+
+And produces summary tables for precision/recall and segmentation metrics.
+"""
+
+import pandas as pd
+from pathlib import Path
+
+# Root directory where eval results are stored
+ROOT = Path("/cluster/scratch/aoezkan/planeseg/scannetpp/eval")
+
+# Mapping from folder name to display name in tables
+METHODS = {
+    "moge_ours_v1": "Ours (full)",
+    "gtseg_v1": "GT Seg (upper bound)",
+    "gtplanarity_ourseg_v1": "GT Planarity + Our Seg",
+    "ourplanarity_gtseg_v1": "Our Planarity + GT Seg",
+    "zeroplane_v1": "ZeroPlane",
+}
+
+def find_dataset_csv(folder: Path):
+    """Find the *_results_dataset.csv file in a folder."""
+    files = list(folder.glob("*_results_dataset.csv"))
+    if len(files) == 0:
+        raise FileNotFoundError(f"No *_results_dataset.csv in {folder}")
+    if len(files) > 1:
+        raise RuntimeError(f"Multiple dataset CSVs in {folder}: {files}")
+    return files[0]
+
+
+def aggregate_results(root: Path = ROOT, output_dir: Path = None):
+    """
+    Aggregate results from all methods and save summary tables.
+
+    Args:
+        root: Root directory containing method folders
+        output_dir: Directory to save output CSVs (defaults to current directory)
+    """
+    if output_dir is None:
+        output_dir = Path(".")
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # ---------- TABLE 1: Precision / Recall ----------
+    rows_pr = []
+
+    for folder_name, method_name in METHODS.items():
+        folder = root / folder_name
+        if not folder.exists():
+            print(f"[WARN] Missing folder {folder}")
+            continue
+
+        try:
+            csv_path = find_dataset_csv(folder)
+            df = pd.read_csv(csv_path).iloc[0]
+        except Exception as e:
+            print(f"[ERROR] Could not read results for {folder_name}: {e}")
+            continue
+
+        row = {
+            "Method": method_name,
+            "num_scenes": int(df["num_scenes"]),
+            "num_frames": int(df["num_frames_total"]),
+        }
+
+        # Add precision/recall metrics if available
+        for thresh in ["1cm", "2cm", "5cm"]:
+            prec_col = f"prec@{thresh}_mean"
+            rec_col = f"rec@{thresh}_mean"
+            if prec_col in df.index:
+                row[f"prec@{thresh}"] = df[prec_col]
+            if rec_col in df.index:
+                row[f"recall@{thresh}"] = df[rec_col]
+
+        rows_pr.append(row)
+
+    if rows_pr:
+        df_pr = pd.DataFrame(rows_pr)
+        out_path = output_dir / "table_precision_recall_baselines.csv"
+        df_pr.to_csv(out_path, index=False)
+        print(f"Saved: {out_path}")
+    else:
+        print("[WARN] No precision/recall results to aggregate")
+
+    # ---------- TABLE 2: Segmentation ----------
+    rows_seg = []
+
+    for folder_name, method_name in METHODS.items():
+        folder = root / folder_name
+        if not folder.exists():
+            continue
+
+        try:
+            csv_path = find_dataset_csv(folder)
+            df = pd.read_csv(csv_path).iloc[0]
+        except Exception as e:
+            continue
+
+        row = {
+            "Method": method_name,
+            "num_scenes": int(df["num_scenes"]),
+            "num_frames": int(df["num_frames_total"]),
+        }
+
+        # Add segmentation metrics if available
+        for col, display in [("rand_index_mean", "Rand Index"),
+                              ("voi_mean", "VOI"),
+                              ("sc_mean", "SC")]:
+            if col in df.index:
+                row[display] = df[col]
+
+        rows_seg.append(row)
+
+    if rows_seg:
+        df_seg = pd.DataFrame(rows_seg)
+        out_path = output_dir / "table_segmentation_baselines.csv"
+        df_seg.to_csv(out_path, index=False)
+        print(f"Saved: {out_path}")
+    else:
+        print("[WARN] No segmentation results to aggregate")
+
+    # ---------- TABLE 3: Combined Summary ----------
+    rows_combined = []
+
+    for folder_name, method_name in METHODS.items():
+        folder = root / folder_name
+        if not folder.exists():
+            continue
+
+        try:
+            csv_path = find_dataset_csv(folder)
+            df = pd.read_csv(csv_path).iloc[0]
+        except Exception as e:
+            continue
+
+        row = {
+            "Method": method_name,
+            "num_scenes": int(df["num_scenes"]),
+            "num_frames": int(df["num_frames_total"]),
+        }
+
+        # Segmentation metrics
+        for col, display in [("rand_index_mean", "RI"),
+                              ("voi_mean", "VOI"),
+                              ("sc_mean", "SC")]:
+            if col in df.index:
+                row[display] = df[col]
+
+        # Precision/recall at 2cm (common threshold)
+        if "prec@2cm_mean" in df.index:
+            row["P@2cm"] = df["prec@2cm_mean"]
+        if "rec@2cm_mean" in df.index:
+            row["R@2cm"] = df["rec@2cm_mean"]
+
+        rows_combined.append(row)
+
+    if rows_combined:
+        df_combined = pd.DataFrame(rows_combined)
+        out_path = output_dir / "table_combined_baselines.csv"
+        df_combined.to_csv(out_path, index=False)
+        print(f"Saved: {out_path}")
+
+        # Also print a nice summary
+        print("\n" + "=" * 80)
+        print("BASELINE RESULTS SUMMARY")
+        print("=" * 80)
+        print(df_combined.to_string(index=False))
+        print("=" * 80)
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Aggregate baseline evaluation results")
+    parser.add_argument("--root", type=str, default=str(ROOT),
+                        help="Root directory containing eval results")
+    parser.add_argument("--output_dir", type=str, default=".",
+                        help="Directory to save output CSVs")
+    args = parser.parse_args()
+
+    aggregate_results(Path(args.root), Path(args.output_dir))
