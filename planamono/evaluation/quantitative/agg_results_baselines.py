@@ -20,7 +20,9 @@ METHODS = {
     "gtplanarity_ourseg_v1": "GT Planarity + Our Seg",
     "ourplanarity_gtseg_v1": "Our Planarity + GT Seg",
     "zeroplane_v1": "ZeroPlane",
+    "zeroplane_v1.5": "ZeroPlane(nonp)",
 }
+
 
 def find_dataset_csv(folder: Path):
     """Find the results_dataset.csv file in a folder."""
@@ -155,19 +157,41 @@ def aggregate_results(root: Path = ROOT, output_dir: Path = None):
             if col in df.index:
                 row[display] = df[col]
 
-        # Precision/recall at 2cm (common threshold)
-        if "prec@2cm_mean" in df.index:
-            row["P@2cm"] = df["prec@2cm_mean"]
-        if "rec@2cm_mean" in df.index:
-            row["R@2cm"] = df["rec@2cm_mean"]
+        # Precision/recall at all thresholds
+        for thresh in ["1cm", "2cm", "5cm"]:
+            prec_col = f"prec@{thresh}_mean"
+            rec_col = f"rec@{thresh}_mean"
+            if prec_col in df.index:
+                row[f"P@{thresh}"] = df[prec_col]
+            if rec_col in df.index:
+                row[f"R@{thresh}"] = df[rec_col]
 
         rows_combined.append(row)
 
     if rows_combined:
         df_combined = pd.DataFrame(rows_combined)
+
+        # Custom row order: GT Seg, Ours, ZeroPlane, then rest
+        order_priority = {
+            "GT Seg (upper bound)": 0,
+            "Ours (full)": 1,
+            "ZeroPlane": 2,
+            "ZeroPlane(nonp)": 3,
+        }
+        df_combined["_sort_key"] = df_combined["Method"].map(
+            lambda x: order_priority.get(x, 100)
+        )
+        df_combined = df_combined.sort_values("_sort_key").drop(columns=["_sort_key"]).reset_index(drop=True)
+
+        # Save CSV
         out_path = output_dir / "table_combined_baselines.csv"
         df_combined.to_csv(out_path, index=False)
         print(f"Saved: {out_path}")
+
+        # Save XLSX
+        xlsx_path = output_dir / "table_combined_baselines.xlsx"
+        df_combined.to_excel(xlsx_path, index=False, sheet_name="Combined Results")
+        print(f"Saved: {xlsx_path}")
 
         # Also print a nice summary
         print("\n" + "=" * 80)

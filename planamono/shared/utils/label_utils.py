@@ -143,6 +143,44 @@ def match_planes_by_overlap(
     return matches
 
 
+def remap_labels_fast(
+    seg: np.ndarray,
+    start: int = 1
+) -> Tuple[np.ndarray, Dict[int, int]]:
+    """
+    Fast remap segmentation labels using vectorized LUT lookup.
+
+    ~10-20x faster than remap_labels for images with many labels.
+
+    Args:
+        seg: (H,W) segmentation map with arbitrary integer labels
+        start: Starting label index for planar regions (default=1, 0 reserved for background)
+
+    Returns:
+        seg_remapped: (H,W) remapped segmentation
+        mapping: Dict mapping old labels -> new labels
+    """
+    unique_labels = np.unique(seg)
+    planar_labels = unique_labels[unique_labels > 0]
+
+    if len(planar_labels) == 0:
+        return np.zeros_like(seg, dtype=np.int32), {}
+
+    # Build lookup table
+    max_label = int(seg.max())
+    lut = np.zeros(max_label + 1, dtype=np.int32)
+
+    mapping = {}
+    for new, old in enumerate(planar_labels, start=start):
+        lut[old] = new
+        mapping[int(old)] = int(new)
+
+    # Single vectorized lookup - O(pixels) not O(labels × pixels)
+    seg_remapped = lut[seg]
+
+    return seg_remapped, mapping
+
+
 def map_array(
     arr: np.ndarray,
     matches: Dict[int, int],

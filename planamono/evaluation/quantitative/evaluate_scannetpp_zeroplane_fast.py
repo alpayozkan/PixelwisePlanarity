@@ -46,7 +46,7 @@ RANSAC_ITERATIONS = 200
 # Inlier ratio threshold for quality gate
 INLIER_RATIO_GATE = 0.9
 
-exp_name = 'zeroplane_v1'
+exp_name = 'zeroplane_v1.5'
 csv_out_dir = f"/cluster/scratch/aoezkan/planeseg/scannetpp/eval/{exp_name}"
 
 # ZeroPlane predictions H5 root
@@ -65,53 +65,75 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # H5 LOADING
 # ============================================================
 
-def load_zeroplane_predictions(h5_root, scene_id):
+class LazyH5SceneLoader:
     """
-    Load ZeroPlane predictions from H5 file.
-
-    Returns:
-        planes: (N, H, W) array of plane labels
-        frame_ids: list of frame IDs
+    Memory-efficient loader that only keeps one scene in memory at a time.
+    Loads predictions lazily from H5 files.
     """
-    h5_path = os.path.join(h5_root, scene_id, "planes.h5")
+    def __init__(self, h5_root):
+        self.h5_root = h5_root
+        self._current_scene_id = None
+        self._current_planes = None
+        self._current_frame_ids = None
+        self._frame_id_to_idx = {}
 
-    if not os.path.exists(h5_path):
-        return None, None
+    def _load_scene(self, scene_id):
+        """Load a scene's predictions into memory, clearing previous."""
+        if scene_id == self._current_scene_id:
+            return True
 
-    with h5py.File(h5_path, "r") as f:
-        planes = f["planes"][:]
-        frame_ids = [fid.decode() if isinstance(fid, bytes) else fid
-                     for fid in f["frame_ids"][:]]
+        h5_path = os.path.join(self.h5_root, scene_id, "planes.h5")
+        if not os.path.exists(h5_path):
+            return False
 
-    return planes, frame_ids
+        # Clear previous scene to free memory
+        self._current_planes = None
+        self._current_frame_ids = None
+        self._frame_id_to_idx = {}
 
+        with h5py.File(h5_path, "r") as f:
+            self._current_planes = f["planes"][:]
+            self._current_frame_ids = [
+                fid.decode() if isinstance(fid, bytes) else fid
+                for fid in f["frame_ids"][:]
+            ]
 
-def get_zeroplane_prediction(planes, frame_ids, frame_idx, target_shape):
-    """
-    Get ZeroPlane prediction for a specific frame.
+        # Build index for O(1) lookup
+        self._frame_id_to_idx = {fid: i for i, fid in enumerate(self._current_frame_ids)}
+        self._current_scene_id = scene_id
+        return True
 
-    Args:
-        planes: (N, H, W) predictions array
-        frame_ids: list of frame IDs
-        frame_idx: target frame ID
-        target_shape: (H, W) to resize to
+    def get_prediction(self, scene_id, frame_idx, target_shape):
+        """
+        Get prediction for a specific frame, loading scene if needed.
 
-    Returns:
-        labels: (H, W) plane labels, or None if not found
-    """
-    if frame_idx not in frame_ids:
-        return None
+        Returns:
+            labels: (H, W) plane labels, or None if not found
+        """
+        if not self._load_scene(scene_id):
+            return None
 
-    idx = frame_ids.index(frame_idx)
-    pred = planes[idx]
+        if frame_idx not in self._frame_id_to_idx:
+            return None
 
-    # Resize to target shape if needed
-    if pred.shape != target_shape:
-        pred = cv2.resize(pred.astype(np.float32),
-                         (target_shape[1], target_shape[0]),
-                         interpolation=cv2.INTER_NEAREST).astype(np.int32)
+        idx = self._frame_id_to_idx[frame_idx]
+        pred = self._current_planes[idx]
 
-    return pred.astype(np.int32)
+        # Resize to target shape if needed
+        if pred.shape != target_shape:
+            pred = cv2.resize(
+                pred.astype(np.float32),
+                (target_shape[1], target_shape[0]),
+                interpolation=cv2.INTER_NEAREST
+            ).astype(np.int32)
+
+        pred += 1 # zeroplane doesnt have nonplanar ie., zero labels
+        return pred.astype(np.int32)
+
+    def has_scene(self, scene_id):
+        """Check if a scene exists without loading it."""
+        h5_path = os.path.join(self.h5_root, scene_id, "planes.h5")
+        return os.path.exists(h5_path)
 
 
 # ============================================================
@@ -151,24 +173,19 @@ if __name__ == "__main__":
     )
 
     # ============================================================
-    # LOAD ALL ZEROPLANE PREDICTIONS
+    # LAZY LOADER (memory-efficient, loads one scene at a time)
     # ============================================================
 
-    print("==> Loading ZeroPlane predictions")
+    print("==> Initializing lazy H5 loader (memory-efficient)")
+    zeroplane_loader = LazyH5SceneLoader(zeroplane_h5_root)
 
-    # Get unique scene IDs
+    # Check which scenes have predictions
     scene_ids = val_dataset.scene_ids
-
-    zeroplane_cache = {}
-    with timer("load_predictions"):
-        for scene_id in tqdm(scene_ids, desc="Loading H5"):
-            planes, frame_ids = load_zeroplane_predictions(zeroplane_h5_root, scene_id)
-            if planes is not None:
-                zeroplane_cache[scene_id] = (planes, frame_ids)
-            else:
-                print(f"[WARN] No ZeroPlane predictions for scene {scene_id}")
-
-    print(f"[DATA] Loaded predictions for {len(zeroplane_cache)} scenes")
+    available_scenes = [s for s in scene_ids if zeroplane_loader.has_scene(s)]
+    missing_scenes = set(scene_ids) - set(available_scenes)
+    if missing_scenes:
+        print(f"[WARN] Missing predictions for {len(missing_scenes)} scenes: {list(missing_scenes)[:5]}...")
+    print(f"[DATA] Found predictions for {len(available_scenes)}/{len(scene_ids)} scenes")
 
     # ============================================================
     # EVALUATION PIPELINE
@@ -224,13 +241,8 @@ if __name__ == "__main__":
                 depth = depths[i]
                 depth_np = depth[0].cpu().numpy() if depth.ndim == 3 else depth.cpu().numpy()
 
-                # Get ZeroPlane prediction
-                if scene_id not in zeroplane_cache:
-                    skipped_frames += 1
-                    continue
-
-                planes, frame_ids_scene = zeroplane_cache[scene_id]
-                labels = get_zeroplane_prediction(planes, frame_ids_scene, frame_idx, (H, W))
+                # Get ZeroPlane prediction (lazy loading)
+                labels = zeroplane_loader.get_prediction(scene_id, frame_idx, (H, W))
 
                 if labels is None:
                     skipped_frames += 1
