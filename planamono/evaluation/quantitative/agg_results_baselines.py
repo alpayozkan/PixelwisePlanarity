@@ -10,18 +10,24 @@ And produces summary tables for precision/recall and segmentation metrics.
 import pandas as pd
 from pathlib import Path
 
+from visualize_scannetpp_all_baselines import METHODS as VIS_METHODS
+
 # Root directory where eval results are stored
 ROOT = Path("/cluster/scratch/aoezkan/planeseg/scannetpp/eval")
 
-# Mapping from folder name to display name in tables
-METHODS = {
-    "moge_ours_v1": "Ours (full)",
-    "gtseg_v1": "GT Seg (upper bound)",
-    "gtplanarity_ourseg_v1": "GT Planarity + Our Seg",
-    "ourplanarity_gtseg_v1": "Our Planarity + GT Seg",
-    "zeroplane_v1": "ZeroPlane",
-    "zeroplane_v1.5": "ZeroPlane(nonp)",
-}
+# Build mapping from eval folder name to display name
+# Eval folders use h5_folder names (with some variations)
+METHODS = {}
+for key, config in VIS_METHODS.items():
+    if config["h5_folder"] is None:
+        continue  # Skip GT (uses rendered.h5 from dataset)
+    h5_folder = config["h5_folder"]
+    display_name = config["display_name"]
+    # Add with h5_folder name
+    METHODS[h5_folder] = display_name
+    # Also add without _h5 suffix for flexibility
+    if h5_folder.endswith("_h5"):
+        METHODS[h5_folder[:-3]] = display_name
 
 
 def find_dataset_csv(folder: Path):
