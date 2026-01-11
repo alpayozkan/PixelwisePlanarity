@@ -27,11 +27,11 @@ from joblib import Parallel, delayed
 from planamono.shared.datasets.scannetpp import ScanNetPPPlaneDataset
 from planamono.paths import repo_path, scannetpp_rend_plane_path
 
-from eval_utils import (
+from planamono.evaluation.quantitative.eval_utils import (
     Timer,
     save_results_csv,
     save_runtime,
-    evaluate_single_frame,
+    evaluate_single_frame_v1,
 )
 
 
@@ -43,7 +43,8 @@ from eval_utils import (
 COMPUTE_PLANE_METRICS = True
 RANSAC_ITERATIONS = 200
 INLIER_RATIO_GATE = 0.9
-THRESHOLDS = (0.01, 0.02, 0.05)
+# THRESHOLDS = (0.01, 0.02, 0.05)
+THRESHOLDS = (0.001, 0.005, 0.01)
 BATCH_SIZE = 32
 N_JOBS = min(16, os.cpu_count())
 
@@ -52,39 +53,42 @@ EVAL_ROOT = Path("/cluster/scratch/aoezkan/planeseg/scannetpp/eval")
 H5_ROOT = Path("/cluster/scratch/aoezkan/planeseg/scannetpp/inference")
 DATASET_DIR = "/cluster/scratch/aoezkan/planeseg/dataset/scannetpp"
 
+# Experiment version (used in exp_name for all methods)
+EXP_VER = "v4"
+
 # Method definitions: {method_key: {h5_folder, display_name, label_offset, uses_gt_h5}}
 METHODS = {
     "ours": {
         "h5_folder": "moge_ours_v2_h5",
-        "exp_name": "moge_ours_v2",
+        "exp_name": f"moge_ours_{EXP_VER}",
         "display_name": "Ours (full)",
         "label_offset": 0,
         "uses_gt_h5": False,
     },
     "zeroplane": {
         "h5_folder": "zeroplane_h5",
-        "exp_name": "zeroplane_v2",
+        "exp_name": f"zeroplane_{EXP_VER}",
         "display_name": "ZeroPlane",
         "label_offset": 1,  # ZeroPlane doesn't have background label 0
         "uses_gt_h5": False,
     },
     "gtseg": {
         "h5_folder": "gtseg_v1_h5",
-        "exp_name": "gtseg_v2",
+        "exp_name": f"gtseg_{EXP_VER}",
         "display_name": "GT Seg (upper bound)",
         "label_offset": 0,
         "uses_gt_h5": False,
     },
     "gtplanarity_ourseg": {
         "h5_folder": "gtplanarity_ourseg_h5",
-        "exp_name": "gtplanarity_ourseg_v2",
+        "exp_name": f"gtplanarity_ourseg_{EXP_VER}",
         "display_name": "GT Planarity + Our Seg",
         "label_offset": 0,
         "uses_gt_h5": False,
     },
     "ourplanarity_gtseg": {
-        "h5_folder": "ourplanarity_gtseg_v1_h5",
-        "exp_name": "ourplanarity_gtseg_v2",
+        "h5_folder": "ourplanarity_gtseg_h5",
+        "exp_name": f"ourplanarity_gtseg_{EXP_VER}",
         "display_name": "Our Planarity + GT Seg",
         "label_offset": 0,
         "uses_gt_h5": False,
@@ -216,9 +220,9 @@ def evaluate_method(
         print(f"[ERROR] No predictions found for {method_key}")
         return {}
 
-    # Evaluation wrapper
+    # Evaluation wrapper (uses v1: RANSAC threshold = evaluation threshold)
     def eval_frame_wrapper(scene_id, frame_idx, depth_np, gt_seg_np, K_np, c2w_np, labels, thresholds):
-        return evaluate_single_frame(
+        return evaluate_single_frame_v1(
             scene_id,
             frame_idx,
             depth_np,
@@ -359,14 +363,15 @@ def aggregate_results(output_dir: Path = None):
                 if col in df.index:
                     row[display] = df[col]
 
-            # Precision/recall metrics
-            for thresh in ["1cm", "2cm", "5cm"]:
-                prec_col = f"prec@{thresh}_mean"
-                rec_col = f"rec@{thresh}_mean"
+            # Precision/recall metrics (dynamically from THRESHOLDS)
+            for thr in THRESHOLDS:
+                thresh_str = f"{thr*100:.1f}cm"
+                prec_col = f"prec@{thresh_str}_mean"
+                rec_col = f"rec@{thresh_str}_mean"
                 if prec_col in df.index:
-                    row[f"P@{thresh}"] = df[prec_col]
+                    row[f"P@{thresh_str}"] = df[prec_col]
                 if rec_col in df.index:
-                    row[f"R@{thresh}"] = df[rec_col]
+                    row[f"R@{thresh_str}"] = df[rec_col]
 
             all_results.append(row)
             print(f"[OK] Loaded results for {display_name}")
@@ -383,8 +388,9 @@ def aggregate_results(output_dir: Path = None):
 
     # Table 1: Precision/Recall
     prec_rec_cols = ["Method", "num_scenes", "num_frames"]
-    for thresh in ["1cm", "2cm", "5cm"]:
-        prec_rec_cols.extend([f"P@{thresh}", f"R@{thresh}"])
+    for thr in THRESHOLDS:
+        thresh_str = f"{thr*100:.1f}cm"
+        prec_rec_cols.extend([f"P@{thresh_str}", f"R@{thresh_str}"])
     df_pr = df_all[[c for c in prec_rec_cols if c in df_all.columns]]
     out_path = output_dir / "table_precision_recall_baselines.csv"
     df_pr.to_csv(out_path, index=False)
@@ -397,8 +403,9 @@ def aggregate_results(output_dir: Path = None):
     df_seg.to_csv(out_path, index=False)
     print(f"Saved: {out_path}")
 
-    # Table 3: Combined summary
-    combined_cols = ["Method", "num_scenes", "num_frames", "RI", "VOI", "SC", "P@2cm", "R@2cm"]
+    # Table 3: Combined summary (use middle threshold for P/R)
+    mid_thresh_str = f"{THRESHOLDS[len(THRESHOLDS)//2]*100:.1f}cm"
+    combined_cols = ["Method", "num_scenes", "num_frames", "RI", "VOI", "SC", f"P@{mid_thresh_str}", f"R@{mid_thresh_str}"]
     df_combined = df_all[[c for c in combined_cols if c in df_all.columns]]
     out_path = output_dir / "table_combined_baselines.csv"
     df_combined.to_csv(out_path, index=False)

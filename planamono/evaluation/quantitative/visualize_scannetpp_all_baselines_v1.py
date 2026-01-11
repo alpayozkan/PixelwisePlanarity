@@ -1,14 +1,22 @@
 """
-Visualization script for RANSAC inlier comparison across all baseline methods.
+Visualization script for RANSAC inlier comparison across all baseline methods (v1).
+
+DIFFERENCE FROM visualize_scannetpp_all_baselines.py:
+- Uses compute_inlier_mask_v1 which is consistent with compute_plane_metrics_v1
+- RANSAC threshold = evaluation threshold (same threshold for fitting and evaluation)
+- Inliers are recounted at the evaluation threshold (not read from DataFrame)
+- Quality gate is applied based on recounted inlier ratio
+
+See METRIC_INCONSISTENCY_ANALYSIS.md for detailed explanation.
 
 Generates:
 1. PNG visualizations with 3-row layout (Inliers, Segmentation, Diff vs GT)
 2. H5 file with structured results (inlier masks, stats, diff stats)
 
 Usage:
-    python visualize_scannetpp_all_baselines.py --n-samples 10
-    python visualize_scannetpp_all_baselines.py --n-samples 5 --random-seed 42
-    python visualize_scannetpp_all_baselines.py --specific-frames "scene1:frame1,scene2:frame2"
+    python visualize_scannetpp_all_baselines_v1.py --n-samples 10
+    python visualize_scannetpp_all_baselines_v1.py --n-samples 5 --random-seed 42
+    python visualize_scannetpp_all_baselines_v1.py --specific-frames "scene1:frame1,scene2:frame2"
 """
 
 import os
@@ -31,7 +39,6 @@ from planamono.shared.datasets.scannetpp import ScanNetPPPlaneDataset
 from planamono.shared.plane_fitting import (
     backproject_v1 as backproject,
     fit_planes_per_label_v1,
-    mark_planes_below_threshold_as_outliers,
 )
 from planamono.shared.utils import visualize_top_components_v1
 from planamono.evaluation.quantitative.evaluate_all_baselines import (
@@ -103,10 +110,10 @@ def resize_plane_nn(plane: np.ndarray, target_hw: Tuple[int, int]) -> np.ndarray
 
 
 # ============================================================
-# INLIER COMPUTATION
+# INLIER COMPUTATION (v1: consistent with compute_plane_metrics_v1)
 # ============================================================
 
-def compute_inlier_mask(
+def compute_inlier_mask_v1(
     plane_seg: np.ndarray,
     depth_np: np.ndarray,
     K_np: np.ndarray,
@@ -115,7 +122,17 @@ def compute_inlier_mask(
     inlier_ratio_threshold: float = 0.5
 ) -> Tuple[np.ndarray, Dict]:
     """
-    Compute a binary mask of RANSAC inliers.
+    Compute a binary mask of RANSAC inliers (v1: consistent with evaluation).
+
+    This function is consistent with compute_plane_metrics_v1 in eval_utils.py:
+    - RANSAC is run with distance_threshold
+    - Inliers are counted at the same distance_threshold
+    - Quality gate (inlier_ratio_threshold) is applied based on the counted inliers
+
+    DIFFERENCE FROM compute_inlier_mask (original):
+    - Original: Used mark_planes_below_threshold_as_outliers which checks inlier ratio
+      from RANSAC fit, then reads refined_inlier_num_points from DataFrame
+    - v1: Recounts inliers at distance_threshold and applies gate based on recounted ratio
 
     Returns:
         inlier_mask: (H, W) bool array, True for inlier pixels
@@ -131,7 +148,7 @@ def compute_inlier_mask(
             "precision": 0, "recall": 0, "num_inliers": 0, "num_planes": 0
         }
 
-    # Fit planes per label
+    # Fit planes per label (RANSAC at distance_threshold)
     results, df = fit_planes_per_label_v1(
         pts_world,
         labels,
@@ -146,36 +163,63 @@ def compute_inlier_mask(
             "precision": 0, "recall": 0, "num_inliers": 0, "num_planes": 0
         }
 
-    # Mark low-quality planes as outliers
-    results, df = mark_planes_below_threshold_as_outliers(
-        results, df, inlier_ratio_threshold
-    )
-
-    # Collect all inlier indices
-    all_inlier_global_idx = []
+    # Extract plane parameters
+    plane_params = {}
     for pid, data in results.items():
-        if "inliers_all" in data and len(data["inliers_all"]) > 0:
-            all_inlier_global_idx.extend(data["inliers_all"].tolist())
+        if "plane_model_refined" in data:
+            plane_params[pid] = data["plane_model_refined"]
+
+    if not plane_params:
+        return np.zeros((H, W), dtype=bool), {
+            "precision": 0, "recall": 0, "num_inliers": 0, "num_planes": 0
+        }
+
+    # Count inliers at the same threshold and apply quality gate
+    # This is consistent with compute_inliers_at_threshold in metrics.py
+    total_inliers = 0
+    total_points = 0
+    num_valid_planes = 0
+    all_inlier_indices = []
+
+    for pid, params in plane_params.items():
+        mask = (labels == pid)
+        segment_indices = np.where(mask)[0]
+        pts_plane = pts_world[mask]
+        n_pts = pts_plane.shape[0]
+
+        if n_pts == 0:
+            continue
+
+        a, b, c, d = params
+        distances = np.abs(pts_plane @ np.array([a, b, c]) + d)
+        inlier_mask_segment = distances < distance_threshold
+        n_inliers = np.sum(inlier_mask_segment)
+
+        # Quality gate: only count segments with sufficient inlier ratio
+        if n_inliers / n_pts >= inlier_ratio_threshold:
+            total_inliers += n_inliers
+            total_points += n_pts
+            num_valid_planes += 1
+            # Collect inlier indices for visualization
+            all_inlier_indices.extend(segment_indices[inlier_mask_segment].tolist())
 
     # Create inlier mask in image space
     inlier_mask = np.zeros(H * W, dtype=bool)
-    if len(all_inlier_global_idx) > 0:
-        inlier_image_idx = valid_idx[all_inlier_global_idx]
+    if len(all_inlier_indices) > 0:
+        inlier_image_idx = valid_idx[all_inlier_indices]
         inlier_mask[inlier_image_idx] = True
 
     inlier_mask = inlier_mask.reshape(H, W)
 
-    # Compute stats
-    total_predicted = df["num_points"].sum() if "num_points" in df.columns else 0
-    total_inliers = df["refined_inlier_num_points"].sum() if "refined_inlier_num_points" in df.columns else 0
-    precision = total_inliers / total_predicted if total_predicted > 0 else 0
-    recall = total_inliers / pts_world.shape[0] if pts_world.shape[0] > 0 else 0
+    # Compute stats (consistent with compute_inliers_at_threshold)
+    precision = total_inliers / total_points if total_points > 0 else 0.0
+    recall = total_inliers / len(labels) if len(labels) > 0 else 0.0
 
     stats = {
         "precision": float(precision),
         "recall": float(recall),
         "num_inliers": int(total_inliers),
-        "num_planes": len([r for r in results.values() if r.get("refined_inlier_num_points", 0) > 0])
+        "num_planes": num_valid_planes
     }
 
     return inlier_mask, stats
@@ -287,8 +331,8 @@ def visualize_frame(
         # Apply label offset
         plane_seg = plane_seg + method_config["label_offset"]
 
-        # Compute inlier mask
-        inlier_mask, stats = compute_inlier_mask(
+        # Compute inlier mask (v1: consistent with evaluation)
+        inlier_mask, stats = compute_inlier_mask_v1(
             plane_seg, depth_np, K_np, c2w_np,
             distance_threshold=distance_threshold,
             inlier_ratio_threshold=INLIER_RATIO_THRESHOLD
@@ -393,7 +437,7 @@ def visualize_frame(
         axes[2, col].axis("off")
 
     legend_text = "GREEN=Common(TP)  RED=GT missed(FN)  BLUE=Method extra(FP)"
-    plt.suptitle(f"RANSAC Inliers @ {distance_threshold*100:.1f}cm | {scene_id} / {frame_idx}\n{legend_text}", fontsize=12)
+    plt.suptitle(f"RANSAC Inliers @ {distance_threshold*100:.1f}cm (v1) | {scene_id} / {frame_idx}\n{legend_text}", fontsize=12)
     plt.tight_layout()
 
     # Save PNG
@@ -429,6 +473,7 @@ def save_results_h5(all_results: List[Dict], output_path: Path, distance_thresho
         f.attrs["distance_threshold"] = distance_threshold
         f.attrs["inlier_ratio_threshold"] = INLIER_RATIO_THRESHOLD
         f.attrs["num_frames"] = len(all_results)
+        f.attrs["version"] = "v1"  # Mark as v1
 
         # Store method names
         method_names = list(METHODS.keys())
@@ -497,7 +542,7 @@ def save_summary_csv(all_results: List[Dict], output_path: Path):
 # ============================================================
 
 def main():
-    parser = argparse.ArgumentParser(description="Visualize RANSAC inliers across all baselines")
+    parser = argparse.ArgumentParser(description="Visualize RANSAC inliers across all baselines (v1: consistent with evaluation)")
     parser.add_argument("--n-samples", type=int, default=20,
                         help="Number of random samples to visualize")
     parser.add_argument("--random-seed", type=int, default=42,
@@ -516,8 +561,7 @@ def main():
     if args.output_dir:
         base_output_dir = Path(args.output_dir)
     else:
-        # EXP_VER = "v4"
-        EXP_VER = "v2"
+        EXP_VER = "v4"  # v1 version
         base_output_dir = VIS_ROOT / f"baselines_n{args.n_samples}_seed{args.random_seed}_{EXP_VER}"
     base_output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -525,6 +569,7 @@ def main():
     print(f"[CONFIG] Random seed: {args.random_seed}")
     print(f"[CONFIG] Base output dir: {base_output_dir}")
     print(f"[CONFIG] Thresholds: {[f'{t*100:.1f}cm' for t in THRESHOLDS]}")
+    print(f"[CONFIG] Version: v1 (consistent with evaluate_all_baselines.py)")
 
     # Determine methods to visualize
     if args.methods:

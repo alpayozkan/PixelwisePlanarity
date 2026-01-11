@@ -10,24 +10,10 @@ And produces summary tables for precision/recall and segmentation metrics.
 import pandas as pd
 from pathlib import Path
 
-from visualize_scannetpp_all_baselines import METHODS as VIS_METHODS
+from planamono.evaluation.quantitative.evaluate_all_baselines import METHODS, THRESHOLDS, EVAL_ROOT
 
-# Root directory where eval results are stored
-ROOT = Path("/cluster/scratch/aoezkan/planeseg/scannetpp/eval")
-
-# Build mapping from eval folder name to display name
-# Eval folders use h5_folder names (with some variations)
-METHODS = {}
-for key, config in VIS_METHODS.items():
-    if config["h5_folder"] is None:
-        continue  # Skip GT (uses rendered.h5 from dataset)
-    h5_folder = config["h5_folder"]
-    display_name = config["display_name"]
-    # Add with h5_folder name
-    METHODS[h5_folder] = display_name
-    # Also add without _h5 suffix for flexibility
-    if h5_folder.endswith("_h5"):
-        METHODS[h5_folder[:-3]] = display_name
+# Root directory where eval results are stored (imported from evaluate_all_baselines)
+ROOT = EVAL_ROOT
 
 
 def find_dataset_csv(folder: Path):
@@ -61,8 +47,10 @@ def aggregate_results(root: Path = ROOT, output_dir: Path = None):
     # ---------- TABLE 1: Precision / Recall ----------
     rows_pr = []
 
-    for folder_name, method_name in METHODS.items():
-        folder = root / folder_name
+    for method_key, method_config in METHODS.items():
+        exp_name = method_config["exp_name"]
+        display_name = method_config["display_name"]
+        folder = root / exp_name
         if not folder.exists():
             print(f"[WARN] Missing folder {folder}")
             continue
@@ -71,23 +59,24 @@ def aggregate_results(root: Path = ROOT, output_dir: Path = None):
             csv_path = find_dataset_csv(folder)
             df = pd.read_csv(csv_path).iloc[0]
         except Exception as e:
-            print(f"[ERROR] Could not read results for {folder_name}: {e}")
+            print(f"[ERROR] Could not read results for {method_key}: {e}")
             continue
 
         row = {
-            "Method": method_name,
+            "Method": display_name,
             "num_scenes": int(df["num_scenes"]),
             "num_frames": int(df["num_frames_total"]),
         }
 
         # Add precision/recall metrics if available
-        for thresh in ["1cm", "2cm", "5cm"]:
-            prec_col = f"prec@{thresh}_mean"
-            rec_col = f"rec@{thresh}_mean"
+        for thr in THRESHOLDS:
+            thresh_str = f"{thr*100:.1f}cm"
+            prec_col = f"prec@{thresh_str}_mean"
+            rec_col = f"rec@{thresh_str}_mean"
             if prec_col in df.index:
-                row[f"prec@{thresh}"] = df[prec_col]
+                row[f"prec@{thresh_str}"] = df[prec_col]
             if rec_col in df.index:
-                row[f"recall@{thresh}"] = df[rec_col]
+                row[f"recall@{thresh_str}"] = df[rec_col]
 
         rows_pr.append(row)
 
@@ -102,8 +91,10 @@ def aggregate_results(root: Path = ROOT, output_dir: Path = None):
     # ---------- TABLE 2: Segmentation ----------
     rows_seg = []
 
-    for folder_name, method_name in METHODS.items():
-        folder = root / folder_name
+    for method_key, method_config in METHODS.items():
+        exp_name = method_config["exp_name"]
+        display_name = method_config["display_name"]
+        folder = root / exp_name
         if not folder.exists():
             continue
 
@@ -114,7 +105,7 @@ def aggregate_results(root: Path = ROOT, output_dir: Path = None):
             continue
 
         row = {
-            "Method": method_name,
+            "Method": display_name,
             "num_scenes": int(df["num_scenes"]),
             "num_frames": int(df["num_frames_total"]),
         }
@@ -139,8 +130,10 @@ def aggregate_results(root: Path = ROOT, output_dir: Path = None):
     # ---------- TABLE 3: Combined Summary ----------
     rows_combined = []
 
-    for folder_name, method_name in METHODS.items():
-        folder = root / folder_name
+    for method_key, method_config in METHODS.items():
+        exp_name = method_config["exp_name"]
+        display_name = method_config["display_name"]
+        folder = root / exp_name
         if not folder.exists():
             continue
 
@@ -151,7 +144,7 @@ def aggregate_results(root: Path = ROOT, output_dir: Path = None):
             continue
 
         row = {
-            "Method": method_name,
+            "Method": display_name,
             "num_scenes": int(df["num_scenes"]),
             "num_frames": int(df["num_frames_total"]),
         }
@@ -164,25 +157,27 @@ def aggregate_results(root: Path = ROOT, output_dir: Path = None):
                 row[display] = df[col]
 
         # Precision/recall at all thresholds
-        for thresh in ["1cm", "2cm", "5cm"]:
-            prec_col = f"prec@{thresh}_mean"
-            rec_col = f"rec@{thresh}_mean"
+        for thr in THRESHOLDS:
+            thresh_str = f"{thr*100:.1f}cm"
+            prec_col = f"prec@{thresh_str}_mean"
+            rec_col = f"rec@{thresh_str}_mean"
             if prec_col in df.index:
-                row[f"P@{thresh}"] = df[prec_col]
+                row[f"P@{thresh_str}"] = df[prec_col]
             if rec_col in df.index:
-                row[f"R@{thresh}"] = df[rec_col]
+                row[f"R@{thresh_str}"] = df[rec_col]
 
         rows_combined.append(row)
 
     if rows_combined:
         df_combined = pd.DataFrame(rows_combined)
 
-        # Custom row order: GT Seg, Ours, ZeroPlane, then rest
+        # Custom row order: GT Seg (upper bound), Ours, ZeroPlane, ablations
         order_priority = {
             "GT Seg (upper bound)": 0,
             "Ours (full)": 1,
             "ZeroPlane": 2,
-            "ZeroPlane(nonp)": 3,
+            "GT Planarity + Our Seg": 3,
+            "Our Planarity + GT Seg": 4,
         }
         df_combined["_sort_key"] = df_combined["Method"].map(
             lambda x: order_priority.get(x, 100)

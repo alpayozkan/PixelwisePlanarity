@@ -242,8 +242,8 @@ def evaluate_single_frame(
         pts_world, pt_labels, _ = backproject(depth_np, K_np, c2w_np, labels)
 
         if pts_world.shape[0] == 0:
-            metric_thr = {f"prec@{int(thr*100)}cm": 0.0 for thr in thresholds}
-            metric_thr.update({f"rec@{int(thr*100)}cm": 0.0 for thr in thresholds})
+            metric_thr = {f"prec@{thr*100:.1f}cm": 0.0 for thr in thresholds}
+            metric_thr.update({f"rec@{thr*100:.1f}cm": 0.0 for thr in thresholds})
         else:
             metric_thr = compute_plane_metrics(
                 pts_world, pt_labels, thresholds,
@@ -252,8 +252,8 @@ def evaluate_single_frame(
             )
     else:
         for thr in thresholds:
-            metric_thr[f"prec@{int(thr*100)}cm"] = np.nan
-            metric_thr[f"rec@{int(thr*100)}cm"] = np.nan
+            metric_thr[f"prec@{thr*100:.1f}cm"] = np.nan
+            metric_thr[f"rec@{thr*100:.1f}cm"] = np.nan
 
     # Clustering metrics (pure img-to-img)
     clustering = compute_clustering_metrics(gt_seg_np, labels)
@@ -347,7 +347,158 @@ def compute_plane_metrics(
 
     result = {}
     for thr in thresholds:
-        result[f"prec@{int(thr*100)}cm"] = multi_metrics[thr]["precision"]
-        result[f"rec@{int(thr*100)}cm"] = multi_metrics[thr]["recall"]
+        result[f"prec@{thr*100:.1f}cm"] = multi_metrics[thr]["precision"]
+        result[f"rec@{thr*100:.1f}cm"] = multi_metrics[thr]["recall"]
 
     return result
+
+
+def compute_plane_metrics_v1(
+    pts_world: np.ndarray,
+    labels: np.ndarray,
+    thresholds: Tuple[float, ...],
+    num_iterations: int = 200,
+    min_support: int = 100,
+    inlier_ratio_gate: float = 0.5
+) -> Dict[str, float]:
+    """
+    Compute plane fitting metrics at multiple thresholds (v1: consistent threshold).
+
+    DIFFERENCE FROM compute_plane_metrics:
+    - compute_plane_metrics: Uses fixed base_threshold=0.02 (2cm) for RANSAC fitting,
+      then evaluates inliers at each threshold. This means the same plane equation
+      is used for all thresholds.
+    - compute_plane_metrics_v1: Uses the evaluation threshold as the RANSAC threshold.
+      This means each threshold gets its own plane fit, and precision/recall reflect
+      how well planes can be fit AND evaluated at that specific tolerance.
+
+    Use this version when you want to measure:
+    "What is the precision/recall when planes are fit at threshold X?"
+
+    Use compute_plane_metrics when you want to measure:
+    "Given a robustly-fit plane (at 2cm), how precise is it at stricter thresholds?"
+
+    Args:
+        pts_world: (N, 3) world coordinates
+        labels: (N,) segment labels
+        thresholds: Tuple of distance thresholds (meters)
+        num_iterations: RANSAC iterations
+        min_support: Minimum points for RANSAC
+        inlier_ratio_gate: Minimum inlier ratio to count a segment as valid (default 0.5)
+
+    Returns:
+        {"prec@Xcm": float, "rec@Xcm": float} for each threshold X
+    """
+    from planamono.shared.plane_fitting import (
+        fit_planes_per_label_v1,
+        compute_inliers_at_threshold,
+    )
+
+    result = {}
+    for thr in thresholds:
+        # Fit planes with RANSAC at this threshold
+        fit_results, df = fit_planes_per_label_v1(
+            pts_world,
+            labels,
+            ignore_labels=(0,),
+            distance_threshold=thr,  # Use evaluation threshold for RANSAC
+            num_iterations=num_iterations,
+            min_support=min_support
+        )
+
+        if df is None or len(df) == 0:
+            result[f"prec@{thr*100:.1f}cm"] = 0.0
+            result[f"rec@{thr*100:.1f}cm"] = 0.0
+            continue
+
+        # Extract fitted plane parameters
+        plane_params = {}
+        for pid, data in fit_results.items():
+            if "plane_model_refined" in data:
+                plane_params[pid] = data["plane_model_refined"]
+
+        if not plane_params:
+            result[f"prec@{thr*100:.1f}cm"] = 0.0
+            result[f"rec@{thr*100:.1f}cm"] = 0.0
+            continue
+
+        # Evaluate at the same threshold
+        metrics = compute_inliers_at_threshold(
+            pts_world, labels, plane_params, thr, inlier_ratio_gate
+        )
+
+        result[f"prec@{thr*100:.1f}cm"] = metrics["precision"]
+        result[f"rec@{thr*100:.1f}cm"] = metrics["recall"]
+
+    return result
+
+
+def evaluate_single_frame_v1(
+    scene_id: str,
+    frame_idx: str,
+    depth_np: np.ndarray,
+    gt_seg_np: np.ndarray,
+    K_np: np.ndarray,
+    c2w_np: np.ndarray,
+    labels: np.ndarray,
+    thresholds: Tuple[float, ...],
+    compute_plane_metrics_flag: bool = True,
+    ransac_iterations: int = 200,
+    inlier_ratio_gate: float = 0.5
+) -> Tuple[Dict, np.ndarray]:
+    """
+    Evaluate a single frame with pre-computed segmentation labels (v1: consistent threshold).
+
+    DIFFERENCE FROM evaluate_single_frame:
+    - Uses compute_plane_metrics_v1 instead of compute_plane_metrics
+    - RANSAC is run at each evaluation threshold (not fixed 2cm)
+    - See compute_plane_metrics_v1 docstring for detailed explanation
+
+    Args:
+        scene_id: Scene identifier
+        frame_idx: Frame identifier
+        depth_np: (H, W) depth map in meters
+        gt_seg_np: (H, W) ground truth segmentation
+        K_np: (3, 3) or (4, 4) camera intrinsics
+        c2w_np: (4, 4) camera-to-world pose
+        labels: (H, W) predicted segmentation labels
+        thresholds: Tuple of distance thresholds for plane metrics (meters)
+        compute_plane_metrics_flag: Whether to compute RANSAC plane metrics
+        ransac_iterations: Number of RANSAC iterations
+        inlier_ratio_gate: Minimum inlier ratio to count a segment as valid (default 0.5)
+
+    Returns:
+        (metrics_dict, labels) where metrics_dict contains all computed metrics
+    """
+    from planamono.shared.plane_fitting import backproject_v1 as backproject
+
+    metric_thr = {}
+
+    if compute_plane_metrics_flag:
+        pts_world, pt_labels, _ = backproject(depth_np, K_np, c2w_np, labels)
+
+        if pts_world.shape[0] == 0:
+            metric_thr = {f"prec@{thr*100:.1f}cm": 0.0 for thr in thresholds}
+            metric_thr.update({f"rec@{thr*100:.1f}cm": 0.0 for thr in thresholds})
+        else:
+            metric_thr = compute_plane_metrics_v1(
+                pts_world, pt_labels, thresholds,
+                num_iterations=ransac_iterations,
+                inlier_ratio_gate=inlier_ratio_gate
+            )
+    else:
+        for thr in thresholds:
+            metric_thr[f"prec@{thr*100:.1f}cm"] = np.nan
+            metric_thr[f"rec@{thr*100:.1f}cm"] = np.nan
+
+    # Clustering metrics (pure img-to-img)
+    clustering = compute_clustering_metrics(gt_seg_np, labels)
+
+    metrics = {
+        "scene_id": scene_id,
+        "frame_idx": frame_idx,
+        **clustering,
+        **metric_thr
+    }
+
+    return metrics, labels
