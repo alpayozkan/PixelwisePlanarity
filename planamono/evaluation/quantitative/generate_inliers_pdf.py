@@ -365,7 +365,7 @@ def generate_all(base_dir, page_size, aspect, max_width, quality, formats):
 def main():
     parser = argparse.ArgumentParser(description="Generate PDF and/or PPTX from inlier visualization PNGs")
     parser.add_argument("--vis-dir", type=str,
-                       default="/cluster/scratch/aoezkan/planeseg/scannetpp/visualizations/inliers/baselines_n20_seed42_v4",
+                       default="/cluster/scratch/aoezkan/planeseg/scannetpp/visualizations/inliers/baselines_n20_seed42_v5",
                        help="Base directory containing threshold subdirectories (or PNGs directly)")
     parser.add_argument("--output", type=str, default=None,
                        help="Output path (only used with --threshold, extension determines format)")

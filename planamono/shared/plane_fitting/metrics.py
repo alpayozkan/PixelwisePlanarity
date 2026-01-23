@@ -87,19 +87,19 @@ def compute_inliers_at_threshold(
     Count inliers at a given distance threshold using pre-fitted plane parameters.
 
     For each plane segment, computes the number of points within `threshold`
-    distance of the fitted plane. Only segments with inlier ratio >= gate
-    are counted (quality filtering).
+    distance of the fitted plane. Segments with inlier ratio below the gate
+    contribute 0 inliers but their points still count in the precision denominator.
 
     Args:
         pts_world: (N, 3) world coordinates
         labels: (N,) segment labels for each point
         plane_params: {segment_id: (a, b, c, d)} plane parameters (ax + by + cz + d = 0)
         threshold: Distance threshold in meters
-        inlier_ratio_gate: Minimum inlier ratio to count a segment (default 0.5)
+        inlier_ratio_gate: Minimum inlier ratio to count inliers (default 0.5)
 
     Returns:
         {"precision": float, "recall": float}
-        - precision: inliers / total_points (in valid segments only)
+        - precision: inliers / total_predicted_points (all predicted plane points)
         - recall: inliers / all_scene_points
     """
     total_inliers = 0
@@ -117,15 +117,90 @@ def compute_inliers_at_threshold(
         distances = np.abs(pts_plane @ np.array([a, b, c]) + d)
         n_inliers = np.sum(distances < threshold)
 
-        # Quality gate: only count segments with sufficient inlier ratio
+        # Always count all predicted points in precision denominator
+        total_points += n_pts
+
+        # Quality gate: only count inliers if segment passes threshold
+        # (segments below gate contribute 0 inliers, penalizing precision)
         if n_inliers / n_pts >= inlier_ratio_gate:
             total_inliers += n_inliers
-            total_points += n_pts
 
     precision = total_inliers / total_points if total_points > 0 else 0.0
     recall = total_inliers / len(labels) if len(labels) > 0 else 0.0
 
     return {"precision": precision, "recall": recall}
+
+
+def compute_inliers_at_threshold_with_indices(
+    pts_world: np.ndarray,
+    labels: np.ndarray,
+    plane_params: Dict[int, Tuple[float, float, float, float]],
+    threshold: float,
+    inlier_ratio_gate: float = 0.5
+) -> Dict:
+    """
+    Count inliers at a given distance threshold AND return inlier indices.
+
+    This is the same as compute_inliers_at_threshold but also returns the
+    indices of inlier points for visualization purposes.
+
+    Args:
+        pts_world: (N, 3) world coordinates
+        labels: (N,) segment labels for each point
+        plane_params: {segment_id: (a, b, c, d)} plane parameters (ax + by + cz + d = 0)
+        threshold: Distance threshold in meters
+        inlier_ratio_gate: Minimum inlier ratio to count inliers (default 0.5)
+
+    Returns:
+        {
+            "precision": float,
+            "recall": float,
+            "num_inliers": int,
+            "num_valid_planes": int,
+            "total_predicted_points": int,
+            "inlier_indices": List[int]  # indices into pts_world/labels
+        }
+    """
+    total_inliers = 0
+    total_points = 0
+    num_valid_planes = 0
+    all_inlier_indices = []
+
+    for pid, params in plane_params.items():
+        mask = (labels == pid)
+        segment_indices = np.where(mask)[0]
+        pts_plane = pts_world[mask]
+        n_pts = pts_plane.shape[0]
+
+        if n_pts == 0:
+            continue
+
+        a, b, c, d = params
+        distances = np.abs(pts_plane @ np.array([a, b, c]) + d)
+        inlier_mask_segment = distances < threshold
+        n_inliers = np.sum(inlier_mask_segment)
+
+        # Always count all predicted points in precision denominator
+        total_points += n_pts
+
+        # Quality gate: only count inliers if segment passes threshold
+        if n_inliers / n_pts >= inlier_ratio_gate:
+            total_inliers += n_inliers
+            num_valid_planes += 1
+            # Collect inlier indices for visualization
+            all_inlier_indices.extend(segment_indices[inlier_mask_segment].tolist())
+
+    precision = total_inliers / total_points if total_points > 0 else 0.0
+    recall = total_inliers / len(labels) if len(labels) > 0 else 0.0
+
+    return {
+        "precision": precision,
+        "recall": recall,
+        "num_inliers": total_inliers,
+        "num_valid_planes": num_valid_planes,
+        "total_predicted_points": total_points,
+        "inlier_indices": all_inlier_indices
+    }
 
 
 def fit_planes_and_evaluate_multi_threshold(

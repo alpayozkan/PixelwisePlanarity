@@ -3,15 +3,25 @@
 # repo_path = '/cluster/home/aoezkan/planeseg/planamono/planamono'
 repo_path = '/cluster/home/aoezkan/planeseg/PixelwisePlanarity/planamono/'
 
-# dataset dirs
+# dataset dirs (original)
 hypersim_path = '/cluster/project/cvg/Shared_datasets/Hypersim'
 scannetpp_path = '/cluster/project/cvg/Shared_datasets/scannet++'
 scannetppv2_path = '/cluster/project/cvg/Shared_datasets/scannetpp_v2'
 
-# our plane gt dataset dirs
+# our plane gt dataset dirs (3D mesh plane extraction)
 hypersim_plane_path = '/cluster/scratch/ayavuz/dataset/Hypersim_ours'
 scannetpp_plane_path = '/cluster/scratch/ayavuz/dataset/plane_ours_gt'
 
-# rendered data
-hypersim_rend_plane_path = '/cluster/scratch/aoezkan/planeseg/dataset/Hypersim'
+# ============ Hypersim processed data ============
+# depth + semantics + RGB (merged)
+hypersim_merged_path = '/cluster/scratch/ayavuz/dataset/Hypersim_merged'
+# camera parameters
+hypersim_params_path = '/cluster/scratch/ayavuz/dataset/Hypersim_params'
+# plane segmentation labels (rendered)
+hypersim_rendered_path = '/cluster/scratch/ayavuz/dataset/Hypersim_rendered'
+
+# ============ ScanNet++ rendered data ============
 scannetpp_rend_plane_path = '/cluster/scratch/aoezkan/planeseg/dataset/scannetpp'
+
+# Legacy paths (for backward compatibility)
+hypersim_rend_plane_path = '/cluster/scratch/aoezkan/planeseg/dataset/Hypersim'

@@ -1,22 +1,19 @@
 """
-Visualization script for RANSAC inlier comparison across all baseline methods (v1).
+Visualization script for RANSAC inlier comparison across all baseline methods (v2).
 
-DIFFERENCE FROM visualize_scannetpp_all_baselines.py:
-- Uses compute_inlier_mask_v1 which is consistent with compute_plane_metrics_v1
-- RANSAC threshold = evaluation threshold (same threshold for fitting and evaluation)
-- Inliers are recounted at the evaluation threshold (not read from DataFrame)
-- Quality gate is applied based on recounted inlier ratio
-
-See METRIC_INCONSISTENCY_ANALYSIS.md for detailed explanation.
+DIFFERENCE FROM v1:
+- Uses shared functions from planamono.shared.plane_fitting.metrics
+- Ensures visualization metrics are EXACTLY synchronized with evaluation
+- No duplicate metric computation logic
 
 Generates:
 1. PNG visualizations with 3-row layout (Inliers, Segmentation, Diff vs GT)
 2. H5 file with structured results (inlier masks, stats, diff stats)
 
 Usage:
-    python visualize_scannetpp_all_baselines_v1.py --n-samples 10
-    python visualize_scannetpp_all_baselines_v1.py --n-samples 5 --random-seed 42
-    python visualize_scannetpp_all_baselines_v1.py --specific-frames "scene1:frame1,scene2:frame2"
+    python visualize_scannetpp_all_baselines_v2.py --n-samples 10
+    python visualize_scannetpp_all_baselines_v2.py --n-samples 5 --random-seed 42
+    python visualize_scannetpp_all_baselines_v2.py --specific-frames "scene1:frame1,scene2:frame2"
 """
 
 import os
@@ -39,8 +36,9 @@ from planamono.shared.datasets.scannetpp import ScanNetPPPlaneDataset
 from planamono.shared.plane_fitting import (
     backproject_v1 as backproject,
     fit_planes_per_label_v1,
+    compute_inliers_at_threshold_with_indices,  # Shared function from metrics.py
 )
-from planamono.shared.utils import visualize_top_components_v1, visualize_top_components_v2
+from planamono.shared.utils import visualize_top_components_v2
 from planamono.evaluation.quantitative.evaluate_all_baselines import (
     THRESHOLDS,
     METHODS as EVAL_METHODS,
@@ -110,57 +108,54 @@ def resize_plane_nn(plane: np.ndarray, target_hw: Tuple[int, int]) -> np.ndarray
 
 
 # ============================================================
-# INLIER COMPUTATION (v1: consistent with compute_plane_metrics_v1)
+# INLIER COMPUTATION (uses shared functions from metrics.py)
 # ============================================================
 
-def compute_inlier_mask_v1(
+def compute_inlier_mask_and_stats(
     plane_seg: np.ndarray,
     depth_np: np.ndarray,
     K_np: np.ndarray,
     c2w_np: np.ndarray,
     distance_threshold: float = 0.02,
-    inlier_ratio_threshold: float = 0.5
+    inlier_ratio_threshold: float = 0.5,
+    ransac_iterations: int = 200
 ) -> Tuple[np.ndarray, Dict]:
     """
-    Compute a binary mask of RANSAC inliers (v1: consistent with evaluation).
+    Compute inlier mask and stats using shared evaluation functions.
 
-    This function is consistent with compute_plane_metrics_v1 in eval_utils.py:
-    - RANSAC is run with distance_threshold
-    - Inliers are counted at the same distance_threshold
-    - Quality gate (inlier_ratio_threshold) is applied based on the counted inliers
-
-    DIFFERENCE FROM compute_inlier_mask (original):
-    - Original: Used mark_planes_below_threshold_as_outliers which checks inlier ratio
-      from RANSAC fit, then reads refined_inlier_num_points from DataFrame
-    - v1: Recounts inliers at distance_threshold and applies gate based on recounted ratio
+    This function uses the SAME logic as evaluate_all_baselines.py:
+    - fit_planes_per_label_v1 for RANSAC plane fitting
+    - compute_inliers_at_threshold_with_indices for metric computation
 
     Returns:
         inlier_mask: (H, W) bool array, True for inlier pixels
-        stats: dict with precision, recall, num_inliers, num_planes
+        stats: dict with precision, recall, num_inliers, num_planes, total_predicted_points
     """
     H, W = depth_np.shape
 
-    # Backproject to 3D
+    # Backproject to 3D (same as evaluation)
     pts_world, labels, valid_idx = backproject(depth_np, K_np, c2w_np, plane_seg)
 
     if pts_world.shape[0] == 0:
         return np.zeros((H, W), dtype=bool), {
-            "precision": 0, "recall": 0, "num_inliers": 0, "num_planes": 0
+            "precision": 0.0, "recall": 0.0, "num_inliers": 0,
+            "num_planes": 0, "total_predicted_points": 0
         }
 
-    # Fit planes per label (RANSAC at distance_threshold)
+    # Fit planes per label (same as evaluation)
     results, df = fit_planes_per_label_v1(
         pts_world,
         labels,
         ignore_labels=(0,),
         distance_threshold=distance_threshold,
-        num_iterations=RANSAC_ITERATIONS,
+        num_iterations=ransac_iterations,
         min_support=100
     )
 
     if df is None or len(df) == 0:
         return np.zeros((H, W), dtype=bool), {
-            "precision": 0, "recall": 0, "num_inliers": 0, "num_planes": 0
+            "precision": 0.0, "recall": 0.0, "num_inliers": 0,
+            "num_planes": 0, "total_predicted_points": 0
         }
 
     # Extract plane parameters
@@ -171,55 +166,29 @@ def compute_inlier_mask_v1(
 
     if not plane_params:
         return np.zeros((H, W), dtype=bool), {
-            "precision": 0, "recall": 0, "num_inliers": 0, "num_planes": 0
+            "precision": 0.0, "recall": 0.0, "num_inliers": 0,
+            "num_planes": 0, "total_predicted_points": 0
         }
 
-    # Count inliers at the same threshold and apply quality gate
-    # This is consistent with compute_inliers_at_threshold in metrics.py
-    total_inliers = 0
-    total_points = 0
-    num_valid_planes = 0
-    all_inlier_indices = []
-
-    for pid, params in plane_params.items():
-        mask = (labels == pid)
-        segment_indices = np.where(mask)[0]
-        pts_plane = pts_world[mask]
-        n_pts = pts_plane.shape[0]
-
-        if n_pts == 0:
-            continue
-
-        a, b, c, d = params
-        distances = np.abs(pts_plane @ np.array([a, b, c]) + d)
-        inlier_mask_segment = distances < distance_threshold
-        n_inliers = np.sum(inlier_mask_segment)
-
-        # Quality gate: only count segments with sufficient inlier ratio
-        if n_inliers / n_pts >= inlier_ratio_threshold:
-            total_inliers += n_inliers
-            total_points += n_pts
-            num_valid_planes += 1
-            # Collect inlier indices for visualization
-            all_inlier_indices.extend(segment_indices[inlier_mask_segment].tolist())
+    # Use SHARED function from metrics.py (ensures sync with evaluation)
+    metrics = compute_inliers_at_threshold_with_indices(
+        pts_world, labels, plane_params, distance_threshold, inlier_ratio_threshold
+    )
 
     # Create inlier mask in image space
     inlier_mask = np.zeros(H * W, dtype=bool)
-    if len(all_inlier_indices) > 0:
-        inlier_image_idx = valid_idx[all_inlier_indices]
+    if len(metrics["inlier_indices"]) > 0:
+        inlier_image_idx = valid_idx[metrics["inlier_indices"]]
         inlier_mask[inlier_image_idx] = True
 
     inlier_mask = inlier_mask.reshape(H, W)
 
-    # Compute stats (consistent with compute_inliers_at_threshold)
-    precision = total_inliers / total_points if total_points > 0 else 0.0
-    recall = total_inliers / len(labels) if len(labels) > 0 else 0.0
-
     stats = {
-        "precision": float(precision),
-        "recall": float(recall),
-        "num_inliers": int(total_inliers),
-        "num_planes": num_valid_planes
+        "precision": float(metrics["precision"]),
+        "recall": float(metrics["recall"]),
+        "num_inliers": int(metrics["num_inliers"]),
+        "num_planes": int(metrics["num_valid_planes"]),
+        "total_predicted_points": int(metrics["total_predicted_points"])
     }
 
     return inlier_mask, stats
@@ -331,11 +300,12 @@ def visualize_frame(
         # Apply label offset
         plane_seg = plane_seg + method_config["label_offset"]
 
-        # Compute inlier mask (v1: consistent with evaluation)
-        inlier_mask, stats = compute_inlier_mask_v1(
+        # Compute inlier mask using SHARED evaluation functions
+        inlier_mask, stats = compute_inlier_mask_and_stats(
             plane_seg, depth_np, K_np, c2w_np,
             distance_threshold=distance_threshold,
-            inlier_ratio_threshold=INLIER_RATIO_THRESHOLD
+            inlier_ratio_threshold=INLIER_RATIO_THRESHOLD,
+            ransac_iterations=RANSAC_ITERATIONS
         )
 
         method_results[method_key] = {
@@ -346,7 +316,8 @@ def visualize_frame(
         }
 
         print(f"  [{display_name}] P={stats['precision']:.3f} R={stats['recall']:.3f} "
-              f"Inliers={stats['num_inliers']} Planes={stats['num_planes']}")
+              f"Inliers={stats['num_inliers']} Planes={stats['num_planes']} "
+              f"TotalPts={stats['total_predicted_points']}")
 
     if len(method_results) == 0:
         print(f"  [ERROR] No methods loaded successfully for {scene_id}/{frame_idx}")
@@ -384,7 +355,6 @@ def visualize_frame(
     axes[0, 0].axis("off")
     axes[0, 0].set_ylabel(row_titles[0], fontsize=12, rotation=90, labelpad=10)
 
-    # gt_seg_vis = visualize_top_components_v1(gt_plane_np, k=10, return_colors=True, ignore_label=0)
     gt_seg_vis = visualize_top_components_v2(gt_plane_np, k=20, return_colors=True, ignore_label=0)
     axes[1, 0].imshow(gt_seg_vis)
     axes[1, 0].set_title("Plane GT")
@@ -421,7 +391,6 @@ def visualize_frame(
         axes[0, col].axis("off")
 
         # Row 1: Segmentation
-        # seg_vis = visualize_top_components_v1(data["plane_seg"], k=10, return_colors=True, ignore_label=0)
         seg_vis = visualize_top_components_v2(data["plane_seg"], k=20, return_colors=True, ignore_label=0)
         axes[1, col].imshow(seg_vis)
         axes[1, col].set_title(f"{data['stats']['num_planes']} planes")
@@ -439,7 +408,7 @@ def visualize_frame(
         axes[2, col].axis("off")
 
     legend_text = "GREEN=Common(TP)  RED=GT missed(FN)  BLUE=Method extra(FP)"
-    plt.suptitle(f"RANSAC Inliers @ {distance_threshold*100:.1f}cm (v1) | {scene_id} / {frame_idx}\n{legend_text}", fontsize=12)
+    plt.suptitle(f"RANSAC Inliers @ {distance_threshold*100:.1f}cm (v2) | {scene_id} / {frame_idx}\n{legend_text}", fontsize=12)
     plt.tight_layout()
 
     # Save PNG
@@ -475,7 +444,7 @@ def save_results_h5(all_results: List[Dict], output_path: Path, distance_thresho
         f.attrs["distance_threshold"] = distance_threshold
         f.attrs["inlier_ratio_threshold"] = INLIER_RATIO_THRESHOLD
         f.attrs["num_frames"] = len(all_results)
-        f.attrs["version"] = "v1"  # Mark as v1
+        f.attrs["version"] = "v2"  # Mark as v2
 
         # Store method names
         method_names = list(METHODS.keys())
@@ -544,7 +513,7 @@ def save_summary_csv(all_results: List[Dict], output_path: Path):
 # ============================================================
 
 def main():
-    parser = argparse.ArgumentParser(description="Visualize RANSAC inliers across all baselines (v1: consistent with evaluation)")
+    parser = argparse.ArgumentParser(description="Visualize RANSAC inliers across all baselines (v2: uses shared eval functions)")
     parser.add_argument("--n-samples", type=int, default=20,
                         help="Number of random samples to visualize")
     parser.add_argument("--random-seed", type=int, default=42,
@@ -563,7 +532,7 @@ def main():
     if args.output_dir:
         base_output_dir = Path(args.output_dir)
     else:
-        EXP_VER = "v4"  # v1 version
+        EXP_VER = "v5"  # v2 version of visualization
         base_output_dir = VIS_ROOT / f"baselines_n{args.n_samples}_seed{args.random_seed}_{EXP_VER}"
     base_output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -571,7 +540,9 @@ def main():
     print(f"[CONFIG] Random seed: {args.random_seed}")
     print(f"[CONFIG] Base output dir: {base_output_dir}")
     print(f"[CONFIG] Thresholds: {[f'{t*100:.1f}cm' for t in THRESHOLDS]}")
-    print(f"[CONFIG] Version: v1 (consistent with evaluate_all_baselines.py)")
+    print(f"[CONFIG] Inlier ratio gate: {INLIER_RATIO_THRESHOLD}")
+    print(f"[CONFIG] RANSAC iterations: {RANSAC_ITERATIONS}")
+    print(f"[CONFIG] Version: v2 (uses shared eval functions from metrics.py)")
 
     # Determine methods to visualize
     if args.methods:
