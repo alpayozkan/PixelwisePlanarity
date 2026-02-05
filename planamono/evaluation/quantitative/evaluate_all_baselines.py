@@ -1,6 +1,10 @@
 """
 Unified evaluation script for all baseline methods.
 
+Properly handles different label conventions across methods:
+- Standard methods (ours, gtseg, etc.): Use label 0 for non-planar/background
+- ZeroPlane: Uses label 20 for non-planar regions (automatically remapped to 0)
+
 Evaluates all methods from H5 prediction folders and generates:
 1. Per-method CSV results (results.csv, results_per_scene.csv, results_dataset.csv)
 2. Aggregated baseline comparison tables
@@ -54,43 +58,40 @@ H5_ROOT = Path("/cluster/scratch/aoezkan/planeseg/scannetpp/inference")
 DATASET_DIR = "/cluster/scratch/aoezkan/planeseg/dataset/scannetpp"
 
 # Experiment version (used in exp_name for all methods)
-EXP_VER = "v4"
+EXP_VER = "v5"  # Unified version with proper non-planar label handling
 
-# Method definitions: {method_key: {h5_folder, display_name, label_offset, uses_gt_h5}}
+# Method definitions: {method_key: {h5_folder, display_name, label_offset, nonplanar_label, uses_gt_h5}}
 METHODS = {
     "ours": {
         "h5_folder": "moge_ours_v2_h5",
         "exp_name": f"moge_ours_{EXP_VER}",
         "display_name": "Ours (full)",
         "label_offset": 0,
-        "uses_gt_h5": False,
-    },
-    "ours_mixed": {
-        "h5_folder": "moge_mixed_bce_h5",
-        "exp_name": f"moge_mixed_bce_{EXP_VER}",
-        "display_name": "Ours (Mixed BCE)",
-        "label_offset": 0,
+        "nonplanar_label": None,  # Our method uses 0 for background
         "uses_gt_h5": False,
     },
     "zeroplane": {
         "h5_folder": "zeroplane_h5",
         "exp_name": f"zeroplane_{EXP_VER}",
         "display_name": "ZeroPlane",
-        "label_offset": 1,  # ZeroPlane doesn't have background label 0
+        "label_offset": 0,  # No offset after remapping label 20 → 0
+        "nonplanar_label": 20,  # ZeroPlane uses 20 for non-planar regions
         "uses_gt_h5": False,
     },
     "zeroplane_mixed": {
         "h5_folder": "zeroplane_mixed_h5",
         "exp_name": f"zeroplane_mixed_{EXP_VER}",
         "display_name": "ZeroPlane (mixed)",
-        "label_offset": 1,  # ZeroPlane doesn't have background label 0
+        "label_offset": 0,  # No offset after remapping label 20 → 0
+        "nonplanar_label": 20,  # ZeroPlane uses 20 for non-planar regions
         "uses_gt_h5": False,
     },
     "zeroplane_mixed_dust3r": {
         "h5_folder": "zeroplane_mixed_dust3r_h5",
         "exp_name": f"zeroplane_mixed_dust3r_{EXP_VER}",
         "display_name": "ZeroPlane (mixed+dust3r)",
-        "label_offset": 1,  # ZeroPlane doesn't have background label 0
+        "label_offset": 0,  # No offset after remapping label 20 → 0
+        "nonplanar_label": 20,  # ZeroPlane uses 20 for non-planar regions
         "uses_gt_h5": False,
     },
     "gtseg": {
@@ -98,6 +99,7 @@ METHODS = {
         "exp_name": f"gtseg_{EXP_VER}",
         "display_name": "GT Seg (upper bound)",
         "label_offset": 0,
+        "nonplanar_label": None,
         "uses_gt_h5": False,
     },
     "gtplanarity_ourseg": {
@@ -105,6 +107,7 @@ METHODS = {
         "exp_name": f"gtplanarity_ourseg_{EXP_VER}",
         "display_name": "GT Planarity + Our Seg",
         "label_offset": 0,
+        "nonplanar_label": None,
         "uses_gt_h5": False,
     },
     "ourplanarity_gtseg": {
@@ -112,6 +115,7 @@ METHODS = {
         "exp_name": f"ourplanarity_gtseg_{EXP_VER}",
         "display_name": "Our Planarity + GT Seg",
         "label_offset": 0,
+        "nonplanar_label": None,
         "uses_gt_h5": False,
     },
 }
@@ -124,10 +128,13 @@ METHODS = {
 class LazyH5SceneLoader:
     """
     Memory-efficient loader that only keeps one scene in memory at a time.
+
+    Handles non-planar region remapping for methods like ZeroPlane.
     """
-    def __init__(self, h5_root: str, label_offset: int = 0):
+    def __init__(self, h5_root: str, label_offset: int = 0, nonplanar_label: Optional[int] = None):
         self.h5_root = h5_root
         self.label_offset = label_offset
+        self.nonplanar_label = nonplanar_label  # Label to remap to 0 (e.g., 20 for ZeroPlane)
         self._current_scene_id = None
         self._current_planes = None
         self._current_frame_ids = None
@@ -173,7 +180,7 @@ class LazyH5SceneLoader:
             return None
 
         idx = self._frame_id_to_idx[frame_idx]
-        pred = self._current_planes[idx]
+        pred = self._current_planes[idx].copy()  # Copy to avoid modifying cached data
 
         # Resize to target shape if needed
         if pred.shape != target_shape:
@@ -183,8 +190,14 @@ class LazyH5SceneLoader:
                 interpolation=cv2.INTER_NEAREST
             ).astype(np.int32)
 
-        # Apply label offset (e.g., ZeroPlane doesn't have 0 label)
-        pred = pred + self.label_offset
+        # Remap non-planar label to 0 (e.g., ZeroPlane uses 20 for non-planar)
+        if self.nonplanar_label is not None:
+            pred[pred == self.nonplanar_label] = 0
+
+        # Apply label offset (usually 0 after remapping)
+        if self.label_offset != 0:
+            pred = pred + self.label_offset
+
         return pred.astype(np.int32)
 
     def has_scene(self, scene_id: str) -> bool:
@@ -227,7 +240,8 @@ def evaluate_method(
     timer = Timer()
 
     # Initialize lazy loader
-    loader = LazyH5SceneLoader(str(h5_root), label_offset=label_offset)
+    nonplanar_label = method_config.get("nonplanar_label", None)
+    loader = LazyH5SceneLoader(str(h5_root), label_offset=label_offset, nonplanar_label=nonplanar_label)
 
     # Check available scenes
     scene_ids = val_dataset.scene_ids
@@ -424,9 +438,11 @@ def aggregate_results(output_dir: Path = None):
     df_seg.to_csv(out_path, index=False)
     print(f"Saved: {out_path}")
 
-    # Table 3: Combined summary (use middle threshold for P/R)
-    mid_thresh_str = f"{THRESHOLDS[len(THRESHOLDS)//2]*100:.1f}cm"
-    combined_cols = ["Method", "num_scenes", "num_frames", "RI", "VOI", "SC", f"P@{mid_thresh_str}", f"R@{mid_thresh_str}"]
+    # Table 3: Combined summary (all thresholds for P/R)
+    combined_cols = ["Method", "num_scenes", "num_frames", "RI", "VOI", "SC"]
+    for thr in THRESHOLDS:
+        thresh_str = f"{thr*100:.1f}cm"
+        combined_cols.extend([f"P@{thresh_str}", f"R@{thresh_str}"])
     df_combined = df_all[[c for c in combined_cols if c in df_all.columns]]
     out_path = output_dir / "table_combined_baselines.csv"
     df_combined.to_csv(out_path, index=False)

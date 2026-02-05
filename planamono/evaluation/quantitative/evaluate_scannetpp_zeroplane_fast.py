@@ -4,6 +4,9 @@ Evaluation script for: ZeroPlane predictions.
 Loads ZeroPlane predictions from H5 files and evaluates against GT.
 No inference needed - predictions are pre-computed.
 
+Properly handles ZeroPlane's label convention:
+- ZeroPlane uses label 20 for non-planar regions → automatically remapped to 0
+
 FAST VERSION - Optimizations:
 1. Single RANSAC pass with multi-threshold inlier counting
 2. Vectorized segmentation_covering (~10x faster)
@@ -69,9 +72,12 @@ class LazyH5SceneLoader:
     """
     Memory-efficient loader that only keeps one scene in memory at a time.
     Loads predictions lazily from H5 files.
+
+    Handles ZeroPlane's non-planar label convention (label 20 → 0).
     """
-    def __init__(self, h5_root):
+    def __init__(self, h5_root, nonplanar_label=20):
         self.h5_root = h5_root
+        self.nonplanar_label = nonplanar_label  # ZeroPlane uses 20 for non-planar regions
         self._current_scene_id = None
         self._current_planes = None
         self._current_frame_ids = None
@@ -117,7 +123,7 @@ class LazyH5SceneLoader:
             return None
 
         idx = self._frame_id_to_idx[frame_idx]
-        pred = self._current_planes[idx]
+        pred = self._current_planes[idx].copy()  # Copy to avoid modifying cached data
 
         # Resize to target shape if needed
         if pred.shape != target_shape:
@@ -127,7 +133,10 @@ class LazyH5SceneLoader:
                 interpolation=cv2.INTER_NEAREST
             ).astype(np.int32)
 
-        pred += 1 # zeroplane doesnt have nonplanar ie., zero labels
+        # Remap ZeroPlane's non-planar label (20) to 0
+        if self.nonplanar_label is not None:
+            pred[pred == self.nonplanar_label] = 0
+
         return pred.astype(np.int32)
 
     def has_scene(self, scene_id):
