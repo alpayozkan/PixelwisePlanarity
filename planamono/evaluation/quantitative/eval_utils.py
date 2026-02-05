@@ -198,7 +198,7 @@ def save_runtime(timer: Timer, csv_out_dir: str):
 # FRAME EVALUATION
 # ============================================================
 
-def evaluate_single_frame(
+def evaluate_single_frame_old(
     scene_id: str,
     frame_idx: str,
     depth_np: np.ndarray,
@@ -212,6 +212,10 @@ def evaluate_single_frame(
     inlier_ratio_gate: float = 0.5
 ) -> Tuple[Dict, np.ndarray]:
     """
+    [DEPRECATED] Use evaluate_single_frame() instead (v1 version).
+
+    Old version with fixed 2cm RANSAC. Kept for backward compatibility.
+
     Evaluate a single frame with pre-computed segmentation labels.
 
     Computes:
@@ -245,7 +249,7 @@ def evaluate_single_frame(
             metric_thr = {f"prec@{thr*100:.1f}cm": 0.0 for thr in thresholds}
             metric_thr.update({f"rec@{thr*100:.1f}cm": 0.0 for thr in thresholds})
         else:
-            metric_thr = compute_plane_metrics(
+            metric_thr = compute_plane_metrics_old(
                 pts_world, pt_labels, thresholds,
                 num_iterations=ransac_iterations,
                 inlier_ratio_gate=inlier_ratio_gate
@@ -311,7 +315,7 @@ def compute_clustering_metrics(
     return {"rand_index": ri, "voi": voi, "sc": sc}
 
 
-def compute_plane_metrics(
+def compute_plane_metrics_old(
     pts_world: np.ndarray,
     labels: np.ndarray,
     thresholds: Tuple[float, ...],
@@ -320,6 +324,10 @@ def compute_plane_metrics(
     inlier_ratio_gate: float = 0.5
 ) -> Dict[str, float]:
     """
+    [DEPRECATED] Use compute_plane_metrics() instead (v1 version).
+
+    Old version with fixed 2cm RANSAC. Kept for backward compatibility.
+
     Compute plane fitting metrics at multiple thresholds.
 
     Args:
@@ -353,7 +361,7 @@ def compute_plane_metrics(
     return result
 
 
-def compute_plane_metrics_v1(
+def compute_plane_metrics(
     pts_world: np.ndarray,
     labels: np.ndarray,
     thresholds: Tuple[float, ...],
@@ -362,20 +370,22 @@ def compute_plane_metrics_v1(
     inlier_ratio_gate: float = 0.5
 ) -> Dict[str, float]:
     """
-    Compute plane fitting metrics at multiple thresholds (v1: consistent threshold).
+    Compute plane fitting metrics at multiple thresholds (threshold-consistent).
 
-    DIFFERENCE FROM compute_plane_metrics:
-    - compute_plane_metrics: Uses fixed base_threshold=0.02 (2cm) for RANSAC fitting,
+    This is the RECOMMENDED version (formerly compute_plane_metrics_v1).
+
+    DIFFERENCE FROM compute_plane_metrics_old:
+    - compute_plane_metrics_old: Uses fixed base_threshold=0.02 (2cm) for RANSAC fitting,
       then evaluates inliers at each threshold. This means the same plane equation
       is used for all thresholds.
-    - compute_plane_metrics_v1: Uses the evaluation threshold as the RANSAC threshold.
+    - compute_plane_metrics (current): Uses the evaluation threshold as the RANSAC threshold.
       This means each threshold gets its own plane fit, and precision/recall reflect
       how well planes can be fit AND evaluated at that specific tolerance.
 
-    Use this version when you want to measure:
+    This version measures:
     "What is the precision/recall when planes are fit at threshold X?"
 
-    Use compute_plane_metrics when you want to measure:
+    The old version measured:
     "Given a robustly-fit plane (at 2cm), how precise is it at stricter thresholds?"
 
     Args:
@@ -433,7 +443,7 @@ def compute_plane_metrics_v1(
     return result
 
 
-def evaluate_single_frame_v1(
+def evaluate_single_frame(
     scene_id: str,
     frame_idx: str,
     depth_np: np.ndarray,
@@ -447,12 +457,14 @@ def evaluate_single_frame_v1(
     inlier_ratio_gate: float = 0.5
 ) -> Tuple[Dict, np.ndarray]:
     """
-    Evaluate a single frame with pre-computed segmentation labels (v1: consistent threshold).
+    Evaluate a single frame with pre-computed segmentation labels (threshold-consistent).
 
-    DIFFERENCE FROM evaluate_single_frame:
-    - Uses compute_plane_metrics_v1 instead of compute_plane_metrics
-    - RANSAC is run at each evaluation threshold (not fixed 2cm)
-    - See compute_plane_metrics_v1 docstring for detailed explanation
+    This is the RECOMMENDED version (formerly evaluate_single_frame_v1).
+
+    Uses compute_plane_metrics() which runs RANSAC at each evaluation threshold
+    (not fixed 2cm). This ensures visualization and evaluation use identical plane fits.
+
+    For the deprecated old version (fixed 2cm RANSAC), use evaluate_single_frame_old().
 
     Args:
         scene_id: Scene identifier
@@ -481,7 +493,7 @@ def evaluate_single_frame_v1(
             metric_thr = {f"prec@{thr*100:.1f}cm": 0.0 for thr in thresholds}
             metric_thr.update({f"rec@{thr*100:.1f}cm": 0.0 for thr in thresholds})
         else:
-            metric_thr = compute_plane_metrics_v1(
+            metric_thr = compute_plane_metrics(
                 pts_world, pt_labels, thresholds,
                 num_iterations=ransac_iterations,
                 inlier_ratio_gate=inlier_ratio_gate

@@ -41,7 +41,8 @@ if [ "$1" == "--specific" ]; then
     # Specific frames mode
     echo "Mode: Specific frames"
     echo "Frames: $2"
-    python visualize_scannetpp_all_baselines_v1.py --specific-frames "$2"
+    python visualize_scannetpp_all_baselines_v2.py --specific-frames "$2"
+    # python visualize_scannetpp_all_baselines_v1.py --specific-frames "$2"
     # python visualize_scannetpp_all_baselines.py --specific-frames "$2"
 elif [ "$1" == "--help" ] || [ "$1" == "-h" ]; then
     echo "Usage:"
@@ -68,7 +69,8 @@ else
     echo "Random seed: $SEED"
 
     # python visualize_scannetpp_all_baselines.py \
-    python visualize_scannetpp_all_baselines_v1.py \
+    # python visualize_scannetpp_all_baselines_v1.py \
+    python visualize_scannetpp_all_baselines_v2.py \
         --n-samples $N_SAMPLES \
         --random-seed $SEED
 fi
