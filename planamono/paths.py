@@ -23,5 +23,6 @@ vkitti2_semseg_path = '/cluster/project/cvg/Shared_datasets/vkitti2/vkitti_2.0.3
 vkitti2_plane_path = '/cluster/scratch/ayavuz/dataset/vkitti2_planes'
 
 # SYNTHIA-AL dataset dirs
-synthia_data_path = '/cluster/project/cvg/Shared_datasets/SYNTHIA-AL/test'
+synthia_train_path = '/cluster/scratch/ayavuz/dataset/synthia/train'
+synthia_test_path = '/cluster/scratch/ayavuz/dataset/synthia/test'
 synthia_plane_path = '/cluster/scratch/ayavuz/dataset/synthia_planes'
