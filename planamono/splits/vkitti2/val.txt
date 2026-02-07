@@ -1,5 +1,0 @@
-# VKITTI2 validation split
-Scene01/clone
-Scene02/clone
-Scene06/fog
-Scene06/morning

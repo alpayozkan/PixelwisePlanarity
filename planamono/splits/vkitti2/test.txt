@@ -1,7 +1,0 @@
-# VKITTI2 test split
-Scene06/clone
-Scene18/clone
-Scene20/clone
-Scene06/overcast
-Scene06/rain
-Scene06/sunset
