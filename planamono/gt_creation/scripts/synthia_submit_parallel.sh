@@ -14,7 +14,6 @@ CONFIG="$SCRIPT_DIR/../configs/synthia_default.yml"
 SYNTHIA_TRAIN="/cluster/scratch/ayavuz/dataset/synthia/train"
 SYNTHIA_TEST="/cluster/scratch/ayavuz/dataset/synthia/test"
 NUM_JOBS=10
-TEST_RUN="false"
 
 # Parse named arguments
 while [[ $# -gt 0 ]]; do
@@ -23,7 +22,6 @@ while [[ $# -gt 0 ]]; do
         --train_root) SYNTHIA_TRAIN="$2"; shift 2 ;;
         --test_root) SYNTHIA_TEST="$2"; shift 2 ;;
         --num_jobs) NUM_JOBS="$2"; shift 2 ;;
-        --test_run) TEST_RUN="true"; shift ;;
         *) echo "[WARN] Unknown arg: $1"; shift ;;
     esac
 done
@@ -39,7 +37,6 @@ echo "Train root:  $SYNTHIA_TRAIN"
 echo "Test root:   $SYNTHIA_TEST"
 echo "Output root: $OUTPUT_ROOT"
 echo "Num jobs:    $NUM_JOBS"
-echo "Test run:    $TEST_RUN"
 
 # Create temp dir for scene lists
 LISTS_DIR="$REPO_ROOT/planamono/gt_creation/scripts/synthia_job_lists"
@@ -60,16 +57,6 @@ done
 
 TOTAL=$(wc -l < "$ALL_SCENES" | tr -d ' ')
 echo "Total scenes: $TOTAL"
-
-if [[ "$TEST_RUN" == "true" ]]; then
-    head -2 "$ALL_SCENES" > "$LISTS_DIR/job_0.txt"
-    echo "Test run: submitting 1 job with 2 scenes"
-    sbatch --job-name=synthia_test \
-           --output="$REPO_ROOT/logs/synthia_test_%j.out" \
-           --error="$REPO_ROOT/logs/synthia_test_%j.err" \
-           "$SCRIPT_DIR/synthia_worker.sh" "$LISTS_DIR/job_0.txt" "$CONFIG" "$OUTPUT_ROOT"
-    exit 0
-fi
 
 # Split into N job files
 SCENES_PER_JOB=$(( (TOTAL + NUM_JOBS - 1) / NUM_JOBS ))
