@@ -25,4 +25,5 @@ vkitti2_plane_path = '/cluster/scratch/ayavuz/dataset/vkitti2_planes'
 # SYNTHIA-AL dataset dirs
 synthia_train_path = '/cluster/scratch/ayavuz/dataset/synthia/train'
 synthia_test_path = '/cluster/scratch/ayavuz/dataset/synthia/test'
-synthia_plane_path = '/cluster/scratch/ayavuz/dataset/synthia_planes'
+synthia_plane_train_path = '/cluster/scratch/ayavuz/dataset/synthia_planes/train'
+synthia_plane_test_path = '/cluster/scratch/ayavuz/dataset/synthia_planes/test'

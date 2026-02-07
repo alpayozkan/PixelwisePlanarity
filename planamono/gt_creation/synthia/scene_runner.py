@@ -272,6 +272,8 @@ def main():
     parser.add_argument('--merge_rel_dist', type=float, default=0.02)
     parser.add_argument('--max_frames', type=int, default=None,
                         help='Process only first N frames per scene (for testing)')
+    parser.add_argument('--output_root_override', type=str, default=None,
+                        help='Override output_root (takes priority over config)')
 
     args = parser.parse_args()
 
@@ -282,6 +284,9 @@ def main():
         for key, val in cfg.items():
             if getattr(args, key, None) is None:
                 setattr(args, key, val)
+
+    if args.output_root_override is not None:
+        args.output_root = args.output_root_override
 
     if args.output_root is None:
         print("[ERROR] Missing --output_root")

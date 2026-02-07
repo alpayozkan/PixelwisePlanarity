@@ -30,10 +30,14 @@ done
 
 export PYTHONPATH="$REPO_ROOT:${PYTHONPATH:-}"
 
+# Read output_root from config
+OUTPUT_ROOT=$(python -c "import yaml; print(yaml.safe_load(open('$CONFIG'))['output_root'])")
+
 echo "[INFO] Starting SYNTHIA plane extraction on: $(hostname)"
 echo "[INFO] Config: $CONFIG"
 echo "[INFO] Train root: $SYNTHIA_TRAIN"
 echo "[INFO] Test root: $SYNTHIA_TEST"
+echo "[INFO] Output root: $OUTPUT_ROOT"
 echo "[INFO] Test run: $TEST_RUN"
 
 # Process all scenes in both train and test
@@ -64,6 +68,7 @@ for DATA_ROOT in "$SYNTHIA_TRAIN" "$SYNTHIA_TEST"; do
         python -m planamono.gt_creation.synthia.scene_runner \
             --scene_dir "$scene_dir" \
             --config "$CONFIG" \
+            --output_root_override "$OUTPUT_ROOT/$SPLIT_NAME" \
             $EXTRA_ARGS
 
         if [[ $? -eq 0 ]]; then
