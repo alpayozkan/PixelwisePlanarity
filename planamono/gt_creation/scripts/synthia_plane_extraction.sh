@@ -11,11 +11,22 @@
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 REPO_ROOT="$( cd "$SCRIPT_DIR/../../.." && pwd )"
 
-# Configuration
-CONFIG="${1:-$SCRIPT_DIR/../configs/synthia_default.yml}"
-SYNTHIA_TRAIN="${2:-/cluster/scratch/ayavuz/dataset/synthia/train}"
-SYNTHIA_TEST="${3:-/cluster/scratch/ayavuz/dataset/synthia/test}"
-TEST_RUN="${4:-false}"  # pass "true" as 4th arg for test run (2 scenes per split)
+# Defaults
+CONFIG="$SCRIPT_DIR/../configs/synthia_default.yml"
+SYNTHIA_TRAIN="/cluster/scratch/ayavuz/dataset/synthia/train"
+SYNTHIA_TEST="/cluster/scratch/ayavuz/dataset/synthia/test"
+TEST_RUN="false"
+
+# Parse named arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --config) CONFIG="$2"; shift 2 ;;
+        --train_root) SYNTHIA_TRAIN="$2"; shift 2 ;;
+        --test_root) SYNTHIA_TEST="$2"; shift 2 ;;
+        --test_run) TEST_RUN="true"; shift ;;
+        *) echo "[WARN] Unknown arg: $1"; shift ;;
+    esac
+done
 
 export PYTHONPATH="$REPO_ROOT:${PYTHONPATH:-}"
 
