@@ -1,41 +1,4 @@
-#!/bin/bash
-
-# Submit parallel Hypersim plane rendering jobs
-# Splits scene list into 8 parts and submits each as a separate SLURM job
-
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-
-# Configuration
-INPUT_ROOT="${1:-/cluster/scratch/ayavuz/dataset/Hypersim_merged}"
-PLANE_ROOT="${2:-/cluster/scratch/ayavuz/dataset/hypersim_gt_planes}"
-OUTPUT_ROOT="${3:-/cluster/scratch/ayavuz/dataset/Hypersim_rendered}"
-FRAME_SKIP="${4:-1}"
-NUM_SPLITS=8
-
-# Resolve repo root (PixelwisePlanarity) based on this script location
-# scripts/ -> gt_creation/ -> planamono/ -> PixelwisePlanarity
-REPO_ROOT="$(realpath "$SCRIPT_DIR/../../..")"
-
-# Absolute paths
-BASH_SCRIPT="$(realpath "$SCRIPT_DIR/hypersim_render_planes.sh")"
-PYTHON_SCRIPT="$(realpath "$SCRIPT_DIR/../hypersim/rendering.py")"
-
-echo "[INFO] SCRIPT_DIR : $SCRIPT_DIR"
-echo "[INFO] REPO_ROOT  : $REPO_ROOT"
-echo "[INFO] BASH_SCRIPT: $BASH_SCRIPT"
-echo "[INFO] PYTHON_SCRIPT: $PYTHON_SCRIPT"
-echo "[INFO] INPUT_ROOT : $INPUT_ROOT"
-echo "[INFO] PLANE_ROOT : $PLANE_ROOT"
-echo "[INFO] OUTPUT_ROOT: $OUTPUT_ROOT"
-echo "[INFO] FRAME_SKIP : $FRAME_SKIP"
-echo "[INFO] NUM_SPLITS : $NUM_SPLITS"
-
-# Create temporary directory for split files
-SPLIT_DIR="$SCRIPT_DIR/splits_tmp"
-mkdir -p "$SPLIT_DIR" "$SCRIPT_DIR/logs"
-
-# All scenes
-SCENES="ai_001_001
+ai_001_001
 ai_001_002
 ai_001_003
 ai_001_004
@@ -491,41 +454,4 @@ ai_055_006
 ai_055_007
 ai_055_008
 ai_055_009
-ai_055_010"
-
-# Write all scenes to temp file and split
-echo "$SCENES" > "$SPLIT_DIR/all_scenes.txt"
-TOTAL=$(echo "$SCENES" | wc -l | tr -d ' ')
-PER_SPLIT=$(( (TOTAL + NUM_SPLITS - 1) / NUM_SPLITS ))
-
-echo "[INFO] Total scenes: $TOTAL"
-echo "[INFO] Scenes per split: ~$PER_SPLIT"
-
-split -l "$PER_SPLIT" "$SPLIT_DIR/all_scenes.txt" "$SPLIT_DIR/split_"
-
-# Submit jobs for each split
-i=0
-for split_file in "$SPLIT_DIR"/split_*; do
-    i=$((i + 1))
-    count=$(wc -l < "$split_file" | tr -d ' ')
-    echo "[INFO] Submitting job $i with $count scenes: $split_file"
-
-    sbatch --job-name="render_$i" \
-           --time=72:00:00 \
-           --cpus-per-task=4 \
-           --mem-per-cpu=16G \
-           --chdir="$REPO_ROOT" \
-           --export=ALL,PYTHONPATH="$REPO_ROOT:${PYTHONPATH:-}" \
-           --output="$SCRIPT_DIR/logs/render_${i}_%j.out" \
-           --error="$SCRIPT_DIR/logs/render_${i}_%j.err" \
-           "$BASH_SCRIPT" \
-           "$split_file" \
-           "$INPUT_ROOT" \
-           "$PLANE_ROOT" \
-           "$OUTPUT_ROOT" \
-           "$FRAME_SKIP" \
-           "$PYTHON_SCRIPT"
-done
-
-echo "[INFO] Submitted $i jobs"
-echo "[INFO] Split files saved in: $SPLIT_DIR"
+ai_055_010
