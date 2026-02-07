@@ -1,30 +1,192 @@
 #!/bin/bash
+
 # Submit parallel Hypersim plane rendering jobs
 # Splits scene list into 8 parts and submits each as a separate SLURM job
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Configuration
-INPUT_ROOT="${1:-/cluster/scratch/ayavuz/dataset/Hypersim_params}"
-PLANE_ROOT="${2:-/cluster/scratch/ayavuz/dataset/Hypersim_ours}"
+INPUT_ROOT="${1:-/cluster/scratch/ayavuz/dataset/Hypersim_merged}"
+PLANE_ROOT="${2:-/cluster/scratch/ayavuz/dataset/hypersim_gt_planes}"
 OUTPUT_ROOT="${3:-/cluster/scratch/ayavuz/dataset/Hypersim_rendered}"
 FRAME_SKIP="${4:-1}"
 NUM_SPLITS=8
 
-# Absolute paths (resolved at submission time using realpath)
+# Resolve repo root (PixelwisePlanarity) based on this script location
+# scripts/ -> gt_creation/ -> planamono/ -> PixelwisePlanarity
+REPO_ROOT="$(realpath "$SCRIPT_DIR/../../..")"
+
+# Absolute paths
 BASH_SCRIPT="$(realpath "$SCRIPT_DIR/hypersim_render_planes.sh")"
 PYTHON_SCRIPT="$(realpath "$SCRIPT_DIR/../hypersim/rendering.py")"
 
+echo "[INFO] SCRIPT_DIR : $SCRIPT_DIR"
+echo "[INFO] REPO_ROOT  : $REPO_ROOT"
 echo "[INFO] BASH_SCRIPT: $BASH_SCRIPT"
 echo "[INFO] PYTHON_SCRIPT: $PYTHON_SCRIPT"
+echo "[INFO] INPUT_ROOT : $INPUT_ROOT"
+echo "[INFO] PLANE_ROOT : $PLANE_ROOT"
+echo "[INFO] OUTPUT_ROOT: $OUTPUT_ROOT"
+echo "[INFO] FRAME_SKIP : $FRAME_SKIP"
+echo "[INFO] NUM_SPLITS : $NUM_SPLITS"
 
 # Create temporary directory for split files
 SPLIT_DIR="$SCRIPT_DIR/splits_tmp"
-mkdir -p "$SPLIT_DIR"
-mkdir -p "$SCRIPT_DIR/logs"
+mkdir -p "$SPLIT_DIR" "$SCRIPT_DIR/logs"
 
 # All scenes
-SCENES="ai_018_005
+SCENES="ai_001_001
+ai_001_002
+ai_001_003
+ai_001_004
+ai_001_005
+ai_001_006
+ai_001_007
+ai_001_008
+ai_001_009
+ai_001_010
+ai_002_001
+ai_002_002
+ai_002_003
+ai_002_004
+ai_002_005
+ai_002_006
+ai_002_007
+ai_002_008
+ai_002_009
+ai_002_010
+ai_003_001
+ai_003_002
+ai_003_004
+ai_003_005
+ai_003_006
+ai_003_007
+ai_003_008
+ai_003_009
+ai_003_010
+ai_004_001
+ai_004_002
+ai_004_003
+ai_004_004
+ai_004_005
+ai_004_006
+ai_004_007
+ai_004_008
+ai_004_009
+ai_004_010
+ai_005_001
+ai_005_003
+ai_005_004
+ai_005_005
+ai_005_006
+ai_005_007
+ai_005_008
+ai_005_009
+ai_005_010
+ai_006_001
+ai_006_002
+ai_006_003
+ai_006_004
+ai_006_006
+ai_006_007
+ai_006_008
+ai_006_009
+ai_006_010
+ai_007_001
+ai_007_002
+ai_007_004
+ai_007_005
+ai_007_006
+ai_007_007
+ai_007_008
+ai_007_009
+ai_007_010
+ai_008_001
+ai_008_002
+ai_008_003
+ai_008_004
+ai_008_005
+ai_008_006
+ai_008_007
+ai_008_008
+ai_008_009
+ai_008_010
+ai_009_001
+ai_009_002
+ai_009_003
+ai_009_004
+ai_009_005
+ai_009_006
+ai_009_007
+ai_009_008
+ai_009_009
+ai_010_001
+ai_010_002
+ai_010_003
+ai_010_004
+ai_010_005
+ai_010_006
+ai_010_007
+ai_010_008
+ai_010_009
+ai_011_001
+ai_011_003
+ai_011_004
+ai_011_005
+ai_011_006
+ai_011_007
+ai_011_008
+ai_011_009
+ai_011_010
+ai_012_001
+ai_012_004
+ai_012_005
+ai_012_007
+ai_012_009
+ai_012_010
+ai_013_001
+ai_013_002
+ai_013_003
+ai_013_004
+ai_013_007
+ai_013_009
+ai_013_010
+ai_014_003
+ai_014_006
+ai_014_010
+ai_015_001
+ai_015_003
+ai_015_004
+ai_015_005
+ai_015_006
+ai_015_007
+ai_015_008
+ai_015_009
+ai_015_010
+ai_016_001
+ai_016_002
+ai_016_003
+ai_016_004
+ai_016_005
+ai_016_006
+ai_016_007
+ai_016_009
+ai_016_010
+ai_017_001
+ai_017_002
+ai_017_003
+ai_017_004
+ai_017_005
+ai_017_006
+ai_017_007
+ai_017_008
+ai_017_009
+ai_017_010
+ai_018_001
+ai_018_002
+ai_018_003
+ai_018_004
+ai_018_005
 ai_018_006
 ai_018_007
 ai_018_008
@@ -333,26 +495,27 @@ ai_055_010"
 
 # Write all scenes to temp file and split
 echo "$SCENES" > "$SPLIT_DIR/all_scenes.txt"
-TOTAL=$(echo "$SCENES" | wc -l)
+TOTAL=$(echo "$SCENES" | wc -l | tr -d ' ')
 PER_SPLIT=$(( (TOTAL + NUM_SPLITS - 1) / NUM_SPLITS ))
 
 echo "[INFO] Total scenes: $TOTAL"
 echo "[INFO] Scenes per split: ~$PER_SPLIT"
 
-# Split into 8 files
-split -l $PER_SPLIT "$SPLIT_DIR/all_scenes.txt" "$SPLIT_DIR/split_"
+split -l "$PER_SPLIT" "$SPLIT_DIR/all_scenes.txt" "$SPLIT_DIR/split_"
 
 # Submit jobs for each split
 i=0
 for split_file in "$SPLIT_DIR"/split_*; do
     i=$((i + 1))
-    count=$(wc -l < "$split_file")
-    echo "[INFO] Submitting job $i with $count scenes"
+    count=$(wc -l < "$split_file" | tr -d ' ')
+    echo "[INFO] Submitting job $i with $count scenes: $split_file"
 
     sbatch --job-name="render_$i" \
            --time=72:00:00 \
            --cpus-per-task=4 \
            --mem-per-cpu=16G \
+           --chdir="$REPO_ROOT" \
+           --export=ALL,PYTHONPATH="$REPO_ROOT:${PYTHONPATH:-}" \
            --output="$SCRIPT_DIR/logs/render_${i}_%j.out" \
            --error="$SCRIPT_DIR/logs/render_${i}_%j.err" \
            "$BASH_SCRIPT" \

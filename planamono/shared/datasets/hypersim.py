@@ -65,8 +65,8 @@ class HypersimPlanarityDataset(Dataset):
                 frame_idx = frame_ids.index(frame_id)
                 plane = f["planes"][frame_idx]
             plane = (plane > 0).astype(np.float32)
-            plane = torch.from_numpy(plane).unsqueeze(0)
-            H, W = plane.shape[1:]  # update to true shape
+            plane = cv2.resize(plane, (W, H), interpolation=cv2.INTER_NEAREST)
+            plane = torch.tensor(plane.copy(), dtype=torch.float32).unsqueeze(0)
         except Exception as e:
             plane = torch.zeros((1, H, W), dtype=torch.float32)
 
@@ -74,7 +74,8 @@ class HypersimPlanarityDataset(Dataset):
         try:
             with h5py.File(sem_path, "r") as f:
                 sem = f["dataset"][:]
-            sem = torch.from_numpy(sem.astype(np.int64)).unsqueeze(0)
+            sem = cv2.resize(sem.astype(np.float32), (W, H), interpolation=cv2.INTER_NEAREST).astype(np.int64)
+            sem = torch.tensor(sem.copy(), dtype=torch.int64).unsqueeze(0)
         except:
             sem = torch.zeros((1, H, W), dtype=torch.int64)
 
@@ -82,7 +83,8 @@ class HypersimPlanarityDataset(Dataset):
         try:
             with h5py.File(depth_path, "r") as f:
                 depth = f["dataset"][:].astype(np.float32)
-            depth = torch.from_numpy(depth).unsqueeze(0)
+            depth = cv2.resize(depth, (W, H), interpolation=cv2.INTER_LINEAR)
+            depth = torch.tensor(depth.copy(), dtype=torch.float32).unsqueeze(0)
         except:
             depth = torch.zeros((1, H, W), dtype=torch.float32)
 
@@ -118,14 +120,21 @@ class HypersimPlanarityDataset(Dataset):
         with h5py.File(h5_path, "r") as f:
             keys = list(f.keys())
             assert len(keys) == 1, f"Unexpected HDF5 structure in {h5_path}"
-            hdr = f[keys[0]][:]  # (H, W, 3), float16 or float32
+            hdr = f[keys[0]][:].astype(np.float32)  # Convert to float32 first to avoid overflow
+
+        # Handle inf/nan values in HDR data
+        hdr = np.nan_to_num(hdr, nan=0.0, posinf=1e4, neginf=0.0)
+        hdr = np.clip(hdr, 0, 1e4)  # Clip extreme values
 
         brightness = hdr.mean(axis=2)
-        scale_val = np.percentile(brightness, percentile)
-        scale_val = max(scale_val, 1e-6)
+        # Use nanpercentile to handle any remaining edge cases
+        scale_val = np.nanpercentile(brightness, percentile)
+        scale_val = max(scale_val, 1e-6) if np.isfinite(scale_val) else 1.0
 
         img = hdr * (target_max / scale_val)
         img = np.clip(img, 0, None)
         img = img ** (1.0 / gamma)
         img = np.clip(img, 0.0, 1.0).astype(np.float32)
+        # Final safety check
+        img = np.nan_to_num(img, nan=0.0, posinf=1.0, neginf=0.0)
         return img

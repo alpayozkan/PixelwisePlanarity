@@ -12,9 +12,9 @@ import sys
 from pathlib import Path
 
 # Add project root to path for imports
-# script_dir = Path(__file__).resolve().parent
-# project_root = script_dir.parent.parent
-# sys.path.insert(0, str(project_root))
+script_dir = Path(__file__).resolve().parent
+project_root = script_dir.parent.parent
+sys.path.insert(0, str(project_root))
 
 import argparse
 import os
@@ -24,7 +24,8 @@ import pandas as pd
 import open3d as o3d
 from tqdm import tqdm
 
-from planamono.shared.rendering import read_ply_faces_with_plane_ids, raycast_semantic_face_labels
+from planamono.shared.rendering.mesh_io import read_ply_faces_with_plane_ids
+from planamono.shared.rendering.render import raycast_semantic_face_labels
 
 
 def remap_semantic(semantic_img):

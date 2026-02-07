@@ -1,3 +1,7 @@
 logs/
 *.err
-*.out
+*.outMoGe/
+logs_depth/
+logs_sem/
+logs_train/
+MoGe
