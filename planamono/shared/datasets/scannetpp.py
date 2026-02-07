@@ -33,7 +33,7 @@ class ScanNetPPPlanarityDataset(Dataset):
         self.split = split
 
         # Load split
-        split_file = os.path.join(split_txt_dir, f"nvs_sem_{split}_with_planes.txt")
+        split_file = os.path.join(split_txt_dir, f"nvs_sem_{split}_with_planes_fixed.txt")
         if not os.path.exists(split_file):
             raise FileNotFoundError(f"Missing split file: {split_file}")
 
@@ -88,26 +88,25 @@ class ScanNetPPPlanarityDataset(Dataset):
 
     def __getitem__(self, idx):
         rgb_path, plane_h5, sem_h5, depth_h5, frame_idx = self.valid_pairs[idx]
+        H, W = self.image_height, self.image_width
 
         # --- Plane label ---
         try:
             with h5py.File(plane_h5, "r") as f:
-                # plane = f["rendered_planes"][frame_idx]
                 plane = f["planes"][frame_idx]
             plane = (plane > 0).astype(np.float32)
-            plane = torch.from_numpy(plane).unsqueeze(0)  # [1, H, W]
-            H, W = plane.shape[1:]
+            plane = cv2.resize(plane, (W, H), interpolation=cv2.INTER_NEAREST)
+            plane = torch.tensor(plane.copy(), dtype=torch.float32).unsqueeze(0)  # [1, H, W]
         except Exception as e:
             print(f"[WARN] Failed plane label from {plane_h5} [{frame_idx}]: {e}")
-            H, W = self.image_height, self.image_width
             plane = torch.zeros((1, H, W), dtype=torch.float32)
 
         # --- Semantic label ---
         try:
             with h5py.File(sem_h5, "r") as f:
-                # sem = f["rendered_sem"][frame_idx]
                 sem = f["sem"][frame_idx]
-            sem = torch.from_numpy(sem.astype(np.int64)).unsqueeze(0)  # [1, H, W]
+            sem = cv2.resize(sem.astype(np.float32), (W, H), interpolation=cv2.INTER_NEAREST).astype(np.int64)
+            sem = torch.tensor(sem.copy(), dtype=torch.int64).unsqueeze(0)  # [1, H, W]
         except Exception as e:
             print(f"[WARN] Failed semantic label from {sem_h5} [{frame_idx}]: {e}")
             sem = torch.zeros((1, H, W), dtype=torch.int64)
@@ -116,7 +115,8 @@ class ScanNetPPPlanarityDataset(Dataset):
         try:
             with h5py.File(depth_h5, "r") as f:
                 depth = f["depth"][frame_idx].astype(np.float32) / 1000.0  # convert mm → meters
-            depth = torch.from_numpy(depth).unsqueeze(0)  # [1, H, W]
+            depth = cv2.resize(depth, (W, H), interpolation=cv2.INTER_LINEAR)
+            depth = torch.tensor(depth.copy(), dtype=torch.float32).unsqueeze(0)  # [1, H, W]
         except Exception as e:
             print(f"[WARN] Failed depth from {depth_h5} [{frame_idx}]: {e}")
             depth = torch.zeros((1, H, W), dtype=torch.float32)
@@ -136,10 +136,9 @@ class ScanNetPPPlanarityDataset(Dataset):
             "image": image,
             "depth": depth,
             "plane": plane,
-            "sem": sem,
-            "rgb_path": rgb_path,
+            "semantic": sem,
             "scene_id": scene_id,
-            "frame_idx": fid,
+            "frame_idx": int(fid) if fid.isdigit() else hash(fid) % 100000,
         }
 
 class ScanNetPPPlaneDataset(Dataset):
@@ -162,7 +161,7 @@ class ScanNetPPPlaneDataset(Dataset):
         self.split = split
 
         # Load split
-        split_file = os.path.join(split_txt_dir, f"nvs_sem_{split}_with_planes.txt")
+        split_file = os.path.join(split_txt_dir, f"nvs_sem_{split}_with_planes_fixed.txt")
         if not os.path.exists(split_file):
             raise FileNotFoundError(f"Missing split file: {split_file}")
 
@@ -308,7 +307,7 @@ class ScanNetPPPlanarityDataset_v0(Dataset):
         self.split = split
 
         # --- Load scene list from split file ---
-        split_file = os.path.join(split_txt_dir, f"nvs_sem_{split}_with_planes.txt")
+        split_file = os.path.join(split_txt_dir, f"nvs_sem_{split}_with_planes_fixed.txt")
         if not os.path.exists(split_file):
             raise FileNotFoundError(f"Split file not found: {split_file}")
 

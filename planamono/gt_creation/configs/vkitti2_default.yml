@@ -1,0 +1,22 @@
+# VKITTI2 Plane Extraction Configuration
+# ========================================
+
+# Data paths (override with CLI args)
+rgb_root: /cluster/project/cvg/Shared_datasets/vkitti2/vkitti_2.0.3_rgb
+depth_root: /cluster/project/cvg/Shared_datasets/vkitti2/vkitti_2.0.3_depth
+semseg_root: /cluster/project/cvg/Shared_datasets/vkitti2/vkitti_2.0.3_classSegmentation
+output_root: /cluster/scratch/ayavuz/dataset/vkitti2_planes
+
+# RANSAC parameters
+ransac_iters: 200
+dist_thresh: 0.05       # meters
+normal_cos: 0.94        # ~20 degrees
+min_inliers: 500        # minimum pixels per plane
+max_planes: 50          # max planes per semantic class per frame
+
+# Merge parameters
+merge_normal: 0.95      # cosine threshold for normal similarity
+merge_rel_dist: 0.02    # relative distance threshold
+
+# Camera (0=left, 1=right)
+camera: 0

@@ -1,0 +1,6 @@
+# SYNTHIA-AL scene list
+# Populate with actual scene directory names from your data
+# Format: test5_{N}segs_weather_{W}_spawn_{S}_roadTexture_{T}_P_{P}_C_{C}_B_{B}_WC_{WC}
+# Example entries (fill in with your actual scenes):
+# test5_10segs_weather_0_spawn_0_roadTexture_0_P_None_C_None_B_None_WC_None
+# test5_20segs_weather_2_spawn_1_roadTexture_1_P_5_C_10_B_None_WC_None
