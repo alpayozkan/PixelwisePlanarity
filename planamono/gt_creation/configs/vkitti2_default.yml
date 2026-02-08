@@ -24,3 +24,12 @@ merge_rel_dist: 0.02    # relative distance threshold
 
 # Camera (0=left, 1=right)
 camera: 0
+
+# Train/test split
+train_scenes:
+  - Scene01
+  - Scene02
+  - Scene06
+test_scenes:
+  - Scene18
+  - Scene20
