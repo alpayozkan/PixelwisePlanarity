@@ -73,6 +73,39 @@ VARIANTS = [
 ]
 
 
+def load_extrinsics(data_root, scene, variant, camera=0):
+    """
+    Load per-frame camera-to-world (c2w) matrices from extrinsic.txt.
+
+    The file lives at data_root/scene/variant/extrinsic.txt.
+    Each line: frame cameraID r1,1 r1,2 r1,3 t1 r2,1 r2,2 r2,3 t2 r3,1 r3,2 r3,3 t3 0 0 0 1
+
+    Returns:
+        dict mapping frame_id (str, zero-padded) -> (4, 4) numpy array
+    """
+    ext_path = os.path.join(data_root, scene, variant, "extrinsic.txt")
+    if not os.path.exists(ext_path):
+        return None
+
+    c2w_dict = {}
+    with open(ext_path, 'r') as f:
+        header = f.readline()  # skip header
+        for line in f:
+            parts = line.strip().split()
+            if len(parts) < 18:
+                continue
+            frame_idx = int(parts[0])
+            cam_id = int(parts[1])
+            if cam_id != camera:
+                continue
+            vals = [float(x) for x in parts[2:]]
+            mat = np.array(vals).reshape(4, 4)
+            frame_id = f"{frame_idx:05d}"
+            c2w_dict[frame_id] = mat
+
+    return c2w_dict
+
+
 def rgb_to_class_ids(seg_rgb):
     """Convert RGB segmentation image to integer class IDs."""
     class_ids = np.full(seg_rgb.shape[:2], -1, dtype=np.int32)
@@ -139,6 +172,14 @@ def process_scene(args):
 
     print(f"[INFO] Processing {len(frames)} frames")
 
+    # Load extrinsics (c2w) — try data_root first, then rgb_root
+    ext_root = getattr(args, 'data_root', None) or args.rgb_root
+    c2w_dict = load_extrinsics(ext_root, scene, variant, camera)
+    if c2w_dict is not None:
+        print(f"[INFO] Loaded {len(c2w_dict)} extrinsic matrices (c2w)")
+    else:
+        print("[WARN] No extrinsic.txt found, skipping c2w")
+
     # Output directory
     out_dir = os.path.join(args.output_root, scene, variant)
     os.makedirs(out_dir, exist_ok=True)
@@ -158,6 +199,7 @@ def process_scene(args):
     depth_list = []
     semseg_list = []
     planes_list = []
+    c2w_list = []
     all_planes_json = []
 
     for frame_id, rgb_path, depth_path, seg_path in tqdm(frames, desc=f"{scene}/{variant}"):
@@ -198,6 +240,10 @@ def process_scene(args):
         depth_list.append(depth)
         semseg_list.append(class_ids.astype(np.int8))
         planes_list.append(plane_map.astype(np.uint16))
+        if c2w_dict is not None and frame_id in c2w_dict:
+            c2w_list.append(c2w_dict[frame_id].astype(np.float32))
+        elif c2w_dict is not None:
+            c2w_list.append(np.eye(4, dtype=np.float32))
 
         # JSON metadata per frame
         for pid, p in enumerate(planes_info):
@@ -224,6 +270,8 @@ def process_scene(args):
         f.create_dataset("semantic", data=np.stack(semseg_list), compression="gzip", compression_opts=4)
         f.create_dataset("planes", data=np.stack(planes_list), compression="gzip", compression_opts=4)
         f.create_dataset("frame_ids", data=np.array(frame_ids, dtype='S'))
+        if c2w_list:
+            f.create_dataset("c2w", data=np.stack(c2w_list))
         f.attrs['dataset'] = 'vkitti2'
         f.attrs['scene'] = scene
         f.attrs['variant'] = variant
