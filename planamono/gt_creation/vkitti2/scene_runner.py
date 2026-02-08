@@ -3,7 +3,8 @@
 VKITTI2 Plane Extraction Scene Runner.
 
 Processes all frames in a VKITTI2 scene+variant, extracts planes via
-LO-RANSAC per semantic label, and saves results to HDF5.
+LO-RANSAC per semantic label, and saves everything (RGB, depth, semantics,
+planes, calibration) to a single HDF5 file per scene+variant.
 
 Usage:
     python -m planamono.gt_creation.vkitti2.scene_runner \
@@ -65,15 +66,7 @@ PLANAR = {5, 6, 8}  # building, road, traffic_sign
 # No cross-class merging for VKITTI2
 MERGE_COMPATIBLE = []
 
-# Scene frame counts (clone variant)
-SCENE_FRAMES = {
-    'Scene01': 447,
-    'Scene02': 233,
-    'Scene06': 270,
-    'Scene18': 339,
-    'Scene20': 837,
-}
-
+SCENES = ['Scene01', 'Scene02', 'Scene06', 'Scene18', 'Scene20']
 VARIANTS = [
     'clone', 'fog', 'morning', 'overcast', 'rain', 'sunset',
     '15-deg-left', '15-deg-right', '30-deg-left', '30-deg-right',
@@ -96,10 +89,11 @@ def discover_frames(rgb_root, depth_root, semseg_root, scene, variant, camera=0)
     Returns:
         list of (frame_id, rgb_path, depth_path, semseg_path) tuples
     """
-    rgb_dir = os.path.join(rgb_root, scene, variant, "frames", "rgb", f"Camera_{camera}")
-    depth_dir = os.path.join(depth_root, scene, variant, "frames", "depth", f"Camera_{camera}")
+    cam_str = f"Camera_{camera}"
+    rgb_dir = os.path.join(rgb_root, scene, variant, "frames", "rgb", cam_str)
+    depth_dir = os.path.join(depth_root, scene, variant, "frames", "depth", cam_str)
     seg_dir = os.path.join(semseg_root, scene, variant, "frames",
-                           "classSegmentation", f"Camera_{camera}")
+                           "classSegmentation", cam_str)
 
     if not os.path.isdir(rgb_dir):
         print(f"[ERROR] RGB directory not found: {rgb_dir}")
@@ -138,12 +132,17 @@ def process_scene(args):
         print("[ERROR] No frames found. Check paths.")
         return
 
-    print(f"[INFO] Found {len(frames)} frames")
+    max_frames = getattr(args, 'max_frames', None)
+    if max_frames is not None and len(frames) > max_frames:
+        frames = frames[:max_frames]
+        print(f"[INFO] Limited to {max_frames} frames (--max_frames)")
+
+    print(f"[INFO] Processing {len(frames)} frames")
 
     # Output directory
     out_dir = os.path.join(args.output_root, scene, variant)
     os.makedirs(out_dir, exist_ok=True)
-    h5_path = os.path.join(out_dir, "planes.h5")
+    h5_path = os.path.join(out_dir, "scene_data.h5")
 
     # RANSAC parameters
     ransac_iters = getattr(args, 'ransac_iters', 200)
@@ -155,10 +154,16 @@ def process_scene(args):
     merge_rel_dist = getattr(args, 'merge_rel_dist', 0.02)
 
     frame_ids = []
+    rgb_list = []
+    depth_list = []
+    semseg_list = []
     planes_list = []
     all_planes_json = []
 
     for frame_id, rgb_path, depth_path, seg_path in tqdm(frames, desc=f"{scene}/{variant}"):
+        # Load RGB
+        rgb = np.array(Image.open(rgb_path))[:, :, :3]
+
         # Load depth: 16-bit PNG in centimeters -> meters
         depth_png = np.array(Image.open(depth_path))
         depth = depth_png.astype(np.float32) / 100.0
@@ -187,8 +192,11 @@ def process_scene(args):
             merge_rel_dist=merge_rel_dist,
         )
 
-        # Store
+        # Store everything
         frame_ids.append(frame_id)
+        rgb_list.append(rgb.astype(np.uint8))
+        depth_list.append(depth)
+        semseg_list.append(class_ids.astype(np.int8))
         planes_list.append(plane_map.astype(np.uint16))
 
         # JSON metadata per frame
@@ -208,10 +216,13 @@ def process_scene(args):
         print("[WARN] No frames processed.")
         return
 
-    # Save H5
+    # Save H5 with everything
     print(f"[SAVE] Writing {len(planes_list)} frames to {h5_path}")
     with h5py.File(h5_path, "w") as f:
-        f.create_dataset("planes", data=np.stack(planes_list), compression="gzip")
+        f.create_dataset("rgb", data=np.stack(rgb_list), compression="gzip", compression_opts=4)
+        f.create_dataset("depth", data=np.stack(depth_list), compression="gzip", compression_opts=4)
+        f.create_dataset("semantic", data=np.stack(semseg_list), compression="gzip", compression_opts=4)
+        f.create_dataset("planes", data=np.stack(planes_list), compression="gzip", compression_opts=4)
         f.create_dataset("frame_ids", data=np.array(frame_ids, dtype='S'))
         f.attrs['dataset'] = 'vkitti2'
         f.attrs['scene'] = scene
@@ -220,6 +231,9 @@ def process_scene(args):
         f.attrs['fy'] = FY
         f.attrs['cx'] = CX
         f.attrs['cy'] = CY
+        f.attrs['num_frames'] = len(frame_ids)
+        f.attrs['image_height'] = rgb_list[0].shape[0]
+        f.attrs['image_width'] = rgb_list[0].shape[1]
 
     # Save JSON
     json_path = os.path.join(out_dir, "planes.json")
@@ -227,7 +241,6 @@ def process_scene(args):
         json.dump(all_planes_json, f, indent=2)
 
     # Print summary
-    total_planar = sum(1 for pm in planes_list for _ in range(1) if (pm > 0).any())
     total_planes = sum(pm.max() for pm in planes_list)
     print(f"[DONE] {scene}/{variant}: {len(planes_list)} frames, "
           f"avg {total_planes / len(planes_list):.1f} planes/frame")
@@ -244,13 +257,13 @@ def main():
     parser.add_argument('--config', type=str, default=None,
                         help='Path to YAML config file')
 
-    # Data paths (can be overridden by config)
+    # Data paths
     parser.add_argument('--rgb_root', type=str, default=None)
     parser.add_argument('--depth_root', type=str, default=None)
     parser.add_argument('--semseg_root', type=str, default=None)
     parser.add_argument('--output_root', type=str, default=None)
 
-    # RANSAC parameters (can be overridden by config)
+    # RANSAC parameters
     parser.add_argument('--ransac_iters', type=int, default=200)
     parser.add_argument('--dist_thresh', type=float, default=0.05)
     parser.add_argument('--normal_cos', type=float, default=0.94)
@@ -258,6 +271,8 @@ def main():
     parser.add_argument('--max_planes', type=int, default=50)
     parser.add_argument('--merge_normal', type=float, default=0.95)
     parser.add_argument('--merge_rel_dist', type=float, default=0.02)
+    parser.add_argument('--max_frames', type=int, default=None,
+                        help='Process only first N frames per scene (for testing)')
 
     args = parser.parse_args()
 
@@ -265,7 +280,6 @@ def main():
     if args.config and os.path.exists(args.config):
         with open(args.config, 'r') as f:
             cfg = yaml.safe_load(f)
-        # Config values are defaults, CLI overrides them
         for key, val in cfg.items():
             if getattr(args, key, None) is None:
                 setattr(args, key, val)
