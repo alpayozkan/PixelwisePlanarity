@@ -36,7 +36,8 @@ MoGe/
 logs_depth/
 logs_sem/
 logs_train/
-synthia/
+/synthia/
+/virtual_kitti/
 data_examples/
 needed_files/
 wandb/
