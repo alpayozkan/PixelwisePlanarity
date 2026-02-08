@@ -2,7 +2,7 @@
 # ========================================
 
 # Data root (if rgb/depth/semseg are all under one directory)
-data_root: /cluster/scratch/ayavuz/dataset/vkitti2
+data_root: /cluster/scratch/ayavuz/dataset/virtual_kitti
 
 # Or specify separate roots (overrides data_root):
 # rgb_root: /cluster/project/cvg/Shared_datasets/vkitti2/vkitti_2.0.3_rgb
