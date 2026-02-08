@@ -63,12 +63,11 @@ for data_root, split in [(SYNTHIA_TRAIN, 'train'), (SYNTHIA_TEST, 'test')]:
             if total_lost > 0:
                 pct = 100 * total_lost / max(total_planar, 1)
                 print(f'[{split}/{scene_name}] {n_frames} frames: {total_lost} planar px lost ({pct:.2f}%), max depth: {max_lost_depth:.1f}m')
-                affected.append(f'{split}\t{scene_name}\t{total_lost}\t{pct:.2f}\t{max_lost_depth:.1f}')
+                affected.append((split, os.path.join(data_root, scene_name)))
             else:
                 print(f'[{split}/{scene_name}] {n_frames} frames: no pixels lost')
 
 with open(OUT_FILE, 'w') as f:
-    f.write('split\tscene\tlost_pixels\tlost_pct\tmax_depth\n')
-    for line in affected:
-        f.write(line + '\n')
+    for split, scene_dir in affected:
+        f.write(f'{split}\t{scene_dir}\n')
 print(f'\n{len(affected)} affected scenes saved to {OUT_FILE}')
