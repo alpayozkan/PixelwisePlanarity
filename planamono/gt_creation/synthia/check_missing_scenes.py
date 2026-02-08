@@ -24,7 +24,8 @@ for src_root, planes_root, split in [
     for scene in src_scenes:
         h5_path = os.path.join(planes_root, scene, 'scene_data.h5')
         if not os.path.exists(h5_path):
-            missing.append((split, scene))
+            scene_dir = os.path.join(src_root, scene)
+            missing.append((split, scene_dir))
             print(f'[MISSING] {split}/{scene}')
 
     done = 0
@@ -34,7 +35,7 @@ for src_root, planes_root, split in [
     print(f'{split}: {len(src_scenes)} total, {done} done, {len([m for m in missing if m[0] == split])} missing')
 
 with open(OUT_FILE, 'w') as f:
-    for split, scene in missing:
-        f.write(f'{split}\t{scene}\n')
+    for split, scene_dir in missing:
+        f.write(f'{split}\t{scene_dir}\n')
 
 print(f'\n{len(missing)} missing scenes saved to {OUT_FILE}')
