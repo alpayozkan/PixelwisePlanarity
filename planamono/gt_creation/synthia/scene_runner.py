@@ -175,7 +175,7 @@ def process_scene(args):
         # Load depth: RGB-encoded depth
         depth_png = np.array(Image.open(depth_path))
         depth = decode_depth(depth_png)
-        valid = (depth > 0.1) & (depth < 300)
+        valid = (depth > 0.1) & (depth < 4999.0)  # exclude sky/invalid
 
         # Load semantic segmentation (channel 0 = class ID)
         semseg = np.array(Image.open(seg_path))

@@ -61,7 +61,7 @@ CLASS_MAP = {
 CLASS_NAMES = {v[1]: v[0] for v in CLASS_MAP.values()}
 
 # Planar semantic classes
-PLANAR = {5, 6, 8}  # building, road, traffic_sign
+PLANAR = {1, 5, 6, 8, 11}  # terrain, building, road, traffic_sign, misc (walls/sidewalks)
 
 # No cross-class merging for VKITTI2
 MERGE_COMPATIBLE = []
@@ -209,7 +209,7 @@ def process_scene(args):
         # Load depth: 16-bit PNG in centimeters -> meters
         depth_png = np.array(Image.open(depth_path))
         depth = depth_png.astype(np.float32) / 100.0
-        valid = (depth > 0.1) & (depth < 300.0)
+        valid = (depth > 0.1) & (depth < 655.0)  # exclude sky (65535 cm = 655.35m)
 
         # Load semantic segmentation (RGB-encoded)
         seg_rgb = np.array(Image.open(seg_path))[:, :, :3]
