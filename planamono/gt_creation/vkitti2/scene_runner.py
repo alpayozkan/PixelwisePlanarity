@@ -258,6 +258,8 @@ def main():
                         help='Path to YAML config file')
 
     # Data paths
+    parser.add_argument('--data_root', type=str, default=None,
+                        help='Single root for rgb/depth/semseg (if all under one dir)')
     parser.add_argument('--rgb_root', type=str, default=None)
     parser.add_argument('--depth_root', type=str, default=None)
     parser.add_argument('--semseg_root', type=str, default=None)
@@ -284,10 +286,19 @@ def main():
             if getattr(args, key, None) is None:
                 setattr(args, key, val)
 
+    # If data_root is set, use it for any unset roots
+    if args.data_root is not None:
+        if args.rgb_root is None:
+            args.rgb_root = args.data_root
+        if args.depth_root is None:
+            args.depth_root = args.data_root
+        if args.semseg_root is None:
+            args.semseg_root = args.data_root
+
     # Validate required paths
     for attr in ['rgb_root', 'depth_root', 'semseg_root', 'output_root']:
         if getattr(args, attr, None) is None:
-            print(f"[ERROR] Missing required argument: --{attr}")
+            print(f"[ERROR] Missing required argument: --{attr} (or --data_root)")
             sys.exit(1)
 
     process_scene(args)

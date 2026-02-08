@@ -17,9 +17,7 @@ hypersim_rend_plane_path = '/cluster/scratch/aoezkan/planeseg/dataset/Hypersim'
 scannetpp_rend_plane_path = '/cluster/scratch/aoezkan/planeseg/dataset/scannetpp'
 
 # VKITTI2 dataset dirs
-vkitti2_rgb_path = '/cluster/project/cvg/Shared_datasets/vkitti2/vkitti_2.0.3_rgb'
-vkitti2_depth_path = '/cluster/project/cvg/Shared_datasets/vkitti2/vkitti_2.0.3_depth'
-vkitti2_semseg_path = '/cluster/project/cvg/Shared_datasets/vkitti2/vkitti_2.0.3_classSegmentation'
+vkitti2_data_path = '/cluster/scratch/ayavuz/dataset/vkitti2'
 vkitti2_plane_path = '/cluster/scratch/ayavuz/dataset/vkitti2_planes'
 
 # SYNTHIA-AL dataset dirs

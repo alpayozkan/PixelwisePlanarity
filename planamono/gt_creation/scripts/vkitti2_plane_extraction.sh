@@ -27,14 +27,12 @@ done
 export PYTHONPATH="$REPO_ROOT:${PYTHONPATH:-}"
 
 # Read paths from config
-RGB_ROOT=$(python -c "import yaml; print(yaml.safe_load(open('$CONFIG'))['rgb_root'])")
-DEPTH_ROOT=$(python -c "import yaml; print(yaml.safe_load(open('$CONFIG'))['depth_root'])")
-SEMSEG_ROOT=$(python -c "import yaml; print(yaml.safe_load(open('$CONFIG'))['semseg_root'])")
+DATA_ROOT=$(python -c "import yaml; c=yaml.safe_load(open('$CONFIG')); print(c.get('data_root') or c.get('rgb_root'))")
 OUTPUT_ROOT=$(python -c "import yaml; print(yaml.safe_load(open('$CONFIG'))['output_root'])")
 
 echo "[INFO] Starting VKITTI2 plane extraction on: $(hostname)"
 echo "[INFO] Config: $CONFIG"
-echo "[INFO] RGB root: $RGB_ROOT"
+echo "[INFO] Data root: $DATA_ROOT"
 echo "[INFO] Output root: $OUTPUT_ROOT"
 echo "[INFO] Test run: $TEST_RUN"
 
@@ -44,8 +42,8 @@ VARIANTS="clone fog morning overcast rain sunset 15-deg-left 15-deg-right 30-deg
 COUNT=0
 for SCENE in $SCENES; do
     for VARIANT in $VARIANTS; do
-        # Check if RGB dir exists for this combo
-        if [ ! -d "$RGB_ROOT/$SCENE/$VARIANT" ]; then
+        # Check if scene/variant dir exists
+        if [ ! -d "$DATA_ROOT/$SCENE/$VARIANT" ]; then
             continue
         fi
 

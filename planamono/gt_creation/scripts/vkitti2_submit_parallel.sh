@@ -21,14 +21,14 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Read RGB root from config to check which scene/variant dirs exist
-RGB_ROOT=$(python -c "import yaml; print(yaml.safe_load(open('$CONFIG'))['rgb_root'])")
+# Read data root from config
+DATA_ROOT=$(python -c "import yaml; c=yaml.safe_load(open('$CONFIG')); print(c.get('data_root') or c.get('rgb_root'))")
 
 echo "=============================================="
 echo "VKITTI2 Parallel Plane Extraction"
 echo "=============================================="
 echo "Config:    $CONFIG"
-echo "RGB root:  $RGB_ROOT"
+echo "Data root: $DATA_ROOT"
 echo "Num jobs:  $NUM_JOBS"
 
 # Create temp dir for scene lists
@@ -45,7 +45,7 @@ VARIANTS="clone fog morning overcast rain sunset 15-deg-left 15-deg-right 30-deg
 
 for SCENE in $SCENES; do
     for VARIANT in $VARIANTS; do
-        if [ -d "$RGB_ROOT/$SCENE/$VARIANT" ]; then
+        if [ -d "$DATA_ROOT/$SCENE/$VARIANT" ]; then
             echo -e "${SCENE}\t${VARIANT}" >> "$ALL_SCENES"
         fi
     done
