@@ -17,6 +17,9 @@ def decode_depth(depth_png):
     return (5000.0 * (R + G * 256 + B * 256 * 256) / (256**3 - 1)).astype(np.float32)
 
 
+OUT_FILE = '/cluster/scratch/ayavuz/dataset/synthia_planes/scenes_to_rerun.txt'
+affected = []
+
 for data_root, split in [(SYNTHIA_TRAIN, 'train'), (SYNTHIA_TEST, 'test')]:
     if not os.path.isdir(data_root):
         continue
@@ -60,5 +63,12 @@ for data_root, split in [(SYNTHIA_TRAIN, 'train'), (SYNTHIA_TEST, 'test')]:
             if total_lost > 0:
                 pct = 100 * total_lost / max(total_planar, 1)
                 print(f'[{split}/{scene_name}] {n_frames} frames: {total_lost} planar px lost ({pct:.2f}%), max depth: {max_lost_depth:.1f}m')
+                affected.append(f'{split}\t{scene_name}\t{total_lost}\t{pct:.2f}\t{max_lost_depth:.1f}')
             else:
                 print(f'[{split}/{scene_name}] {n_frames} frames: no pixels lost')
+
+with open(OUT_FILE, 'w') as f:
+    f.write('split\tscene\tlost_pixels\tlost_pct\tmax_depth\n')
+    for line in affected:
+        f.write(line + '\n')
+print(f'\n{len(affected)} affected scenes saved to {OUT_FILE}')
