@@ -21,8 +21,8 @@ class ScanNetPPPlanarityDataset(Dataset):
                  depth_label_root,
                  split_txt_dir,
                  split='train',
-                 image_height=512,
-                 image_width=768,
+                 image_height=476,
+                 image_width=644,
                  max_scenes=None):
         self.rgb_root = rgb_root
         self.plane_label_root = plane_label_root
@@ -149,8 +149,8 @@ class ScanNetPPPlaneDataset(Dataset):
                  depth_label_root,
                  split_txt_dir,
                  split='train',
-                 image_height=512,
-                 image_width=768,
+                 image_height=476,
+                 image_width=644,
                  max_scenes=None):
         self.rgb_root = rgb_root
         self.plane_label_root = plane_label_root
@@ -288,8 +288,8 @@ class ScanNetPPPlanarityDataset_v0(Dataset):
                  label_root,
                  split_txt_dir,
                  split='train',
-                 image_height=512,
-                 image_width=768,
+                 image_height=476,
+                 image_width=644,
                  max_scenes=None):
         """
         Args:

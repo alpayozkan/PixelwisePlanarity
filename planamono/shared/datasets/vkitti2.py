@@ -49,8 +49,8 @@ class VKITTI2PlanarityDataset(Dataset):
 
     def __init__(self,
                  data_root,
-                 image_height=512,
-                 image_width=768,
+                 image_height=476,
+                 image_width=644,
                  max_samples=None):
         self.data_root = data_root
         self.image_height = image_height

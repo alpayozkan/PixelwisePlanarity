@@ -48,8 +48,8 @@ class SYNTHIAPlanarityDataset(Dataset):
                  data_root,
                  plane_label_root,
                  split='train',
-                 image_height=480,
-                 image_width=640,
+                 image_height=476,
+                 image_width=644,
                  max_samples=None):
         self.plane_label_root = plane_label_root
         self.image_height = image_height

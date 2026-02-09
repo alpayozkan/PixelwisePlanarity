@@ -12,8 +12,8 @@ class HypersimPlanarityDataset(Dataset):
                  plane_label_root,
                  filtered_csv_path,
                  split='train',
-                 image_height=512,
-                 image_width=768,
+                 image_height=476,
+                 image_width=644,
                  max_samples=None,
                  preprocessed_rgb_dir=None):
         self.root_dir = root_dir

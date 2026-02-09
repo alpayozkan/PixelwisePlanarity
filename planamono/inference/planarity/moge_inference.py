@@ -113,7 +113,7 @@ class MoGePlanarityInference:
 
         print("✓ Added planarity_head")
         
-    def preprocess_image(self, image_path, target_height=512, target_width=768):
+    def preprocess_image(self, image_path, target_height=476, target_width=644):
         """
         Preprocess input image for inference.
         

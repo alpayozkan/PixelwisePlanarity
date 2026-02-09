@@ -4,7 +4,7 @@ import random
 import torchvision.transforms.functional as TF
 
 class MixedPlanarityDataset(Dataset):
-    def __init__(self, dataset_a, dataset_b, image_height=512, image_width=768, seed=42):
+    def __init__(self, dataset_a, dataset_b, image_height=476, image_width=644, seed=42):
         self.dataset_a = dataset_a
         self.dataset_b = dataset_b
         self.len_a = len(dataset_a)
