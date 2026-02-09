@@ -41,13 +41,16 @@ def count_vkitti2(data_root, scenes=None):
             continue
         if scenes and scene not in scenes:
             continue
+        scene_count = 0
         for variant in sorted(os.listdir(scene_dir)):
             rgb_dir = os.path.join(scene_dir, variant, "frames", "rgb", "Camera_0")
             if not os.path.isdir(rgb_dir):
                 continue
             n = len([f for f in os.listdir(rgb_dir) if f.endswith(".jpg")])
-            print(f"  {scene}/{variant}: {n} frames")
-            total += n
+            print(f"    {variant}: {n} frames")
+            scene_count += n
+        print(f"  {scene}: {scene_count} frames")
+        total += scene_count
     return total
 
 
