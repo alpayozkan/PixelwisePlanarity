@@ -7,12 +7,12 @@
 output_root: /cluster/scratch/ayavuz/dataset/synthia_planes
 
 # RANSAC parameters
-ransac_iters: 200
-dist_thresh: 0.05       # meters
-normal_cos: 0.94        # ~20 degrees
-min_inliers: 500        # minimum pixels per plane
+ransac_iters: 500
+dist_thresh: 0.01       # meters (depth-adaptive)
+normal_cos: 0.985       # ~10 degrees
+min_inliers: 50         # minimum pixels per plane
 max_planes: 50          # max planes per semantic class per frame
 
 # Merge parameters
-merge_normal: 0.95      # cosine threshold for normal similarity
+merge_normal: 0.985     # cosine threshold for normal similarity
 merge_rel_dist: 0.02    # relative distance threshold

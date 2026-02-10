@@ -29,7 +29,7 @@ import h5py
 from PIL import Image
 from tqdm import tqdm
 
-from planamono.shared.plane_fitting.ransac_image import (
+from planamono.shared.outdoor.ransac_image import (
     depth_to_xyz, compute_normals, extract_planes_from_frame,
 )
 
@@ -165,12 +165,17 @@ def process_scene(args):
         print("[ERROR] No frames found. Check paths.")
         return
 
+    frames = frames[::5]
+
     max_frames = getattr(args, 'max_frames', None)
     if max_frames is not None and len(frames) > max_frames:
         frames = frames[:max_frames]
         print(f"[INFO] Limited to {max_frames} frames (--max_frames)")
 
-    print(f"[INFO] Processing {len(frames)} frames")
+    print(f"[INFO] Processing {len(frames)} frames (every 5th)")
+
+    # Scene20: no terrain (class 1) — terrain labels are noisy in this scene
+    planar = (PLANAR - {1}) if scene == 'Scene20' else PLANAR
 
     # Load extrinsics (c2w) — try data_root first, then rgb_root
     ext_root = getattr(args, 'data_root', None) or args.rgb_root
@@ -186,12 +191,12 @@ def process_scene(args):
     h5_path = os.path.join(out_dir, "scene_data.h5")
 
     # RANSAC parameters
-    ransac_iters = getattr(args, 'ransac_iters', 200)
-    dist_thresh = getattr(args, 'dist_thresh', 0.05)
-    normal_cos = getattr(args, 'normal_cos', 0.94)
-    min_inliers = getattr(args, 'min_inliers', 500)
+    ransac_iters = getattr(args, 'ransac_iters', 500)
+    dist_thresh = getattr(args, 'dist_thresh', 0.01)
+    normal_cos = getattr(args, 'normal_cos', 0.985)
+    min_inliers = getattr(args, 'min_inliers', 50)
     max_planes = getattr(args, 'max_planes', 50)
-    merge_normal = getattr(args, 'merge_normal', 0.95)
+    merge_normal = getattr(args, 'merge_normal', 0.985)
     merge_rel_dist = getattr(args, 'merge_rel_dist', 0.02)
 
     frame_ids = []
@@ -222,7 +227,7 @@ def process_scene(args):
         # Extract planes
         plane_map, planes_info = extract_planes_from_frame(
             depth, class_ids, valid, xyz, normals,
-            planar_classes=PLANAR,
+            planar_classes=planar,
             class_names=CLASS_NAMES,
             merge_compatible=MERGE_COMPATIBLE,
             ransac_iters=ransac_iters,
@@ -314,12 +319,12 @@ def main():
     parser.add_argument('--output_root', type=str, default=None)
 
     # RANSAC parameters
-    parser.add_argument('--ransac_iters', type=int, default=200)
-    parser.add_argument('--dist_thresh', type=float, default=0.05)
-    parser.add_argument('--normal_cos', type=float, default=0.94)
-    parser.add_argument('--min_inliers', type=int, default=500)
+    parser.add_argument('--ransac_iters', type=int, default=500)
+    parser.add_argument('--dist_thresh', type=float, default=0.01)
+    parser.add_argument('--normal_cos', type=float, default=0.985)
+    parser.add_argument('--min_inliers', type=int, default=50)
     parser.add_argument('--max_planes', type=int, default=50)
-    parser.add_argument('--merge_normal', type=float, default=0.95)
+    parser.add_argument('--merge_normal', type=float, default=0.985)
     parser.add_argument('--merge_rel_dist', type=float, default=0.02)
     parser.add_argument('--max_frames', type=int, default=None,
                         help='Process only first N frames per scene (for testing)')
