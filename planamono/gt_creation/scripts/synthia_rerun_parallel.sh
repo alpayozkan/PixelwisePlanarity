@@ -52,6 +52,9 @@ LISTS_DIR="$REPO_ROOT/planamono/gt_creation/scripts/synthia_job_lists"
 mkdir -p "$LISTS_DIR"
 mkdir -p "$REPO_ROOT/logs"
 
+# Clean old rerun files
+rm -f "$LISTS_DIR"/rerun_*
+
 # Split into N job files
 SCENES_PER_JOB=$(( (TOTAL + NUM_JOBS - 1) / NUM_JOBS ))
 echo "Scenes per job: ~$SCENES_PER_JOB"

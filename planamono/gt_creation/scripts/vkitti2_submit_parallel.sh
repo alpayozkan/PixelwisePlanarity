@@ -54,6 +54,9 @@ done
 TOTAL=$(wc -l < "$ALL_SCENES" | tr -d ' ')
 echo "Total scene/variant pairs: $TOTAL"
 
+# Clean old job files
+rm -f "$LISTS_DIR"/job_*
+
 # Split into N job files
 PAIRS_PER_JOB=$(( (TOTAL + NUM_JOBS - 1) / NUM_JOBS ))
 echo "Pairs per job: ~$PAIRS_PER_JOB"

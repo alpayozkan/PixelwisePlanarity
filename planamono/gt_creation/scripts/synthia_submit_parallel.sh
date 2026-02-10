@@ -58,6 +58,9 @@ done
 TOTAL=$(wc -l < "$ALL_SCENES" | tr -d ' ')
 echo "Total scenes: $TOTAL"
 
+# Clean old job files
+rm -f "$LISTS_DIR"/job_*
+
 # Split into N job files
 SCENES_PER_JOB=$(( (TOTAL + NUM_JOBS - 1) / NUM_JOBS ))
 echo "Scenes per job: ~$SCENES_PER_JOB"
