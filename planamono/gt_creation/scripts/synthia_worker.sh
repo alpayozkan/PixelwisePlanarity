@@ -3,7 +3,7 @@
 # Called by synthia_submit_parallel.sh
 
 #SBATCH --time=24:00:00
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=2
 #SBATCH --mem-per-cpu=8G
 
 SCENE_LIST="$1"
