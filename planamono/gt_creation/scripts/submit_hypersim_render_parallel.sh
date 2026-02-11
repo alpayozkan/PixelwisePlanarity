@@ -7,8 +7,8 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Configuration
 INPUT_ROOT="${1:-/cluster/scratch/ayavuz/dataset/Hypersim_merged}"
-PLANE_ROOT="${2:-/cluster/scratch/ayavuz/dataset/hypersim_gt_planes}"
-OUTPUT_ROOT="${3:-/cluster/scratch/ayavuz/dataset/Hypersim_rendered}"
+PLANE_ROOT="${2:-/cluster/scratch/ayavuz/dataset/hypersim_mesh_ours}"
+OUTPUT_ROOT="${3:-/cluster/scratch/ayavuz/dataset/Hypersim_rendered_fixed}"
 FRAME_SKIP="${4:-1}"
 NUM_SPLITS=8
 
