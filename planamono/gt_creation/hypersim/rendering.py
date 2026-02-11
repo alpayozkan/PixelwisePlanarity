@@ -28,11 +28,6 @@ from planamono.shared.rendering.mesh_io import read_ply_faces_with_plane_ids
 from planamono.shared.rendering.render import raycast_semantic_face_labels
 
 
-def remap_semantic(semantic_img):
-    """Remap semantic labels, replacing -1 with 0."""
-    return np.where(semantic_img < 0, 0, semantic_img)
-
-
 def compute_intrinsics_from_proj(M_proj, width, height):
     """Convert Hypersim projection matrix to Open3D intrinsics."""
     fx = M_proj[0, 0] * 0.5 * width
@@ -166,8 +161,10 @@ if __name__ == "__main__":
                 sem_mesh, plane_id_face, K, (width, height), c2w
             )
 
-            # --- Map per-face to per-pixel IDs ---
-            semantic_img = remap_semantic(semantic_img_face)
+            # --- Shift plane IDs by +1 so 0 = no plane ---
+            # raycaster returns -1 for misses, 0+ for valid planes
+            # +1 makes: -1 → 0 (no plane), 0 → 1, 1 → 2, etc.
+            semantic_img = semantic_img_face + 1
             semantic_img = np.flipud(semantic_img)  # OpenGL → image coordinates
             semantic_img = np.where(semantic_img < 0, 0, semantic_img)
             semantic_img = np.clip(semantic_img, 0, 65535).astype(np.uint16)
