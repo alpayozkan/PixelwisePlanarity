@@ -193,3 +193,57 @@ def raycast_semantic_face_labels(sem_mesh, face_labels, K, img_res, c2w):
 
     return semantic_img
 
+
+def raycast_semantic_face_labels_mcam(sem_mesh, face_labels, M_cam_from_uv,
+                                      R_world_from_cam, cam_position, width, height):
+    """Raycast per-face semantic labels using Hypersim's M_cam_from_uv convention.
+
+    This matches V-Ray's pixel sampling exactly, avoiding the ~0.5px error
+    of the pinhole-from-M_proj approach. See hypersim_intrinsics_bug.md for details.
+
+    Args:
+        sem_mesh: Open3D legacy TriangleMesh with plane geometry.
+        face_labels: (N_faces,) int array of per-face plane IDs.
+        M_cam_from_uv: (3, 3) matrix from metadata_camera_parameters.csv.
+        R_world_from_cam: (3, 3) rotation matrix (camera-to-world, from
+            camera_keyframe_orientations.hdf5).
+        cam_position: (3,) camera centre in world space (from
+            camera_keyframe_positions.hdf5).
+        width, height: Image dimensions in pixels.
+
+    Returns:
+        (H, W) int32 array of plane IDs (-1 = no hit).
+    """
+    W, H = width, height
+    scene_rc = o3d.t.geometry.RaycastingScene()
+    scene_rc.add_triangles(o3d.t.geometry.TriangleMesh.from_legacy(sem_mesh))
+
+    # Official Hypersim UV grid: half-pixel offsets within [-1, 1]
+    half_du = 1.0 / W
+    half_dv = 1.0 / H
+    u = np.linspace(-1 + half_du, 1 - half_du, W)
+    v = np.linspace(-1 + half_dv, 1 - half_dv, H)[::-1]  # top row = largest v
+    uu, vv = np.meshgrid(u, v)
+
+    # Camera-space ray directions via M_cam_from_uv
+    uvs = np.stack([uu, vv, np.ones_like(uu)], axis=-1)  # (H, W, 3)
+    dirs_cam = uvs @ M_cam_from_uv.T                      # (H, W, 3)
+
+    # World-space ray directions
+    dirs_world = dirs_cam @ R_world_from_cam.T
+    dirs_world /= np.linalg.norm(dirs_world, axis=-1, keepdims=True)
+
+    # Raycast
+    origins = np.broadcast_to(cam_position, dirs_world.shape).copy()
+    rays = np.concatenate([origins, dirs_world], axis=-1).astype(np.float32)
+    ans = scene_rc.cast_rays(
+        o3d.core.Tensor(rays.reshape(-1, 6), dtype=o3d.core.Dtype.Float32)
+    )
+
+    triangle_ids = ans['primitive_ids'].numpy().reshape(H, W)
+    hit_mask = triangle_ids != o3d.t.geometry.RaycastingScene.INVALID_ID
+
+    semantic_img = np.full((H, W), fill_value=-1, dtype=np.int32)
+    semantic_img[hit_mask] = face_labels[triangle_ids[hit_mask]]
+    return semantic_img  # NO flipud needed — y-flip built into UV grid
+

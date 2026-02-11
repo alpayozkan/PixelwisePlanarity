@@ -24,7 +24,8 @@ import pandas as pd
 import open3d as o3d
 from tqdm import tqdm
 
-from planamono.shared.rendering import read_ply_faces_with_plane_ids, raycast_semantic_face_labels
+from planamono.shared.rendering.mesh_io import read_ply_faces_with_plane_ids
+from planamono.shared.rendering.render import raycast_semantic_face_labels_mcam
 
 
 def remap_semantic(semantic_img):
@@ -32,15 +33,10 @@ def remap_semantic(semantic_img):
     return np.where(semantic_img < 0, 0, semantic_img)
 
 
-def compute_intrinsics_from_proj(M_proj, width, height):
-    """Convert Hypersim projection matrix to Open3D intrinsics."""
-    fx = M_proj[0, 0] * 0.5 * width
-    fy = -M_proj[1, 1] * 0.5 * height  # Note: Y-axis flipped
-    cx = M_proj[0, 2] * 0.5 * width + 0.5 * width
-    cy = -M_proj[1, 2] * 0.5 * height + 0.5 * height
-    return np.array([[fx, 0, cx],
-                     [0,  fy, cy],
-                     [0,   0,  1]])
+def load_M_cam_from_uv(df_scene):
+    """Load the 3x3 M_cam_from_uv matrix from a metadata CSV row."""
+    return np.array([[df_scene[f"M_cam_from_uv_{i}{j}"] for j in range(3)]
+                     for i in range(3)])
 
 
 if __name__ == "__main__":
@@ -109,8 +105,7 @@ if __name__ == "__main__":
     df_scene = df_meta.loc[scene_id]
     width = int(df_scene["settings_output_img_width"])
     height = int(df_scene["settings_output_img_height"])
-    M_proj = np.array([[df_scene[f"M_proj_{i}{j}"] for j in range(4)] for i in range(4)])
-    K = compute_intrinsics_from_proj(M_proj, width, height)
+    M_cam_from_uv = load_M_cam_from_uv(df_scene)
 
     # === Find available cameras ===
     if not os.path.exists(detail_dir):
@@ -149,26 +144,16 @@ if __name__ == "__main__":
             if frame_id % frame_skip != 0:
                 continue
 
-            R = cam_orientations[frame_id]
-            T = cam_positions[frame_id]
+            R = cam_orientations[frame_id]  # (3,3) R_world_from_cam
+            T = cam_positions[frame_id]    # (3,)  camera position in world
 
-            # --- Build camera-to-world ---
-            c2w = np.eye(4)
-            c2w[:3, :3] = R
-            c2w[:3, 3] = T
-
-            # --- Flip for Open3D convention (Y,Z axes) ---
-            c2w = c2w @ np.diag([1, -1, -1, 1])
-
-            # --- Raycast plane IDs per face ---
-            semantic_img_face = raycast_semantic_face_labels(
-                sem_mesh, plane_id_face, K, (width, height), c2w
+            # --- Raycast plane IDs using M_cam_from_uv (no flip needed) ---
+            semantic_img_face = raycast_semantic_face_labels_mcam(
+                sem_mesh, plane_id_face, M_cam_from_uv, R, T, width, height
             )
 
-            # --- Map per-face to per-pixel IDs ---
+            # --- Remap negatives to 0 ---
             semantic_img = remap_semantic(semantic_img_face)
-            semantic_img = np.flipud(semantic_img)  # OpenGL → image coordinates
-            semantic_img = np.where(semantic_img < 0, 0, semantic_img)
             semantic_img = np.clip(semantic_img, 0, 65535).astype(np.uint16)
 
             frame_ids.append(f"{frame_id:04d}")

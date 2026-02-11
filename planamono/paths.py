@@ -16,7 +16,8 @@ scannetpp_plane_path = '/cluster/scratch/ayavuz/dataset/plane_ours_gt'
 # depth + semantics + RGB (merged)
 hypersim_merged_path = '/cluster/scratch/ayavuz/dataset/Hypersim_merged'
 # camera parameters
-hypersim_params_path = '/cluster/scratch/ayavuz/dataset/Hypersim_params'
+# hypersim_params_path = '/cluster/scratch/ayavuz/dataset/Hypersim_params'
+hypersim_params_path = '/cluster/scratch/ayavuz/dataset/HP_all/Hypersim_params'
 # plane segmentation labels (rendered)
 hypersim_rendered_path = '/cluster/scratch/ayavuz/dataset/Hypersim_rendered'
 

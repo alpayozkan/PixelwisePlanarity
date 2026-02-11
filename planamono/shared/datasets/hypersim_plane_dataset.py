@@ -75,6 +75,8 @@ class HypersimPlaneDataset(Dataset):
 
         # Load metadata for intrinsics if available
         self.metadata = None
+        if metadata_csv is None:
+            metadata_csv = os.path.join(os.path.dirname(__file__), "metadata_camera_parameters.csv")
         if metadata_csv and os.path.exists(metadata_csv):
             self.metadata = pd.read_csv(metadata_csv, index_col="scene_name")
 
@@ -131,9 +133,9 @@ class HypersimPlaneDataset(Dataset):
                     print(f"[WARN] Missing depth dir for {scene_id}/{cam_name}: {depth_dir}")
                     continue
 
-                # Get intrinsics
+                # Get intrinsics (at native render resolution)
                 try:
-                    K = self._get_intrinsics(scene_id, cam_name, params_scene_dir)
+                    K, native_wh = self._get_intrinsics(scene_id, cam_name, params_scene_dir)
                 except Exception as e:
                     print(f"[WARN] Failed to get intrinsics for {scene_id}/{cam_name}: {e}")
                     continue
@@ -159,7 +161,7 @@ class HypersimPlaneDataset(Dataset):
 
                     self.valid_pairs.append((
                         scene_id, cam_name, idx, fid,
-                        rgb_path, depth_path, plane_h5_path, K
+                        rgb_path, depth_path, plane_h5_path, K, native_wh
                     ))
                     scene_frame_count += 1
 
@@ -171,35 +173,64 @@ class HypersimPlaneDataset(Dataset):
         print(f"[Hypersim] {split} split → {len(self.valid_pairs)} pairs from {len(self.scene_ids)} scenes")
 
     def _get_intrinsics(self, scene_id, cam_name, params_scene_dir):
-        """Compute intrinsics matrix from metadata or use default."""
-        # If we have metadata CSV
+        """Compute intrinsics matrix from metadata or use default.
+
+        Intrinsics are computed at native Hypersim render resolution (typically
+        1024x768).  In __getitem__ the K matrix is rescaled to match the actual
+        plane-label dimensions so that cx/cy always correspond to the image that
+        is returned.
+        """
+        # If we have metadata CSV, use per-scene projection matrix
         if self.metadata is not None and scene_id in self.metadata.index:
             row = self.metadata.loc[scene_id]
-            width = self.image_width
-            height = self.image_height
+            # Use native render resolution from metadata
+            native_w = int(row["settings_output_img_width"]) if "settings_output_img_width" in row.index else 1024
+            native_h = int(row["settings_output_img_height"]) if "settings_output_img_height" in row.index else 768
             M_proj = np.array([[row[f"M_proj_{i}{j}"] for j in range(4)] for i in range(4)])
 
-            # Convert projection matrix to intrinsics
-            fx = M_proj[0, 0] * 0.5 * width
-            fy = -M_proj[1, 1] * 0.5 * height
-            cx = M_proj[0, 2] * 0.5 * width + 0.5 * width
-            cy = -M_proj[1, 2] * 0.5 * height + 0.5 * height
+            W1 = native_w - 1  # M_screen_from_ndc uses (W-1), not W
+            H1 = native_h - 1
+            fx =  M_proj[0, 0] * 0.5 * W1
+            fy = -M_proj[1, 1] * 0.5 * H1
+            cx = -M_proj[0, 2] * 0.5 * W1 + 0.5 * W1
+            cy =  M_proj[1, 2] * 0.5 * H1 + 0.5 * H1
             K = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]], dtype=np.float32)
-            return K
+            return K, (native_w, native_h)
 
-        # Otherwise use default intrinsics (standard Hypersim)
-        # These are typical values for Hypersim at 1024x768
-        fx = fy = 886.81  # Approximate focal length for Hypersim
-        cx = self.image_width / 2.0
-        cy = self.image_height / 2.0
+        # Default intrinsics at native Hypersim resolution (1024x768)
+        native_w, native_h = 1024, 768
+        fx = fy = 886.81
+        cx = (native_w - 1) / 2.0   # 511.5
+        cy = (native_h - 1) / 2.0   # 383.5
         K = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]], dtype=np.float32)
-        return K
+        return K, (native_w, native_h)
 
     def __len__(self):
         return len(self.valid_pairs)
 
+    @staticmethod
+    def _euclidean_to_zdepth(depth_euc, K):
+        """Convert Euclidean ray distance to z-depth using camera intrinsics.
+
+        Hypersim ``depth_meters.hdf5`` stores the Euclidean distance from the
+        camera centre to the surface point along the viewing ray.  Backprojection
+        (``backproject_v1/v2``) expects z-depth (perpendicular to the image plane).
+
+        Conversion: ``Z = depth_euc / sqrt((x_n)^2 + (y_n)^2 + 1)``
+        where ``x_n = (u - cx) / fx``, ``y_n = (v - cy) / fy``.
+        """
+        H, W = depth_euc.shape
+        fx, fy = K[0, 0], K[1, 1]
+        cx, cy = K[0, 2], K[1, 2]
+        u, v = np.meshgrid(np.arange(W, dtype=np.float32),
+                           np.arange(H, dtype=np.float32))
+        x_n = (u - cx) / fx
+        y_n = (v - cy) / fy
+        ray_length = np.sqrt(x_n ** 2 + y_n ** 2 + 1.0)
+        return depth_euc / ray_length
+
     def __getitem__(self, idx):
-        scene_id, cam_name, frame_idx, fid, rgb_path, depth_path, plane_h5, K = self.valid_pairs[idx]
+        scene_id, cam_name, frame_idx, fid, rgb_path, depth_path, plane_h5, K, native_wh = self.valid_pairs[idx]
 
         # --- Load plane labels ---
         try:
@@ -212,6 +243,16 @@ class HypersimPlaneDataset(Dataset):
             print(f"[WARN] Failed plane label from {plane_h5} [{frame_idx}]: {e}")
             H, W = self.image_height, self.image_width
             plane = torch.zeros((1, H, W), dtype=torch.int32)
+
+        # --- Rescale intrinsics to match actual image dimensions ---
+        # K was computed at native render resolution; scale to plane-label dims
+        native_w, native_h = native_wh
+        if W != native_w or H != native_h:
+            scale_x = W / native_w
+            scale_y = H / native_h
+            K = K.copy()
+            K[0, :] *= scale_x  # fx, cx
+            K[1, :] *= scale_y  # fy, cy
 
         # --- Load RGB ---
         try:
@@ -239,12 +280,13 @@ class HypersimPlaneDataset(Dataset):
             traceback.print_exc()
             image = torch.zeros((3, H, W), dtype=torch.float32)
 
-        # --- Load depth ---
+        # --- Load depth (Euclidean → z-depth) ---
         try:
             with h5py.File(depth_path, "r") as f:
                 key = list(f.keys())[0]
-                depth = f[key][:].astype(np.float32)  # Already in meters
-            depth = cv2.resize(depth, (W, H), interpolation=cv2.INTER_LINEAR)
+                depth_euc = f[key][:].astype(np.float32)  # Euclidean distance in meters
+            depth_euc = cv2.resize(depth_euc, (W, H), interpolation=cv2.INTER_LINEAR)
+            depth = self._euclidean_to_zdepth(depth_euc, K)
             depth = torch.from_numpy(depth).unsqueeze(0)  # [1, H, W]
         except Exception as e:
             print(f"[WARN] Failed depth from {depth_path}: {e}")
