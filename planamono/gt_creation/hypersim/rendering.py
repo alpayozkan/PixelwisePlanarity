@@ -25,18 +25,48 @@ import open3d as o3d
 from tqdm import tqdm
 
 from planamono.shared.rendering.mesh_io import read_ply_faces_with_plane_ids
-from planamono.shared.rendering.render import raycast_semantic_face_labels
 
 
-def compute_intrinsics_from_proj(M_proj, width, height):
-    """Convert Hypersim projection matrix to Open3D intrinsics."""
-    fx = M_proj[0, 0] * 0.5 * width
-    fy = -M_proj[1, 1] * 0.5 * height  # Note: Y-axis flipped
-    cx = M_proj[0, 2] * 0.5 * width + 0.5 * width
-    cy = -M_proj[1, 2] * 0.5 * height + 0.5 * height
-    return np.array([[fx, 0, cx],
-                     [0,  fy, cy],
-                     [0,   0,  1]])
+def raycast_with_cam_from_uv(sem_mesh, face_labels, M_cam_from_uv, img_res, c2w):
+    """
+    Raycast per-face labels using M_cam_from_uv for ray generation.
+    Handles oblique/sheared projections that a simple pinhole K cannot represent.
+
+    M_cam_from_uv maps NDC coordinates [-1,1] to camera-space ray directions.
+    """
+    W, H = img_res
+    scene = o3d.t.geometry.RaycastingScene()
+    scene.add_triangles(o3d.t.geometry.TriangleMesh.from_legacy(sem_mesh))
+
+    # Pixel grid → NDC coordinates
+    px, py = np.meshgrid(np.arange(W), np.arange(H))
+    ndc_x = 2.0 * (px + 0.5) / W - 1.0
+    ndc_y = 1.0 - 2.0 * (py + 0.5) / H  # OpenGL: Y up
+    ndc = np.stack([ndc_x, ndc_y, np.ones_like(ndc_x)], axis=-1)  # (H, W, 3)
+
+    # Ray directions in camera space
+    dirs_cam = ndc @ M_cam_from_uv.T  # (H, W, 3)
+    dirs_cam = dirs_cam / np.linalg.norm(dirs_cam, axis=-1, keepdims=True)
+
+    # Camera-to-world (raw Hypersim c2w, OpenGL convention)
+    R = c2w[:3, :3]
+    cam_origin = c2w[:3, 3]
+
+    dirs_world = dirs_cam @ R.T
+    rays_o = np.tile(cam_origin, (H, W, 1))
+
+    # Raycast
+    rays = np.concatenate([rays_o, dirs_world], axis=-1).astype(np.float32)
+    rays_o3d = o3d.core.Tensor(rays.reshape(-1, 6), dtype=o3d.core.Dtype.Float32)
+    ans = scene.cast_rays(rays_o3d)
+
+    triangle_ids = ans['primitive_ids'].numpy().reshape(H, W)
+    hit_mask = triangle_ids != o3d.t.geometry.RaycastingScene.INVALID_ID
+
+    semantic_img = np.full((H, W), fill_value=-1, dtype=np.int32)
+    semantic_img[hit_mask] = face_labels[triangle_ids[hit_mask]]
+
+    return semantic_img
 
 
 if __name__ == "__main__":
@@ -91,7 +121,7 @@ if __name__ == "__main__":
     scene_dir = os.path.join(input_root, scene_id)
     detail_dir = os.path.join(scene_dir, "_detail")
 
-    # === Intrinsics ===
+    # === Camera parameters ===
     if args.metadata_csv:
         meta_cam_file = args.metadata_csv
     else:
@@ -105,8 +135,16 @@ if __name__ == "__main__":
     df_scene = df_meta.loc[scene_id]
     width = int(df_scene["settings_output_img_width"])
     height = int(df_scene["settings_output_img_height"])
-    M_proj = np.array([[df_scene[f"M_proj_{i}{j}"] for j in range(4)] for i in range(4)])
-    K = compute_intrinsics_from_proj(M_proj, width, height)
+
+    # M_cam_from_uv: maps NDC [-1,1] to camera-space ray directions
+    # Correctly handles oblique/sheared projections (268/482 Hypersim scenes)
+    M_cam_from_uv = np.array([
+        [df_scene[f"M_cam_from_uv_{i}{j}"] for j in range(3)]
+        for i in range(3)
+    ], dtype=np.float64)
+
+    print(f"[INFO] Resolution: {width}x{height}")
+    print(f"[INFO] M_cam_from_uv:\n{M_cam_from_uv}")
 
     # === Find available cameras ===
     if not os.path.exists(detail_dir):
@@ -148,24 +186,20 @@ if __name__ == "__main__":
             R = cam_orientations[frame_id]
             T = cam_positions[frame_id]
 
-            # --- Build camera-to-world ---
+            # --- Build camera-to-world (raw Hypersim, OpenGL convention) ---
             c2w = np.eye(4)
             c2w[:3, :3] = R
             c2w[:3, 3] = T
 
-            # --- Flip for Open3D convention (Y,Z axes) ---
-            c2w = c2w @ np.diag([1, -1, -1, 1])
-
             # --- Raycast plane IDs per face ---
-            semantic_img_face = raycast_semantic_face_labels(
-                sem_mesh, plane_id_face, K, (width, height), c2w
+            semantic_img_face = raycast_with_cam_from_uv(
+                sem_mesh, plane_id_face, M_cam_from_uv, (width, height), c2w
             )
 
             # --- Shift plane IDs by +1 so 0 = no plane ---
             # raycaster returns -1 for misses, 0+ for valid planes
             # +1 makes: -1 → 0 (no plane), 0 → 1, 1 → 2, etc.
             semantic_img = semantic_img_face + 1
-            semantic_img = np.flipud(semantic_img)  # OpenGL → image coordinates
             semantic_img = np.where(semantic_img < 0, 0, semantic_img)
             semantic_img = np.clip(semantic_img, 0, 65535).astype(np.uint16)
 
