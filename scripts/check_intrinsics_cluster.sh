@@ -33,7 +33,7 @@ echo "============================================"
 
 python scripts/check_intrinsics_constant.py \
     --synthia "$SYNTHIA_ROOT" \
-    --vkitti2-textgt "$VKITTI2_ROOT"
+    --vkitti2 "$VKITTI2_ROOT"
 
 EXIT_CODE=$?
 
