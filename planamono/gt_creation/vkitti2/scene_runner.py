@@ -174,8 +174,8 @@ def process_scene(args):
 
     print(f"[INFO] Processing {len(frames)} frames (every 5th)")
 
-    # Scene20: no terrain (class 1) — terrain labels are noisy in this scene
-    planar = (PLANAR - {1}) if scene == 'Scene20' else PLANAR
+    # Scene18/20: no terrain (class 1) — terrain labels are noisy in these scenes
+    planar = (PLANAR - {1}) if scene in ('Scene18', 'Scene20') else PLANAR
 
     # Load extrinsics (c2w) — try data_root first, then rgb_root
     ext_root = getattr(args, 'data_root', None) or args.rgb_root
