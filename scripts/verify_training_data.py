@@ -4,7 +4,7 @@ Verify the PixelwisePlanarity training data pipeline.
 
 Loads samples through the actual dataset classes used during training
 and saves visualizations: RGB, plane mask, plane overlay on RGB,
-depth, and semantic labels — at the training resolution.
+and depth — at the training resolution.
 
 Usage:
     python scripts/verify_training_data.py --dataset scannetpp \
@@ -72,20 +72,11 @@ def depth_to_colormap(depth, max_depth=None):
     return colored
 
 
-def semantic_to_colormap(sem):
-    """Tab20 colormap for semantic labels."""
-    cmap = plt.cm.get_cmap('tab20', max(sem.max() + 1, 20))
-    colored = (cmap(sem % 20)[:, :, :3] * 255).astype(np.uint8)
-    colored[sem == 0] = 0  # background black
-    return colored
-
-
 def process_sample(sample, output_dir, idx):
     """Save visualizations for one training sample."""
-    image = sample["image"].numpy()        # (3, H, W) float [0,1]
-    depth = sample["depth"].numpy()        # (1, H, W) meters
-    plane = sample["plane"].numpy()        # (1, H, W) binary
-    semantic = sample["semantic"].numpy()  # (1, H, W) int
+    image = sample["image"].numpy()   # (3, H, W) float [0,1]
+    depth = sample["depth"].numpy()   # (1, H, W) meters
+    plane = sample["plane"].numpy()   # (1, H, W) binary
 
     scene_id = sample["scene_id"]
     frame_idx = sample["frame_idx"]
@@ -95,7 +86,6 @@ def process_sample(sample, output_dir, idx):
     rgb_uint8 = (image.transpose(1, 2, 0) * 255).clip(0, 255).astype(np.uint8)
     depth_2d = depth[0]
     plane_2d = plane[0]
-    sem_2d = semantic[0]
 
     out_dir = os.path.join(output_dir, f"{idx:04d}_{scene_id}_f{frame_idx}")
     os.makedirs(out_dir, exist_ok=True)
@@ -129,13 +119,8 @@ def process_sample(sample, output_dir, idx):
     cv2.imwrite(os.path.join(out_dir, "04_depth.png"),
                 cv2.cvtColor(depth_vis, cv2.COLOR_RGB2BGR))
 
-    # 05: Semantic
-    sem_vis = semantic_to_colormap(sem_2d)
-    cv2.imwrite(os.path.join(out_dir, "05_semantic.png"),
-                cv2.cvtColor(sem_vis, cv2.COLOR_RGB2BGR))
-
-    # 06: Combined figure
-    fig, axes = plt.subplots(1, 5, figsize=(25, 5))
+    # 05: Combined figure
+    fig, axes = plt.subplots(1, 4, figsize=(20, 5))
     axes[0].imshow(rgb_uint8)
     axes[0].set_title(f"RGB ({H}x{W})")
     axes[1].imshow(plane_2d, cmap='gray', vmin=0, vmax=1)
@@ -144,13 +129,11 @@ def process_sample(sample, output_dir, idx):
     axes[2].set_title("Plane overlay")
     axes[3].imshow(depth_vis)
     axes[3].set_title("Depth")
-    axes[4].imshow(sem_vis)
-    axes[4].set_title("Semantic")
     for ax in axes:
         ax.axis('off')
     fig.suptitle(f"{scene_id} / frame {frame_idx}", fontsize=14)
     fig.tight_layout()
-    fig.savefig(os.path.join(out_dir, "06_combined.png"), dpi=150, bbox_inches='tight')
+    fig.savefig(os.path.join(out_dir, "05_combined.png"), dpi=150, bbox_inches='tight')
     plt.close(fig)
 
 
@@ -177,7 +160,6 @@ def main():
     # ScanNet++ paths
     parser.add_argument("--rgb_root", default=None)
     parser.add_argument("--plane_label_root", default=None)
-    parser.add_argument("--sem_label_root", default=None)
     parser.add_argument("--depth_label_root", default=None)
     parser.add_argument("--split_txt_dir", default=None)
 
@@ -198,14 +180,13 @@ def main():
     if args.dataset == "scannetpp":
         rgb_root = args.rgb_root or "/cluster/project/cvg/Shared_datasets/scannet++/data"
         plane_label_root = args.plane_label_root or "/cluster/scratch/aoezkan/planeseg/dataset/scannetpp"
-        sem_label_root = args.sem_label_root or "/cluster/scratch/aoezkan/planeseg/dataset/scannetpp"
         depth_label_root = args.depth_label_root or "/cluster/scratch/aoezkan/planeseg/dataset/scannetpp"
         split_txt_dir = args.split_txt_dir or "/cluster/home/ayavuz/PixelwisePlanarity/planamono/splits/scannetpp"
 
         dataset = ScanNetPPPlanarityDataset(
             rgb_root=rgb_root,
             plane_label_root=plane_label_root,
-            sem_label_root=sem_label_root,
+            sem_label_root=plane_label_root,  # not used, just needs a valid H5 dir
             depth_label_root=depth_label_root,
             split_txt_dir=split_txt_dir,
             split=args.split,
