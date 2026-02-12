@@ -146,6 +146,8 @@ def main():
                         help="Target resolution H W (default: 476 644)")
     parser.add_argument("--scenes", nargs="+", default=None,
                         help="Filter to specific scene IDs (e.g. 0a5c013435 ai_001_001)")
+    parser.add_argument("--frames", nargs="+", default=None,
+                        help="Filter to specific frame IDs (e.g. 0035 0010)")
     parser.add_argument("--num_samples", type=int, default=10,
                         help="Number of samples to visualize per scene (default: 10)")
     parser.add_argument("--output_dir", default="output/training_data_verify/",
@@ -211,23 +213,30 @@ def main():
     print(f"\nDataset: {args.dataset}, split: {args.split}, "
           f"resolution: {target_h}x{target_w}, size: {len(dataset)}")
 
-    # Filter to specific scenes if requested
-    if args.scenes is not None:
-        scene_set = set(args.scenes)
-        if args.dataset == "scannetpp":
-            # valid_pairs: (rgb_path, plane_h5, sem_h5, depth_h5, frame_idx)
-            # scene_id is 4 dirs up from rgb_path
-            scene_indices = [
-                i for i, (rgb_path, *_) in enumerate(dataset.valid_pairs)
-                if rgb_path.split("/")[-4] in scene_set
-            ]
-        elif args.dataset == "hypersim":
-            # valid_pairs: (scene_id, frame_id, cam_name, ...)
-            scene_indices = [
-                i for i, (scene_id, *_) in enumerate(dataset.valid_pairs)
-                if scene_id in scene_set
-            ]
-        print(f"Filtered to scenes {args.scenes}: {len(scene_indices)} samples")
+    # Filter to specific scenes and/or frames if requested
+    if args.scenes is not None or args.frames is not None:
+        scene_set = set(args.scenes) if args.scenes else None
+        frame_set = set(args.frames) if args.frames else None
+
+        scene_indices = []
+        for i, pair in enumerate(dataset.valid_pairs):
+            if args.dataset == "scannetpp":
+                # valid_pairs: (rgb_path, plane_h5, depth_h5, frame_idx)
+                rgb_path = pair[0]
+                sid = rgb_path.split("/")[-4]
+                fid = str(pair[-1])
+            elif args.dataset == "hypersim":
+                # valid_pairs: (scene_id, frame_id, cam_name, ...)
+                sid = pair[0]
+                fid = pair[1]
+
+            if scene_set and sid not in scene_set:
+                continue
+            if frame_set and fid not in frame_set:
+                continue
+            scene_indices.append(i)
+
+        print(f"Filtered to scenes={args.scenes}, frames={args.frames}: {len(scene_indices)} samples")
     else:
         scene_indices = None
 
