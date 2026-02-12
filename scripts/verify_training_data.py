@@ -195,8 +195,8 @@ def main():
         )
 
     elif args.dataset == "hypersim":
-        root_dir = args.hypersim_root or "/cluster/scratch/ayavuz/dataset/Hypersim_merged"
-        plane_root = args.hypersim_plane_root or "/cluster/scratch/ayavuz/dataset/Hypersim_rendered"
+        root_dir = args.hypersim_root or "/cluster/scratch/aoezkan/planeseg/dataset/hypersim"
+        plane_root = args.hypersim_plane_root or "/cluster/scratch/aoezkan/planeseg/dataset/hypersim"
         csv_path = args.hypersim_csv or "/cluster/home/ayavuz/PixelwisePlanarity/planamono/splits/hypersim/metadata_images_split_with_planes_filtered.csv"
 
         dataset = HypersimPlanarityDataset(
