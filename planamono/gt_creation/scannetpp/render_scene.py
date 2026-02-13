@@ -101,13 +101,17 @@ if __name__ == "__main__":
         # semantic_img = raycast_semantic(sem_mesh, vertex_labels, K_scaled, (W, H), c2w)
         semantic_img = raycast_semantic_face_labels(sem_mesh, plane_id_face, K_scaled, (W, H), c2w)
 
-        # apply your remapping (e.g. to compact ids or ensure continuity)
-        semantic_img = remap_semantic(semantic_img)
-
-        # sanitize: map negative values (e.g. -1) to 0 and clamp to uint16
-        semantic_img = np.array(semantic_img)  # ensure numpy array
-        semantic_img = np.where(semantic_img < 0, 0, semantic_img)
-        # clip to uint16 safe range (0..65535)
+        # --- Shift plane IDs: -1→0 (non-planar), 0→1, 1→2, … ---
+        # The old remap had two bugs:
+        #   1. remap_semantic() from utils.py does per-frame consecutive compaction,
+        #      making plane IDs inconsistent across frames (label 2 = different plane per frame).
+        #   2. np.where(x < 0, 0, x) causes plane_id=0 (largest plane) to collide with
+        #      non-planar pixels — both become 0, losing the biggest plane.
+        # The correct fix (matching Hypersim rendering.py) is a global +1 shift:
+        #   non-planar (-1) → 0, plane 0 → 1, plane 1 → 2, …
+        # semantic_img = remap_semantic(semantic_img)                   # BUGGY: per-frame compaction, IDs not consistent across frames
+        # semantic_img = np.where(semantic_img < 0, 0, semantic_img)   # BUGGY: plane_id=0 collides with non-planar
+        semantic_img = np.where(semantic_img < 0, 0, semantic_img + 1)
         semantic_img = np.clip(semantic_img, 0, 65535).astype(np.uint16)
 
         frame_ids.append(frame_id)

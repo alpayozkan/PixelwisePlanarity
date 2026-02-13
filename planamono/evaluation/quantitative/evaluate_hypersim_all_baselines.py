@@ -10,6 +10,8 @@ Usage:
     python evaluate_hypersim_all_baselines.py                    # Evaluate all methods
     python evaluate_hypersim_all_baselines.py --methods ours_mixed zeroplane  # Evaluate specific methods
     python evaluate_hypersim_all_baselines.py --aggregate-only   # Only aggregate existing results
+    python evaluate_hypersim_all_baselines.py --inlier-gates 0.5 0.7 0.8 0.9  # Multi-gate evaluation
+    python evaluate_hypersim_all_baselines.py --inlier-gates 0.5 0.7 0.8 0.9 --aggregate-only  # Re-aggregate multigate
 """
 
 import os
@@ -21,7 +23,7 @@ import h5py
 import pandas as pd
 from tqdm import tqdm
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from joblib import Parallel, delayed
 
@@ -32,8 +34,10 @@ from planamono.evaluation.quantitative.eval_utils import (
     Timer,
     save_results_csv,
     save_runtime,
-    evaluate_single_frame,
+    evaluate_single_frame_hypersim,
+    evaluate_single_frame_hypersim_multigates,
 )
+
 
 
 # ============================================================
@@ -44,19 +48,26 @@ from planamono.evaluation.quantitative.eval_utils import (
 COMPUTE_PLANE_METRICS = True
 RANSAC_ITERATIONS = 200
 INLIER_RATIO_GATE = 0.9
-THRESHOLDS = (0.01, 0.02, 0.05)
+THRESHOLDS = (0.001, 0.005, 0.01)
 BATCH_SIZE = 32
 N_JOBS = min(16, os.cpu_count())
 
 # Paths
 EVAL_ROOT = Path("/cluster/scratch/aoezkan/planeseg/hypersim/eval")
 H5_ROOT = Path("/cluster/scratch/aoezkan/planeseg/hypersim/inference")
-HYPERSIM_ROOT = "/cluster/scratch/ayavuz/dataset/Hypersim_merged"
-PLANE_LABEL_ROOT = "/cluster/scratch/ayavuz/dataset/Hypersim_rendered"
-PARAMS_ROOT = "/cluster/scratch/ayavuz/dataset/Hypersim_params"
+HYPERSIM_ROOT = "/cluster/scratch/aoezkan/planeseg/dataset/hypersim"
+PLANE_LABEL_ROOT = "/cluster/scratch/aoezkan/planeseg/dataset/hypersim"
+PARAMS_ROOT = "/cluster/scratch/ayavuz/dataset/HP_all/Hypersim_params"
+# Old paths (buggy plane_id=0 collision in rendered labels)
+# HYPERSIM_ROOT = "/cluster/scratch/ayavuz/dataset/Hypersim_merged"
+# PLANE_LABEL_ROOT = "/cluster/scratch/ayavuz/dataset/Hypersim_rendered"
+# PARAMS_ROOT = "/cluster/scratch/ayavuz/dataset/Hypersim_params"
 
 # Experiment version (used in exp_name for all methods)
-EXP_VER = "v1"
+# v1: original (wrong K + Euclidean depth)
+# v2: fixed K at native resolution + Euclidean→z-depth conversion + backproject_v1
+# v3: raycasted Euclidean depth from planes.ply + backproject_mcam (M_cam_from_uv)
+EXP_VER = "v3"
 
 # Method definitions: {method_key: {h5_folder, display_name, label_offset, nonplanar_label, uses_gt_h5}}
 METHODS = {
@@ -68,31 +79,83 @@ METHODS = {
         "nonplanar_label": None,
         "uses_gt_h5": True,
     },
-    "ours": {
+    "moge_ours": {
         "h5_folder": "moge_ours_h5",
         "exp_name": f"moge_ours_{EXP_VER}",
-        "display_name": "Ours (Hypersim-trained)",
+        "display_name": "MoGe Ours (ScanNet++)",
         "label_offset": 0,
         "nonplanar_label": None,
         "uses_gt_h5": False,
     },
-    "ours_mixed": {
+    "moge_mixed_bce": {
         "h5_folder": "moge_mixed_bce_h5",
         "exp_name": f"moge_mixed_bce_{EXP_VER}",
-        "display_name": "Ours (Mixed BCE)",
+        "display_name": "MoGe Mixed BCE",
         "label_offset": 0,
         "nonplanar_label": None,
         "uses_gt_h5": False,
     },
-    "zeroplane": {
-        "h5_folder": "zeroplane_h5",
-        "exp_name": f"zeroplane_{EXP_VER}",
-        "display_name": "ZeroPlane",
+    "zeroplane_mixed_dust3r": {
+        "h5_folder": "zeroplane_mixed_dust3r_h5",
+        "exp_name": f"zeroplane_mixed_dust3r_{EXP_VER}",
+        "display_name": "ZeroPlane (Mixed Dust3R)",
+        "label_offset": 0,
+        "nonplanar_label": 20,  # ZeroPlane uses 20 for non-planar regions
+        "uses_gt_h5": False,
+    },
+    "zeroplane_mixed": {
+        "h5_folder": "zeroplane_mixed_h5",
+        "exp_name": f"zeroplane_mixed_{EXP_VER}",
+        "display_name": "ZeroPlane (Mixed)",
         "label_offset": 0,
         "nonplanar_label": 20,  # ZeroPlane uses 20 for non-planar regions
         "uses_gt_h5": False,
     },
 }
+
+
+# ============================================================
+# AUTO-DISCOVERY
+# ============================================================
+
+def discover_zeroplane_methods(h5_root: Path, model_dirs: List[str] = None) -> Dict:
+    """Auto-discover ZeroPlane experiments from H5_ROOT directory structure.
+
+    Looks for: h5_root/{model_label}/thresh_*/{scene_id}/planes_cam_*.h5
+    """
+    methods = {}
+
+    if model_dirs:
+        candidates = [h5_root / d for d in model_dirs]
+    else:
+        candidates = [d for d in h5_root.iterdir() if d.is_dir()]
+
+    for model_dir in sorted(candidates):
+        if not model_dir.is_dir():
+            continue
+        model_label = model_dir.name
+
+        for thresh_dir in sorted(model_dir.iterdir()):
+            if not thresh_dir.is_dir() or not thresh_dir.name.startswith("thresh_"):
+                continue
+            thresh_label = thresh_dir.name
+
+            # Verify at least one H5 file exists
+            has_h5 = any(thresh_dir.rglob("planes_cam_*.h5"))
+            if not has_h5:
+                continue
+
+            key = f"zeroplane_{model_label}_{thresh_label}"
+            methods[key] = {
+                "h5_folder": f"{model_label}/{thresh_label}",
+                "exp_name": f"zeroplane_{model_label}_{thresh_label}_{EXP_VER}",
+                "display_name": f"ZeroPlane {model_label} ({thresh_label})",
+                "label_offset": 0,
+                "nonplanar_label": 20,
+                "uses_gt_h5": False,
+            }
+
+    return methods
 
 
 # ============================================================
@@ -172,10 +235,19 @@ class LazyH5SceneLoader:
 # EVALUATION
 # ============================================================
 
-def evaluate_method(method_key: str, method_config: Dict, args, split: str = "val"):
-    """Evaluate a single method."""
+def evaluate_method(method_key: str, method_config: Dict, args, split: str = "test",
+                    inlier_gates: Optional[Tuple[float, ...]] = None):
+    """Evaluate a single method.
+
+    Args:
+        inlier_gates: If provided, evaluate at multiple inlier ratio gates
+            (fits RANSAC once, evaluates at each gate). If None, uses single
+            INLIER_RATIO_GATE as before.
+    """
     print(f"\n{'='*60}")
     print(f"Evaluating: {method_config['display_name']}")
+    if inlier_gates:
+        print(f"Inlier gates: {inlier_gates}")
     print(f"{'='*60}")
 
     # Handle GT method (no H5 folder)
@@ -186,8 +258,12 @@ def evaluate_method(method_key: str, method_config: Dict, args, split: str = "va
         h5_root = None
         print(f"H5 root:    N/A (using GT labels)")
 
+    # Use a different output dir for multigate to avoid overwriting
     exp_name = method_config["exp_name"]
-    output_dir = EVAL_ROOT / exp_name
+    if inlier_gates:
+        output_dir = EVAL_ROOT / f"{exp_name}_multigate"
+    else:
+        output_dir = EVAL_ROOT / exp_name
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"Output:     {output_dir}")
@@ -205,6 +281,7 @@ def evaluate_method(method_key: str, method_config: Dict, args, split: str = "va
         image_height=512,
         image_width=768,
         max_scenes=None,
+        use_raycasted_depth="euclidean",
     )
 
     print(f"[INFO] Dataset size: {len(dataset)} frames")
@@ -249,12 +326,16 @@ def evaluate_method(method_key: str, method_config: Dict, args, split: str = "va
         if gt_seg.ndim == 3:
             gt_seg = gt_seg[0]
 
-        depth = sample["depth"].numpy()
-        if depth.ndim == 3:
-            depth = depth[0]
+        # Depth = raycasted Euclidean from planes.ply (t_hit * MPAU)
+        depth_euc = sample["depth"].numpy()
+        if depth_euc.ndim == 3:
+            depth_euc = depth_euc[0]
 
-        K = sample["K"].numpy()
         c2w = sample["c2w"].numpy()
+
+        # M_cam_from_uv and native resolution for backproject_mcam
+        M_cam = dataset._get_M_cam_from_uv(scene_id)
+        native_wh = dataset.valid_pairs[idx][-1]
 
         # Resize prediction to match GT if needed
         if labels.shape != gt_seg.shape:
@@ -264,20 +345,37 @@ def evaluate_method(method_key: str, method_config: Dict, args, split: str = "va
                 interpolation=cv2.INTER_NEAREST
             ).astype(np.int32)
 
-        # Evaluate (use full_frame_id so it's stored in metrics dict)
-        metrics, _ = evaluate_single_frame(
-            scene_id,
-            full_frame_id,
-            depth,
-            gt_seg,
-            K,
-            c2w,
-            labels,
-            THRESHOLDS,
-            compute_plane_metrics_flag=COMPUTE_PLANE_METRICS,
-            ransac_iterations=RANSAC_ITERATIONS,
-            inlier_ratio_gate=INLIER_RATIO_GATE,
-        )
+        # Evaluate: multigate or single gate
+        if inlier_gates:
+            metrics, _ = evaluate_single_frame_hypersim_multigates(
+                scene_id,
+                full_frame_id,
+                depth_euc,
+                gt_seg,
+                M_cam,
+                native_wh,
+                c2w,
+                labels,
+                THRESHOLDS,
+                inlier_ratio_gates=inlier_gates,
+                compute_plane_metrics_flag=COMPUTE_PLANE_METRICS,
+                ransac_iterations=RANSAC_ITERATIONS,
+            )
+        else:
+            metrics, _ = evaluate_single_frame_hypersim(
+                scene_id,
+                full_frame_id,
+                depth_euc,
+                gt_seg,
+                M_cam,
+                native_wh,
+                c2w,
+                labels,
+                THRESHOLDS,
+                compute_plane_metrics_flag=COMPUTE_PLANE_METRICS,
+                ransac_iterations=RANSAC_ITERATIONS,
+                inlier_ratio_gate=INLIER_RATIO_GATE,
+            )
 
         return (scene_id, full_frame_id), metrics
 
@@ -317,7 +415,7 @@ def aggregate_results(methods: list):
     print("Aggregating Results")
     print(f"{'='*60}")
 
-    all_results = {}
+    all_results = []
     for method_key in methods:
         if method_key not in METHODS:
             print(f"[WARN] Unknown method: {method_key}")
@@ -325,35 +423,173 @@ def aggregate_results(methods: list):
 
         method_config = METHODS[method_key]
         exp_name = method_config["exp_name"]
+        display_name = method_config["display_name"]
         csv_path = EVAL_ROOT / exp_name / "results_dataset.csv"
 
         if not csv_path.exists():
             print(f"[WARN] Missing results for {method_key}: {csv_path}")
             continue
 
-        df = pd.read_csv(csv_path)
-        all_results[method_config["display_name"]] = df
+        try:
+            df = pd.read_csv(csv_path).iloc[0]
+            row = {
+                "Method": display_name,
+                "method_key": method_key,
+                "num_scenes": int(df["num_scenes"]),
+                "num_frames": int(df["num_frames_total"]),
+            }
+
+            # Segmentation metrics
+            for col, display in [("rand_index_mean", "RI"),
+                                  ("voi_mean", "VOI"),
+                                  ("sc_mean", "SC")]:
+                if col in df.index:
+                    row[display] = df[col]
+
+            # Precision/recall metrics
+            for thr in THRESHOLDS:
+                thresh_str = f"{thr*100:.1f}cm"
+                prec_col = f"prec@{thresh_str}_mean"
+                rec_col = f"rec@{thresh_str}_mean"
+                if prec_col in df.index:
+                    row[f"P@{thresh_str}"] = df[prec_col]
+                if rec_col in df.index:
+                    row[f"R@{thresh_str}"] = df[rec_col]
+
+            all_results.append(row)
+            print(f"[OK] Loaded results for {display_name}")
+
+        except Exception as e:
+            print(f"[ERROR] Could not read results for {method_key}: {e}")
 
     if not all_results:
         print("[ERROR] No results to aggregate")
         return
 
-    # Create comparison table
-    comparison = pd.DataFrame({
-        name: df.set_index("metric")["value"]
-        for name, df in all_results.items()
-    })
+    # Create DataFrames
+    df_all = pd.DataFrame(all_results)
 
-    # Save
-    output_path = EVAL_ROOT / f"comparison_{EXP_VER}.csv"
-    comparison.to_csv(output_path)
-    print(f"\n[DONE] Comparison saved to: {output_path}")
-    print("\n" + str(comparison))
+    # Table 1: Precision/Recall
+    prec_rec_cols = ["Method", "num_scenes", "num_frames"]
+    for thr in THRESHOLDS:
+        thresh_str = f"{thr*100:.1f}cm"
+        prec_rec_cols.extend([f"P@{thresh_str}", f"R@{thresh_str}"])
+    df_pr = df_all[[c for c in prec_rec_cols if c in df_all.columns]]
+    out_path = EVAL_ROOT / f"table_precision_recall_baselines_{EXP_VER}.csv"
+    df_pr.to_csv(out_path, index=False)
+    print(f"Saved: {out_path}")
+
+    # Table 2: Segmentation
+    seg_cols = ["Method", "num_scenes", "num_frames", "RI", "VOI", "SC"]
+    df_seg = df_all[[c for c in seg_cols if c in df_all.columns]]
+    out_path = EVAL_ROOT / f"table_segmentation_baselines_{EXP_VER}.csv"
+    df_seg.to_csv(out_path, index=False)
+    print(f"Saved: {out_path}")
+
+    # Table 3: Combined summary
+    combined_cols = ["Method", "num_scenes", "num_frames", "RI", "VOI", "SC"]
+    for thr in THRESHOLDS:
+        thresh_str = f"{thr*100:.1f}cm"
+        combined_cols.extend([f"P@{thresh_str}", f"R@{thresh_str}"])
+    df_combined = df_all[[c for c in combined_cols if c in df_all.columns]]
+    out_path = EVAL_ROOT / f"table_combined_baselines_{EXP_VER}.csv"
+    df_combined.to_csv(out_path, index=False)
+    print(f"Saved: {out_path}")
+
+    # Print summary
+    print("\n" + "=" * 100)
+    print("BASELINE RESULTS SUMMARY")
+    print("=" * 100)
+    pd.set_option('display.max_columns', None)
+    pd.set_option('display.width', None)
+    print(df_combined.to_string(index=False))
+    print("=" * 100)
+
+
+def aggregate_results_multigate(methods: list, inlier_gates: Tuple[float, ...]):
+    """Aggregate multigate results into a single comparison table.
+
+    Reads from {exp_name}_multigate/results_dataset.csv and produces
+    table_precision_recall_baselines_{EXP_VER}_multigate.csv with columns:
+    Method | P@0.1cm_gate0.5 | R@0.1cm_gate0.5 | ... | P@1.0cm_gate0.9 | R@1.0cm_gate0.9
+    """
+    print(f"\n{'='*60}")
+    print(f"Aggregating Multigate Results (gates={inlier_gates})")
+    print(f"{'='*60}")
+
+    all_results = []
+    for method_key in methods:
+        if method_key not in METHODS:
+            print(f"[WARN] Unknown method: {method_key}")
+            continue
+
+        method_config = METHODS[method_key]
+        exp_name = method_config["exp_name"]
+        display_name = method_config["display_name"]
+        csv_path = EVAL_ROOT / f"{exp_name}_multigate" / "results_dataset.csv"
+
+        if not csv_path.exists():
+            print(f"[WARN] Missing multigate results for {method_key}: {csv_path}")
+            continue
+
+        try:
+            df = pd.read_csv(csv_path).iloc[0]
+            row = {
+                "Method": display_name,
+                "method_key": method_key,
+                "num_scenes": int(df["num_scenes"]),
+                "num_frames": int(df["num_frames_total"]),
+            }
+
+            for thr in THRESHOLDS:
+                thresh_str = f"{thr*100:.1f}cm"
+                for gate in inlier_gates:
+                    prec_col = f"prec@{thresh_str}_gate{gate}_mean"
+                    rec_col = f"rec@{thresh_str}_gate{gate}_mean"
+                    if prec_col in df.index:
+                        row[f"P@{thresh_str}_gate{gate}"] = df[prec_col]
+                    if rec_col in df.index:
+                        row[f"R@{thresh_str}_gate{gate}"] = df[rec_col]
+
+            all_results.append(row)
+            print(f"[OK] Loaded multigate results for {display_name}")
+
+        except Exception as e:
+            print(f"[ERROR] Could not read multigate results for {method_key}: {e}")
+
+    if not all_results:
+        print("[ERROR] No multigate results to aggregate")
+        return
+
+    df_all = pd.DataFrame(all_results)
+
+    # Build column order: Method, counts, then P/R for each (threshold, gate)
+    cols = ["Method", "num_scenes", "num_frames"]
+    for thr in THRESHOLDS:
+        thresh_str = f"{thr*100:.1f}cm"
+        for gate in inlier_gates:
+            cols.extend([f"P@{thresh_str}_gate{gate}", f"R@{thresh_str}_gate{gate}"])
+
+    df_out = df_all[[c for c in cols if c in df_all.columns]]
+    out_path = EVAL_ROOT / f"table_precision_recall_baselines_{EXP_VER}_multigate.csv"
+    df_out.to_csv(out_path, index=False)
+    print(f"Saved: {out_path}")
+
+    # Print summary
+    print("\n" + "=" * 120)
+    print("MULTIGATE PRECISION/RECALL RESULTS")
+    print("=" * 120)
+    pd.set_option('display.max_columns', None)
+    pd.set_option('display.width', None)
+    print(df_out.to_string(index=False))
+    print("=" * 120)
 
 
 # ============================================================
 # MAIN
 # ============================================================
+
+INLIER_GATES_DEFAULT = (0.5, 0.7, 0.8, 0.9)
 
 def main():
     parser = argparse.ArgumentParser(
@@ -364,15 +600,41 @@ def main():
                        help="Methods to evaluate (default: all)")
     parser.add_argument("--aggregate-only", action="store_true",
                        help="Only aggregate existing results, skip evaluation")
-    parser.add_argument("--split", type=str, default="val", choices=["train", "val", "test"],
+    parser.add_argument("--split", type=str, default="test", choices=["train", "val", "test"],
                        help="Dataset split to evaluate")
+    parser.add_argument("--inlier-gates", nargs="+", type=float, default=None,
+                       help="Evaluate at multiple inlier ratio gates "
+                            f"(default when flag used: {list(INLIER_GATES_DEFAULT)}). "
+                            "Fits RANSAC once per threshold, evaluates at each gate.")
+    parser.add_argument("--discover-zeroplane", nargs="*", default=None,
+                       help="Auto-discover ZeroPlane experiments under H5_ROOT. "
+                            "If model dirs given, scan only those. "
+                            "If no args, scan all dirs with thresh_* subdirs.")
 
     args = parser.parse_args()
 
+    # Auto-discover ZeroPlane experiments if requested
+    if args.discover_zeroplane is not None:
+        model_dirs = args.discover_zeroplane if args.discover_zeroplane else None
+        discovered = discover_zeroplane_methods(H5_ROOT, model_dirs)
+        METHODS.update(discovered)
+        print(f"[DISCOVER] Found {len(discovered)} ZeroPlane experiments: {list(discovered.keys())}")
+        if not args.methods:
+            # When discovering without --methods, evaluate only discovered methods
+            methods_to_eval = list(discovered.keys())
+
     # Determine which methods to evaluate
-    methods_to_eval = args.methods if args.methods else list(METHODS.keys())
+    if args.discover_zeroplane is None or args.methods:
+        methods_to_eval = args.methods if args.methods else list(METHODS.keys())
+
+    # Parse inlier gates
+    inlier_gates = None
+    if args.inlier_gates is not None:
+        inlier_gates = tuple(sorted(args.inlier_gates))
 
     print(f"Methods to evaluate: {methods_to_eval}")
+    if inlier_gates:
+        print(f"Inlier ratio gates: {inlier_gates}")
 
     # Run evaluation
     if not args.aggregate_only:
@@ -381,10 +643,14 @@ def main():
                 print(f"[ERROR] Unknown method: {method_key}")
                 continue
 
-            evaluate_method(method_key, METHODS[method_key], args, split=args.split)
+            evaluate_method(method_key, METHODS[method_key], args,
+                          split=args.split, inlier_gates=inlier_gates)
 
     # Aggregate results
-    aggregate_results(methods_to_eval)
+    if inlier_gates:
+        aggregate_results_multigate(methods_to_eval, inlier_gates)
+    else:
+        aggregate_results(methods_to_eval)
 
 
 if __name__ == "__main__":

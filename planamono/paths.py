@@ -10,16 +10,20 @@ scannetppv2_path = '/cluster/project/cvg/Shared_datasets/scannetpp_v2'
 
 # our plane gt dataset dirs (3D mesh plane extraction)
 hypersim_plane_path = '/cluster/scratch/ayavuz/dataset/Hypersim_ours'
-scannetpp_plane_path = '/cluster/scratch/ayavuz/dataset/plane_ours_gt'
+# scannetpp_plane_path = '/cluster/scratch/ayavuz/dataset/plane_ours_gt'
+scannetpp_plane_path = '/cluster/scratch/aoezkan/planeseg/dataset_mesh/scannetpp/'
 
 # ============ Hypersim processed data ============
-# depth + semantics + RGB (merged)
-hypersim_merged_path = '/cluster/scratch/ayavuz/dataset/Hypersim_merged'
-# camera parameters
+# New unified dataset (RGB + depth + rendered plane labels under one root)
+hypersim_merged_path = '/cluster/scratch/aoezkan/planeseg/dataset/hypersim'
+hypersim_rendered_path = '/cluster/scratch/aoezkan/planeseg/dataset/hypersim'
+# camera parameters (not in the unified dataset, kept separately)
 # hypersim_params_path = '/cluster/scratch/ayavuz/dataset/Hypersim_params'
 hypersim_params_path = '/cluster/scratch/ayavuz/dataset/HP_all/Hypersim_params'
-# plane segmentation labels (rendered)
-hypersim_rendered_path = '/cluster/scratch/ayavuz/dataset/Hypersim_rendered'
+
+# Old Hypersim paths (buggy plane_id=0 collision in rendered labels)
+# hypersim_merged_path = '/cluster/scratch/ayavuz/dataset/Hypersim_merged'
+# hypersim_rendered_path = '/cluster/scratch/ayavuz/dataset/Hypersim_rendered'
 
 # ============ ScanNet++ rendered data ============
 scannetpp_rend_plane_path = '/cluster/scratch/aoezkan/planeseg/dataset/scannetpp'

@@ -11,10 +11,12 @@ import argparse
 import yaml
 from pathlib import Path
 
-# Add parent directory to path for imports
-# sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+# Add repository root to path for absolute imports when running directly
+_repo_root = Path(__file__).parent.parent.parent.parent
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
 
-from .plane_extraction import run
+from planamono.gt_creation.scannetpp.plane_extraction import run
 
 
 def cast_config_types(cfg):

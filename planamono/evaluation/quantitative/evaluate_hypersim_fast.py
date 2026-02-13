@@ -36,7 +36,7 @@ from eval_utils import (
     save_results_csv,
     save_predictions_h5,
     save_runtime,
-    evaluate_single_frame,
+    evaluate_single_frame_hypersim,
 )
 
 
@@ -59,9 +59,13 @@ h5_root = f"/cluster/scratch/aoezkan/planeseg/hypersim/inference/{exp_name}_h5"
 
 # Update these paths according to your setup
 model_path = "/cluster/scratch/aoezkan/moge_runs/hypersim/moge_hypersim_4heads_v1/final_planarity_4heads_model.pt"
-rgb_depth_root = "/cluster/scratch/ayavuz/dataset/Hypersim_merged"
-plane_label_root = "/cluster/scratch/ayavuz/dataset/Hypersim_rendered"
-intrinsics_root = "/cluster/scratch/ayavuz/dataset/Hypersim_params"
+rgb_depth_root = "/cluster/scratch/aoezkan/planeseg/dataset/hypersim"
+plane_label_root = "/cluster/scratch/aoezkan/planeseg/dataset/hypersim"
+intrinsics_root = "/cluster/scratch/ayavuz/dataset/HP_all/Hypersim_params"
+# Old paths (buggy plane_id=0 collision in rendered labels)
+# rgb_depth_root = "/cluster/scratch/ayavuz/dataset/Hypersim_merged"
+# plane_label_root = "/cluster/scratch/ayavuz/dataset/Hypersim_rendered"
+# intrinsics_root = "/cluster/scratch/ayavuz/dataset/Hypersim_params"
 
 num_workers = 4
 max_scenes_val = None  # Use all scenes
@@ -162,12 +166,13 @@ if __name__ == "__main__":
     timer = Timer()
 
     val_dataset = HypersimPlaneDataset(
-        rgb_depth_root=rgb_depth_root,
+        hypersim_root=rgb_depth_root,
         plane_label_root=plane_label_root,
-        intrinsics_root=intrinsics_root,
+        params_root=intrinsics_root,
         split_txt_dir=os.path.join(repo_path, "splits", "hypersim"),
-        split="val",
+        split="test",
         max_scenes=max_scenes_val,
+        use_raycasted_depth="euclidean",
     )
 
     print(f"[DATA] Validation set: {len(val_dataset)} frames")
@@ -208,13 +213,26 @@ if __name__ == "__main__":
     thresholds = (0.01, 0.02, 0.05)
     N_JOBS = min(16, os.cpu_count())
 
+    # Load metadata for M_cam_from_uv backprojection
+    import pandas as pd
+    metadata_csv = os.path.join(repo_path, "shared", "datasets", "metadata_camera_parameters.csv")
+    _metadata_df = pd.read_csv(metadata_csv, index_col="scene_name")
+
+    def _get_M_cam_from_uv(scene_id):
+        row = _metadata_df.loc[scene_id]
+        return np.array(
+            [[row[f"M_cam_from_uv_{i}{j}"] for j in range(3)] for i in range(3)],
+            dtype=np.float64,
+        )
+
     def eval_frame_wrapper(frame_data, thresholds):
-        return evaluate_single_frame(
+        return evaluate_single_frame_hypersim(
             frame_data["scene_id"],
             frame_data["frame_id"],
             frame_data["depth_np"],
             frame_data["gt_seg_np"],
-            frame_data["K_np"],
+            frame_data["M_cam_from_uv"],
+            frame_data["native_wh"],
             frame_data["c2w_np"],
             frame_data["labels"],
             thresholds,
@@ -242,8 +260,14 @@ if __name__ == "__main__":
             )
 
             for i, data in enumerate(batch_data):
-                data["K_np"] = Ks[i].numpy()
                 data["c2w_np"] = c2ws[i].numpy()
+                sid = data["scene_id"]
+                data["M_cam_from_uv"] = _get_M_cam_from_uv(sid)
+                # native_wh from metadata
+                row = _metadata_df.loc[sid]
+                nw = int(row["settings_output_img_width"]) if "settings_output_img_width" in row.index else 1024
+                nh = int(row["settings_output_img_height"]) if "settings_output_img_height" in row.index else 768
+                data["native_wh"] = (nw, nh)
 
             # Use loky backend (safer, avoids segfaults)
             outputs = Parallel(

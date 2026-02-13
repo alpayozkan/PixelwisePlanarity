@@ -28,9 +28,27 @@ from planamono.shared.rendering.mesh_io import read_ply_faces_with_plane_ids
 from planamono.shared.rendering.render import raycast_semantic_face_labels_mcam
 
 
-def remap_semantic(semantic_img):
-    """Remap semantic labels, replacing -1 with 0."""
+def remap_semantic_old(semantic_img):
+    """Remap semantic labels, replacing -1 with 0.
+
+    BUGGY: plane_id=0 (the largest plane) collides with non-planar after
+    this remap — both end up as 0.  Use remap_plane_ids() instead.
+    """
     return np.where(semantic_img < 0, 0, semantic_img)
+
+
+def remap_plane_ids(semantic_img):
+    """Shift plane IDs by +1 so that 0 is reserved exclusively for non-planar.
+
+    Input convention  (from plane_extraction + raycast):
+        -1 = non-planar mesh face OR raycast miss
+         0, 1, 2, … = valid plane IDs (0 = largest plane)
+
+    Output convention (stored in HDF5, consumed by dataset / eval):
+         0 = non-planar
+         1, 2, 3, … = valid plane IDs
+    """
+    return np.where(semantic_img < 0, 0, semantic_img + 1)
 
 
 def load_M_cam_from_uv(df_scene):
@@ -84,7 +102,7 @@ if __name__ == "__main__":
 
     # === Create mesh ===
     sem_mesh = o3d.geometry.TriangleMesh()
-    sem_mesh.vertices = o3d.utility.Vector3dVector(V)
+    sem_mesh.vertices = o3d.utility.Vector3dVector(V.astype(np.float64))
     sem_mesh.triangles = o3d.utility.Vector3iVector(F)
     sem_mesh.compute_vertex_normals()
 
@@ -152,8 +170,9 @@ if __name__ == "__main__":
                 sem_mesh, plane_id_face, M_cam_from_uv, R, T, width, height
             )
 
-            # --- Remap negatives to 0 ---
-            semantic_img = remap_semantic(semantic_img_face)
+            # --- Shift plane IDs: -1→0 (non-planar), 0→1, 1→2, … ---
+            # semantic_img = remap_semantic_old(semantic_img_face)  # BUGGY: plane_id=0 collides with non-planar
+            semantic_img = remap_plane_ids(semantic_img_face)
             semantic_img = np.clip(semantic_img, 0, 65535).astype(np.uint16)
 
             frame_ids.append(f"{frame_id:04d}")

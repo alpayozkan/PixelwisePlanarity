@@ -443,6 +443,152 @@ def compute_plane_metrics(
     return result
 
 
+def compute_plane_metrics_multigates(
+    pts_world: np.ndarray,
+    labels: np.ndarray,
+    thresholds: Tuple[float, ...],
+    inlier_ratio_gates: Tuple[float, ...] = (0.5, 0.7, 0.8, 0.9),
+    num_iterations: int = 200,
+    min_support: int = 100,
+) -> Dict[str, float]:
+    """
+    Compute plane fitting metrics at multiple thresholds AND multiple inlier ratio gates.
+
+    Fits RANSAC once per threshold, then evaluates at each gate — the gate only
+    affects which segments count as valid planes, so the plane fits are reused.
+
+    Args:
+        pts_world: (N, 3) world coordinates
+        labels: (N,) segment labels
+        thresholds: Tuple of distance thresholds (meters)
+        inlier_ratio_gates: Tuple of inlier ratio gates to evaluate
+        num_iterations: RANSAC iterations
+        min_support: Minimum points for RANSAC
+
+    Returns:
+        {"prec@Xcm_gateY": float, "rec@Xcm_gateY": float} for each (threshold, gate)
+    """
+    from planamono.shared.plane_fitting import (
+        fit_planes_per_label_v1,
+        compute_inliers_at_threshold,
+    )
+
+    result = {}
+    for thr in thresholds:
+        thresh_str = f"{thr*100:.1f}cm"
+
+        # Fit planes once per threshold
+        fit_results, df = fit_planes_per_label_v1(
+            pts_world,
+            labels,
+            ignore_labels=(0,),
+            distance_threshold=thr,
+            num_iterations=num_iterations,
+            min_support=min_support
+        )
+
+        if df is None or len(df) == 0:
+            for gate in inlier_ratio_gates:
+                result[f"prec@{thresh_str}_gate{gate}"] = 0.0
+                result[f"rec@{thresh_str}_gate{gate}"] = 0.0
+            continue
+
+        plane_params = {}
+        for pid, data in fit_results.items():
+            if "plane_model_refined" in data:
+                plane_params[pid] = data["plane_model_refined"]
+
+        if not plane_params:
+            for gate in inlier_ratio_gates:
+                result[f"prec@{thresh_str}_gate{gate}"] = 0.0
+                result[f"rec@{thresh_str}_gate{gate}"] = 0.0
+            continue
+
+        # Evaluate at each gate (cheap — reuses plane fits)
+        for gate in inlier_ratio_gates:
+            metrics = compute_inliers_at_threshold(
+                pts_world, labels, plane_params, thr, gate
+            )
+            result[f"prec@{thresh_str}_gate{gate}"] = metrics["precision"]
+            result[f"rec@{thresh_str}_gate{gate}"] = metrics["recall"]
+
+    return result
+
+
+def evaluate_single_frame_multigates(
+    scene_id: str,
+    frame_idx: str,
+    depth_np: np.ndarray,
+    gt_seg_np: np.ndarray,
+    K_np: np.ndarray,
+    c2w_np: np.ndarray,
+    labels: np.ndarray,
+    thresholds: Tuple[float, ...],
+    inlier_ratio_gates: Tuple[float, ...] = (0.5, 0.7, 0.8, 0.9),
+    compute_plane_metrics_flag: bool = True,
+    ransac_iterations: int = 200,
+) -> Tuple[Dict, np.ndarray]:
+    """
+    Evaluate a single frame at multiple inlier ratio gates.
+
+    Same as evaluate_single_frame but fits RANSAC once and evaluates at all gates.
+    Produces columns like prec@0.1cm_gate0.5, prec@0.1cm_gate0.9, etc.
+
+    Args:
+        scene_id: Scene identifier
+        frame_idx: Frame identifier
+        depth_np: (H, W) depth map in meters
+        gt_seg_np: (H, W) ground truth segmentation
+        K_np: (3, 3) or (4, 4) camera intrinsics
+        c2w_np: (4, 4) camera-to-world pose
+        labels: (H, W) predicted segmentation labels
+        thresholds: Tuple of distance thresholds for plane metrics (meters)
+        inlier_ratio_gates: Tuple of inlier ratio gates to evaluate
+        compute_plane_metrics_flag: Whether to compute RANSAC plane metrics
+        ransac_iterations: Number of RANSAC iterations
+
+    Returns:
+        (metrics_dict, labels) where metrics_dict contains all computed metrics
+    """
+    from planamono.shared.plane_fitting import backproject_v1 as backproject
+
+    metric_thr = {}
+
+    if compute_plane_metrics_flag:
+        pts_world, pt_labels, _ = backproject(depth_np, K_np, c2w_np, labels)
+
+        if pts_world.shape[0] == 0:
+            for thr in thresholds:
+                thresh_str = f"{thr*100:.1f}cm"
+                for gate in inlier_ratio_gates:
+                    metric_thr[f"prec@{thresh_str}_gate{gate}"] = 0.0
+                    metric_thr[f"rec@{thresh_str}_gate{gate}"] = 0.0
+        else:
+            metric_thr = compute_plane_metrics_multigates(
+                pts_world, pt_labels, thresholds,
+                inlier_ratio_gates=inlier_ratio_gates,
+                num_iterations=ransac_iterations,
+            )
+    else:
+        for thr in thresholds:
+            thresh_str = f"{thr*100:.1f}cm"
+            for gate in inlier_ratio_gates:
+                metric_thr[f"prec@{thresh_str}_gate{gate}"] = np.nan
+                metric_thr[f"rec@{thresh_str}_gate{gate}"] = np.nan
+
+    # Clustering metrics (pure img-to-img, gate-independent)
+    clustering = compute_clustering_metrics(gt_seg_np, labels)
+
+    metrics = {
+        "scene_id": scene_id,
+        "frame_idx": frame_idx,
+        **clustering,
+        **metric_thr
+    }
+
+    return metrics, labels
+
+
 def evaluate_single_frame(
     scene_id: str,
     frame_idx: str,
@@ -504,6 +650,159 @@ def evaluate_single_frame(
             metric_thr[f"rec@{thr*100:.1f}cm"] = np.nan
 
     # Clustering metrics (pure img-to-img)
+    clustering = compute_clustering_metrics(gt_seg_np, labels)
+
+    metrics = {
+        "scene_id": scene_id,
+        "frame_idx": frame_idx,
+        **clustering,
+        **metric_thr
+    }
+
+    return metrics, labels
+
+
+# ============================================================
+# HYPERSIM-SPECIFIC EVALUATION (backproject_mcam)
+# ============================================================
+
+def evaluate_single_frame_hypersim(
+    scene_id: str,
+    frame_idx: str,
+    depth_euc_np: np.ndarray,
+    gt_seg_np: np.ndarray,
+    M_cam_from_uv: np.ndarray,
+    native_wh: Tuple[int, int],
+    c2w_np: np.ndarray,
+    labels: np.ndarray,
+    thresholds: Tuple[float, ...],
+    compute_plane_metrics_flag: bool = True,
+    ransac_iterations: int = 200,
+    inlier_ratio_gate: float = 0.5,
+) -> Tuple[Dict, np.ndarray]:
+    """
+    Evaluate a single Hypersim frame using backproject_mcam (exact V-Ray ray directions).
+
+    Uses raycasted Euclidean depth from planes.ply + M_cam_from_uv for backprojection,
+    which is geometrically consistent with the plane labels and avoids pinhole
+    approximation errors.
+
+    Args:
+        scene_id: Scene identifier
+        frame_idx: Frame identifier
+        depth_euc_np: (H, W) Euclidean ray distance in meters (raycasted from planes.ply)
+        gt_seg_np: (H, W) ground truth segmentation
+        M_cam_from_uv: (3, 3) V-Ray camera matrix from metadata CSV
+        native_wh: (native_w, native_h) native render resolution
+        c2w_np: (4, 4) camera-to-world pose
+        labels: (H, W) predicted segmentation labels
+        thresholds: Tuple of distance thresholds for plane metrics (meters)
+        compute_plane_metrics_flag: Whether to compute RANSAC plane metrics
+        ransac_iterations: Number of RANSAC iterations
+        inlier_ratio_gate: Minimum inlier ratio to count a segment as valid
+
+    Returns:
+        (metrics_dict, labels) where metrics_dict contains all computed metrics
+    """
+    from planamono.shared.plane_fitting import backproject_mcam
+
+    metric_thr = {}
+
+    if compute_plane_metrics_flag:
+        pts_world, pt_labels, _ = backproject_mcam(
+            depth_euc_np, M_cam_from_uv, native_wh[0], native_wh[1], c2w_np, labels
+        )
+
+        if pts_world.shape[0] == 0:
+            metric_thr = {f"prec@{thr*100:.1f}cm": 0.0 for thr in thresholds}
+            metric_thr.update({f"rec@{thr*100:.1f}cm": 0.0 for thr in thresholds})
+        else:
+            metric_thr = compute_plane_metrics(
+                pts_world, pt_labels, thresholds,
+                num_iterations=ransac_iterations,
+                inlier_ratio_gate=inlier_ratio_gate
+            )
+    else:
+        for thr in thresholds:
+            metric_thr[f"prec@{thr*100:.1f}cm"] = np.nan
+            metric_thr[f"rec@{thr*100:.1f}cm"] = np.nan
+
+    clustering = compute_clustering_metrics(gt_seg_np, labels)
+
+    metrics = {
+        "scene_id": scene_id,
+        "frame_idx": frame_idx,
+        **clustering,
+        **metric_thr
+    }
+
+    return metrics, labels
+
+
+def evaluate_single_frame_hypersim_multigates(
+    scene_id: str,
+    frame_idx: str,
+    depth_euc_np: np.ndarray,
+    gt_seg_np: np.ndarray,
+    M_cam_from_uv: np.ndarray,
+    native_wh: Tuple[int, int],
+    c2w_np: np.ndarray,
+    labels: np.ndarray,
+    thresholds: Tuple[float, ...],
+    inlier_ratio_gates: Tuple[float, ...] = (0.5, 0.7, 0.8, 0.9),
+    compute_plane_metrics_flag: bool = True,
+    ransac_iterations: int = 200,
+) -> Tuple[Dict, np.ndarray]:
+    """
+    Evaluate a single Hypersim frame at multiple inlier ratio gates using backproject_mcam.
+
+    Same as evaluate_single_frame_hypersim but fits RANSAC once and evaluates at all gates.
+
+    Args:
+        scene_id: Scene identifier
+        frame_idx: Frame identifier
+        depth_euc_np: (H, W) Euclidean ray distance in meters (raycasted from planes.ply)
+        gt_seg_np: (H, W) ground truth segmentation
+        M_cam_from_uv: (3, 3) V-Ray camera matrix from metadata CSV
+        native_wh: (native_w, native_h) native render resolution
+        c2w_np: (4, 4) camera-to-world pose
+        labels: (H, W) predicted segmentation labels
+        thresholds: Tuple of distance thresholds for plane metrics (meters)
+        inlier_ratio_gates: Tuple of inlier ratio gates to evaluate
+        compute_plane_metrics_flag: Whether to compute RANSAC plane metrics
+        ransac_iterations: Number of RANSAC iterations
+
+    Returns:
+        (metrics_dict, labels) where metrics_dict contains all computed metrics
+    """
+    from planamono.shared.plane_fitting import backproject_mcam
+
+    metric_thr = {}
+
+    if compute_plane_metrics_flag:
+        pts_world, pt_labels, _ = backproject_mcam(
+            depth_euc_np, M_cam_from_uv, native_wh[0], native_wh[1], c2w_np, labels
+        )
+
+        if pts_world.shape[0] == 0:
+            for thr in thresholds:
+                thresh_str = f"{thr*100:.1f}cm"
+                for gate in inlier_ratio_gates:
+                    metric_thr[f"prec@{thresh_str}_gate{gate}"] = 0.0
+                    metric_thr[f"rec@{thresh_str}_gate{gate}"] = 0.0
+        else:
+            metric_thr = compute_plane_metrics_multigates(
+                pts_world, pt_labels, thresholds,
+                inlier_ratio_gates=inlier_ratio_gates,
+                num_iterations=ransac_iterations,
+            )
+    else:
+        for thr in thresholds:
+            thresh_str = f"{thr*100:.1f}cm"
+            for gate in inlier_ratio_gates:
+                metric_thr[f"prec@{thresh_str}_gate{gate}"] = np.nan
+                metric_thr[f"rec@{thresh_str}_gate{gate}"] = np.nan
+
     clustering = compute_clustering_metrics(gt_seg_np, labels)
 
     metrics = {

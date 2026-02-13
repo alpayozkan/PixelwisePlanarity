@@ -146,6 +146,87 @@ def backproject_v2(
     return pts_world, labels, valid_idx
 
 
+def backproject_mcam(
+    depth_euc: np.ndarray,
+    M_cam_from_uv: np.ndarray,
+    native_w: int,
+    native_h: int,
+    T_cw: np.ndarray,
+    plane_seg: Optional[np.ndarray] = None,
+) -> Tuple[np.ndarray, Optional[np.ndarray], np.ndarray]:
+    """
+    Backproject Euclidean depth to 3D using V-Ray's M_cam_from_uv camera model.
+
+    Unlike backproject_v1/v2 which use a pinhole K approximation, this function
+    uses the actual V-Ray camera matrix to compute per-pixel ray directions.
+    This eliminates the systematic position errors (radial artifacts) that grow
+    toward image edges with the pinhole approximation.
+
+    The 3D point for each pixel is:  P = depth_euc * normalize(M_cam_from_uv @ [u_ndc, v_ndc, 1])
+
+    Args:
+        depth_euc: (H, W) Euclidean ray distance in meters (from depth_meters.hdf5)
+        M_cam_from_uv: (3, 3) V-Ray camera matrix from metadata CSV
+        native_w: Native render width (for NDC grid computation)
+        native_h: Native render height (for NDC grid computation)
+        T_cw: (4, 4) camera-to-world transformation matrix
+        plane_seg: (H, W) optional plane segmentation labels
+
+    Returns:
+        pts_world: (N, 3) 3D points in world coordinates
+        labels: (N,) plane labels for valid points (None if plane_seg is None)
+        valid_idx: (N,) indices into flattened H*W image that were valid
+    """
+    H, W = depth_euc.shape
+    M = np.asarray(M_cam_from_uv, dtype=np.float64)
+
+    # Build NDC grid (same convention as V-Ray / render.py)
+    u_px = np.arange(W, dtype=np.float64)
+    v_px = np.arange(H, dtype=np.float64)
+
+    # If depth has been resized, map pixel coords through native resolution
+    u_native = u_px * (native_w / W)
+    v_native = v_px * (native_h / H)
+    u_ndc = (2.0 * u_native + 1.0) / native_w - 1.0
+    v_ndc = 1.0 - (2.0 * v_native + 1.0) / native_h
+
+    uu, vv = np.meshgrid(u_ndc, v_ndc)
+    uvs = np.stack([uu, vv, np.ones_like(uu)], axis=-1)  # (H, W, 3)
+
+    # Camera-space ray directions via M_cam_from_uv
+    dirs_cam = uvs @ M.T  # (H, W, 3)
+
+    # Normalize to unit vectors
+    ray_lengths = np.linalg.norm(dirs_cam, axis=-1, keepdims=True)  # (H, W, 1)
+    ray_lengths = np.maximum(ray_lengths, 1e-12)
+    dirs_unit = dirs_cam / ray_lengths  # (H, W, 3)
+
+    # Valid depth mask
+    depth_flat = depth_euc.ravel().astype(np.float64)
+    valid = np.isfinite(depth_flat) & (depth_flat > 0)
+    valid_idx = np.flatnonzero(valid)
+
+    if valid_idx.size == 0:
+        labels = np.array([], dtype=np.int32) if plane_seg is not None else None
+        return np.zeros((0, 3), dtype=np.float64), labels, valid_idx
+
+    # 3D points in camera space: P_cam = depth_euc * ray_unit_direction
+    dirs_flat = dirs_unit.reshape(-1, 3)
+    pts_cam = dirs_flat[valid] * depth_flat[valid, None]  # (N, 3)
+
+    # Transform to world coordinates
+    T_cw = np.asarray(T_cw, dtype=np.float64)
+    pts_cam_h = np.hstack([pts_cam, np.ones((pts_cam.shape[0], 1))])
+    pts_world = (pts_cam_h @ T_cw.T)[:, :3]
+
+    # Extract plane labels for valid points
+    labels = None
+    if plane_seg is not None:
+        labels = np.asarray(plane_seg, dtype=np.int32).ravel()[valid]
+
+    return pts_world, labels, valid_idx
+
+
 def refine_plane_least_squares(P: np.ndarray) -> np.ndarray:
     """
     Refine plane parameters using PCA (least squares).
