@@ -45,20 +45,24 @@ class VKITTI2PlanarityDataset(Dataset):
         data_root: Root directory containing SceneXX/variant/scene_data.h5
         image_height, image_width: Resize dimensions
         max_samples: Limit total samples
+        scenes: Optional list of scene names to include (e.g. ['Scene01', 'Scene02']).
+                If None, loads all scenes found in data_root.
     """
 
     def __init__(self,
                  data_root,
                  image_height=476,
                  image_width=644,
-                 max_samples=None):
+                 max_samples=None,
+                 scenes=None):
         self.data_root = data_root
         self.image_height = image_height
         self.image_width = image_width
 
         # Discover all scene_data.h5 files
         self.entries = []
-        for scene in sorted(os.listdir(data_root)):
+        all_scenes = sorted(os.listdir(data_root)) if scenes is None else sorted(scenes)
+        for scene in all_scenes:
             scene_dir = os.path.join(data_root, scene)
             if not os.path.isdir(scene_dir):
                 continue

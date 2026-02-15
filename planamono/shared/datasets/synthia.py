@@ -22,6 +22,12 @@ FX = FY = 895.692
 CX, CY = 320.0, 240.0
 
 
+def load_scene_list(split_file):
+    """Load scene names from a split text file (one name per line)."""
+    with open(split_file, 'r') as f:
+        return [line.strip() for line in f if line.strip()]
+
+
 class SYNTHIAPlanarityDataset(Dataset):
     """
     SYNTHIA-AL dataset for planarity learning.
@@ -42,6 +48,8 @@ class SYNTHIAPlanarityDataset(Dataset):
         split: Label for logging ('train' or 'test')
         image_height, image_width: Resize dimensions
         max_samples: Limit number of samples (uniform subsampling)
+        scene_list: Optional list of scene names to include. If provided,
+                    overrides scanning data_root for scene discovery.
     """
 
     def __init__(self,
@@ -50,17 +58,21 @@ class SYNTHIAPlanarityDataset(Dataset):
                  split='train',
                  image_height=476,
                  image_width=644,
-                 max_samples=None):
+                 max_samples=None,
+                 scene_list=None):
         self.plane_label_root = plane_label_root
         self.image_height = image_height
         self.image_width = image_width
         self.split = split
 
-        # Discover scenes from data_root
-        scene_names = sorted([
-            d for d in os.listdir(data_root)
-            if os.path.isdir(os.path.join(data_root, d)) and d.startswith('test5_')
-        ])
+        # Discover scenes from data_root or use provided list
+        if scene_list is not None:
+            scene_names = sorted(scene_list)
+        else:
+            scene_names = sorted([
+                d for d in os.listdir(data_root)
+                if os.path.isdir(os.path.join(data_root, d)) and d.startswith('test5_')
+            ])
 
         self.valid_pairs = []
 
