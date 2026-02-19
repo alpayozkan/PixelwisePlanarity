@@ -18,6 +18,9 @@ import h5py
 from tqdm import tqdm
 from pathlib import Path
 
+# Add repo root to path so `planamono` is importable
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
 from planamono.inference.planarity.moge_inference import MoGePlanarityInference
 
 
