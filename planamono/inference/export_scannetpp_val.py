@@ -3,8 +3,11 @@
 Export MoGe inference results on ScanNet++ validation scenes to H5 files.
 
 For each val scene, runs MoGe forward on all frames and saves:
-  depth, normals, planarity, mask, gt_planes
+  depth, normals, planarity, mask, gt_planes, intrinsics
 into a single H5 file at 480x640 resolution.
+
+Intrinsics are recovered from MoGe's predicted point map via recover_focal_shift(),
+stored as (N, 3, 3) pixel-coordinate K matrices at the output resolution.
 """
 
 import os
@@ -22,6 +25,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from planamono.inference.planarity.moge_inference import MoGePlanarityInference
+from planamono.moge.moge.utils.geometry_torch import recover_focal_shift
+import utils3d
 
 
 def parse_args():
@@ -110,6 +115,7 @@ def process_scene(model, scene_id, rgb_root, gt_root, output_dir,
     print(f"  {scene_id}: {num_frames} frames")
 
     # Preallocate output arrays
+    intrinsics_all = np.zeros((num_frames, 3, 3), dtype=np.float32)
     depths = np.zeros((num_frames, out_h, out_w), dtype=np.float32)
     normals = np.zeros((num_frames, out_h, out_w, 3), dtype=np.float32)
     planarities = np.zeros((num_frames, out_h, out_w), dtype=np.float32)
@@ -150,6 +156,16 @@ def process_scene(model, scene_id, rgb_root, gt_root, output_dir,
             # output['mask']:   (B, 476, 644)
             # output['planarity']: (B, 476, 644)
 
+            # Recover intrinsics from MoGe's predicted point map
+            points_batch = output['points'].float()
+            mask_binary = output['mask'] > 0.5
+            focal, shift = recover_focal_shift(points_batch, mask_binary)
+            H_model, W_model = points_batch.shape[1], points_batch.shape[2]
+            aspect_ratio = W_model / H_model
+            fx = focal / 2 * (1 + aspect_ratio ** 2) ** 0.5 / aspect_ratio
+            fy = focal / 2 * (1 + aspect_ratio ** 2) ** 0.5
+            K_batch = utils3d.torch.intrinsics_from_focal_center(fx, fy, 0.5, 0.5)  # (B, 3, 3) normalized
+
         for i, idx in enumerate(batch_indices):
             depth = output['points'][i, :, :, 2]     # (476, 644) z-depth
             normal = output['normal'][i]              # (476, 644, 3)
@@ -164,6 +180,12 @@ def process_scene(model, scene_id, rgb_root, gt_root, output_dir,
             normals[idx] = normal_r.cpu().numpy()
             planarities[idx] = planarity_r.cpu().numpy()
             masks[idx] = mask_r.cpu().numpy()
+
+            # Store MoGe-predicted intrinsics scaled to output resolution
+            K = K_batch[i].cpu().numpy()  # (3, 3) normalized [0, 1]
+            K[0, :] *= out_w  # scale x-row to pixel coords
+            K[1, :] *= out_h  # scale y-row to pixel coords
+            intrinsics_all[idx] = K
 
             # Resize GT planes
             gt_planes_out[idx] = resize_gt_planes(gt_planes_all[idx], out_h, out_w)
@@ -185,6 +207,7 @@ def process_scene(model, scene_id, rgb_root, gt_root, output_dir,
         f.create_dataset("planarity", data=planarities, dtype=np.float32)
         f.create_dataset("mask", data=masks, dtype=np.float32)
         f.create_dataset("gt_planes", data=gt_planes_out, dtype=np.uint16)
+        f.create_dataset("intrinsics", data=intrinsics_all, dtype=np.float32)
 
     print(f"  Saved: {out_h5_path}")
     return True
