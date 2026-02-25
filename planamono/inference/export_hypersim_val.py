@@ -122,7 +122,7 @@ def parse_args():
                         default="/cluster/project/cvg/Shared_datasets/Hypersim",
                         help="Hypersim data root (contains scene dirs and metadata CSV)")
     parser.add_argument("--gt_root", type=str,
-                        default="/cluster/scratch/aoezkan/planeseg/dataset/Hypersim",
+                        default="/cluster/scratch/aoezkan/planeseg/dataset/hypersim",
                         help="Rendered GT H5 root")
     parser.add_argument("--metadata_csv", type=str, default=None,
                         help="Camera parameters CSV (default: {data_root}/metadata_camera_parameters.csv)")
