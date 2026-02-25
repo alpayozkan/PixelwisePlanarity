@@ -119,7 +119,7 @@ def parse_args():
     parser.add_argument("--output_dir", type=str, required=True,
                         help="Where to save H5 files")
     parser.add_argument("--data_root", type=str,
-                        default="/cluster/project/cvg/Shared_datasets/Hypersim",
+                        default="/cluster/scratch/aoezkan/planeseg/dataset/hypersim",
                         help="Hypersim data root (contains scene dirs and metadata CSV)")
     parser.add_argument("--gt_root", type=str,
                         default="/cluster/scratch/aoezkan/planeseg/dataset/hypersim",
