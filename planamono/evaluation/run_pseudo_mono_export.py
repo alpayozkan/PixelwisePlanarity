@@ -322,8 +322,8 @@ def main():
 
     # Load model
     if args.use_original_moge:
-        from planamono.moge.moge.model import MoGeModel
-        moge_model = MoGeModel.from_pretrained("Ruicheng/moge-2-vitl-normal")
+        from planamono.moge.moge.model import MoGeModelV2
+        moge_model = MoGeModelV2.from_pretrained("Ruicheng/moge-2-vitl-normal")
         moge_model = moge_model.to(args.device).eval()
         ckpt_label = "original MoGe v2 (HuggingFace)"
     else:
