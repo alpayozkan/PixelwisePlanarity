@@ -28,8 +28,6 @@ import h5py
 import pandas as pd
 from pathlib import Path
 from tqdm import tqdm
-import imageio
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from planamono.inference.planarity.moge_inference import MoGePlanarityInference
@@ -153,26 +151,6 @@ def pseudo_mono_infer(
 # Dataset iterators: yield (relative_path, rgb_uint8)
 # ============================================================
 
-def iter_scannetpp_test(args):
-    split_file = os.path.join(args.splits_root, "scannetpp", "nvs_sem_test_with_planes.txt")
-    with open(split_file) as f:
-        scenes = [l.strip() for l in f if l.strip()]
-    for scene_id in scenes:
-        gt_h5 = os.path.join(args.scannetpp_gt_root, scene_id, "rendered.h5")
-        if not os.path.exists(gt_h5):
-            continue
-        with h5py.File(gt_h5, "r") as hf:
-            frame_ids = [fid.decode() if isinstance(fid, bytes) else str(fid)
-                         for fid in hf["frame_ids"][:]]
-        for fid in frame_ids:
-            rgb_path = os.path.join(args.scannetpp_rgb_root, scene_id, "iphone", "rgb", f"{fid}.jpg")
-            if not os.path.exists(rgb_path):
-                continue
-            rgb = cv2.cvtColor(cv2.imread(rgb_path), cv2.COLOR_BGR2RGB)
-            rgb = cv2.resize(rgb, (args.width, args.height))
-            yield f"{scene_id}/{fid}", rgb
-
-
 def load_hypersim_hdr_rgb(h5_path, percentile=90, target_max=0.8, gamma=2.2):
     with h5py.File(h5_path, 'r') as f:
         hdr = f['dataset'][:].astype(np.float32)
@@ -186,24 +164,61 @@ def load_hypersim_hdr_rgb(h5_path, percentile=90, target_max=0.8, gamma=2.2):
     return np.clip(img * 255, 0, 255).astype(np.uint8)
 
 
-def iter_hypersim_test(args):
+# ============================================================
+# Scene-level iterators: yield (scene_label, h5_out_relpath, frame_ids, rgbs)
+#   h5_out_relpath: where to write the H5 relative to dataset output dir
+#   frame_ids: list of str
+#   rgbs: list of (H, W, 3) uint8
+# ============================================================
+
+def iter_scannetpp_scenes(args):
+    split_file = os.path.join(args.splits_root, "scannetpp", "nvs_sem_test_with_planes.txt")
+    with open(split_file) as f:
+        scenes = [l.strip() for l in f if l.strip()]
+    for scene_id in scenes:
+        gt_h5 = os.path.join(args.scannetpp_gt_root, scene_id, "rendered.h5")
+        if not os.path.exists(gt_h5):
+            continue
+        with h5py.File(gt_h5, "r") as hf:
+            all_fids = [fid.decode() if isinstance(fid, bytes) else str(fid)
+                        for fid in hf["frame_ids"][:]]
+        frame_ids = []
+        rgbs = []
+        for fid in all_fids:
+            rgb_path = os.path.join(args.scannetpp_rgb_root, scene_id, "iphone", "rgb", f"{fid}.jpg")
+            if not os.path.exists(rgb_path):
+                continue
+            rgb = cv2.cvtColor(cv2.imread(rgb_path), cv2.COLOR_BGR2RGB)
+            rgbs.append(cv2.resize(rgb, (args.width, args.height)))
+            frame_ids.append(fid)
+        if frame_ids:
+            yield scene_id, os.path.join(scene_id, "rendered_v2.h5"), frame_ids, rgbs
+
+
+def iter_hypersim_scenes(args):
     split_csv = os.path.join(args.splits_root, "hypersim",
                              "metadata_images_split_with_planes_filtered.csv")
     df = pd.read_csv(split_csv)
     test_df = df[df["split_partition_name"] == "test"]
-    for _, row in test_df.iterrows():
-        scene, cam, fid = row["scene_name"], row["camera_name"], int(row["frame_id"])
-        rgb_path = os.path.join(
-            args.hypersim_data_root, scene, "images",
-            f"scene_{cam}_final_hdf5", f"frame.{fid:04d}.color.hdf5")
-        if not os.path.exists(rgb_path):
-            continue
-        rgb = load_hypersim_hdr_rgb(rgb_path)
-        rgb = cv2.resize(rgb, (args.width, args.height))
-        yield f"{scene}/{cam}/{fid:04d}", rgb
+    groups = test_df.groupby(["scene_name", "camera_name"])
+    for (scene, cam), group_df in groups:
+        frame_ids = []
+        rgbs = []
+        for fid in sorted(group_df["frame_id"].tolist()):
+            fid = int(fid)
+            rgb_path = os.path.join(
+                args.hypersim_data_root, scene, "images",
+                f"scene_{cam}_final_hdf5", f"frame.{fid:04d}.color.hdf5")
+            if not os.path.exists(rgb_path):
+                continue
+            rgb = load_hypersim_hdr_rgb(rgb_path)
+            rgbs.append(cv2.resize(rgb, (args.width, args.height)))
+            frame_ids.append(f"{fid:04d}")
+        if frame_ids:
+            yield f"{scene}/{cam}", os.path.join(scene, f"rendered_planes_{cam}.h5"), frame_ids, rgbs
 
 
-def iter_vkitti2_test(args):
+def iter_vkitti2_scenes(args):
     split_file = os.path.join(args.splits_root, "vkitti2", "test.txt")
     with open(split_file) as f:
         scenes = [l.strip() for l in f if l.strip()]
@@ -213,13 +228,12 @@ def iter_vkitti2_test(args):
             continue
         with h5py.File(h5_path, "r") as hf:
             n = hf["rgb"].shape[0]
-            for i in range(n):
-                rgb = hf["rgb"][i]
-                rgb = cv2.resize(rgb, (args.width, args.height))
-                yield f"{scene}/clone/{i:04d}", rgb
+            frame_ids = [f"{i:04d}" for i in range(n)]
+            rgbs = [cv2.resize(hf["rgb"][i], (args.width, args.height)) for i in range(n)]
+        yield f"{scene}/clone", os.path.join(scene, "clone", "rendered_v2.h5"), frame_ids, rgbs
 
 
-def iter_synthia_test(args):
+def iter_synthia_scenes(args):
     split_file = os.path.join(args.splits_root, "synthia", "test.txt")
     with open(split_file) as f:
         scenes = [l.strip() for l in f if l.strip()]
@@ -229,17 +243,16 @@ def iter_synthia_test(args):
             continue
         with h5py.File(h5_path, "r") as hf:
             n = hf["rgb"].shape[0]
-            for i in range(n):
-                rgb = hf["rgb"][i]
-                rgb = cv2.resize(rgb, (args.width, args.height))
-                yield f"{scene}/{i:04d}", rgb
+            frame_ids = [f"{i:04d}" for i in range(n)]
+            rgbs = [cv2.resize(hf["rgb"][i], (args.width, args.height)) for i in range(n)]
+        yield scene, os.path.join(scene, "rendered_v2.h5"), frame_ids, rgbs
 
 
 DATASET_ITERS = {
-    "scannetpp": iter_scannetpp_test,
-    "hypersim": iter_hypersim_test,
-    "vkitti2": iter_vkitti2_test,
-    "synthia": iter_synthia_test,
+    "scannetpp": iter_scannetpp_scenes,
+    "hypersim": iter_hypersim_scenes,
+    "vkitti2": iter_vkitti2_scenes,
+    "synthia": iter_synthia_scenes,
 }
 
 
@@ -293,27 +306,46 @@ def export_dataset(dataset_name, moge_model, args):
         ds_out = f"/cluster/scratch/ayavuz/dataset/pseudo_planamono_{dataset_name}"
     os.makedirs(ds_out, exist_ok=True)
 
-    count = 0
-    for rel_path, rgb in tqdm(DATASET_ITERS[dataset_name](args), desc=dataset_name):
-        if args.max_frames is not None and count >= args.max_frames:
+    total_frames = 0
+    total_scenes = 0
+
+    for scene_label, h5_rel, frame_ids, rgbs in DATASET_ITERS[dataset_name](args):
+        if args.max_frames is not None and total_frames >= args.max_frames:
             break
 
-        labels = pseudo_mono_infer(
-            moge_model, rgb,
-            tau_d_ratio=args.tau_d_ratio,
-            tau_theta=args.tau_theta,
-            min_plane_px=args.min_plane_px,
-            num_iters=args.num_iters,
-            max_planes=args.max_planes,
-            device=args.device,
-        )
+        n = len(frame_ids)
+        if args.max_frames is not None:
+            n = min(n, args.max_frames - total_frames)
+            frame_ids = frame_ids[:n]
+            rgbs = rgbs[:n]
 
-        out_path = os.path.join(ds_out, f"{rel_path}.png")
-        os.makedirs(os.path.dirname(out_path), exist_ok=True)
-        imageio.imwrite(out_path, labels.astype(np.uint16))
-        count += 1
+        planes_all = np.zeros((n, args.height, args.width), dtype=np.uint16)
 
-    print(f"  {dataset_name}: saved {count} frames to {ds_out}")
+        for i, rgb in enumerate(tqdm(rgbs, desc=f"  {scene_label}", leave=False)):
+            labels = pseudo_mono_infer(
+                moge_model, rgb,
+                tau_d_ratio=args.tau_d_ratio,
+                tau_theta=args.tau_theta,
+                min_plane_px=args.min_plane_px,
+                num_iters=args.num_iters,
+                max_planes=args.max_planes,
+                device=args.device,
+            )
+            planes_all[i] = labels.astype(np.uint16)
+
+        # Save H5
+        out_h5 = os.path.join(ds_out, h5_rel)
+        os.makedirs(os.path.dirname(out_h5), exist_ok=True)
+        with h5py.File(out_h5, "w") as f:
+            dt = h5py.string_dtype()
+            f.create_dataset("frame_ids", data=frame_ids, dtype=dt)
+            f.create_dataset("planes", data=planes_all, dtype=np.uint16)
+
+        total_frames += n
+        total_scenes += 1
+        tqdm.write(f"  Saved: {out_h5} ({n} frames)")
+
+    print(f"  {dataset_name}: {total_scenes} scene(s), {total_frames} frames -> {ds_out}")
 
 
 def main():
