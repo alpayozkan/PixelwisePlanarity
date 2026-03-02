@@ -137,16 +137,25 @@ def benchmark_ours(moge_model, rgbs, Ks, device, args):
     return timer.report("Ours (MoGe + plan2seg)")
 
 
+def moge_planarity_only(model, rgb, device):
+    """Run MoGe forward() and extract only planarity (no depth recovery)."""
+    import torch.nn.functional as torchF
+    tensor = preprocess_for_moge(rgb, device)
+    with torch.no_grad():
+        output = model.forward(tensor.unsqueeze(0), num_tokens=1600)
+    planarity = output['planarity'][0]  # (476, 644)
+    planarity = torchF.interpolate(planarity[None, None], (480, 640),
+                                    mode='bilinear', align_corners=False)[0, 0]
+    return planarity.cpu().numpy().astype(np.float32)
+
+
 def benchmark_dav2(moge_model, dav2_model, rgbs, Ks, device, args):
     """DAv2: DAv2 depth + depth_to_normal + our planarity + plan2seg"""
     timer = Timer()
     for i, rgb in enumerate(tqdm(rgbs, desc="DAv2 + planarity")):
-        # MoGe planarity
+        # MoGe planarity only (forward, no depth recovery)
         timer.start("moge_planarity")
-        tensor = preprocess_for_moge(rgb, device)
-        output = moge_model.model.infer(tensor, num_tokens=1600)
-        planarity_np = output['planarity'].cpu().numpy().astype(np.float32)
-        planarity_np = cv2.resize(planarity_np, (640, 480), interpolation=cv2.INTER_LINEAR)
+        planarity_np = moge_planarity_only(moge_model.model, rgb, device)
         timer.stop()
 
         # DAv2 depth
@@ -185,12 +194,9 @@ def benchmark_metric3d(moge_model, metric3d_model, rgbs, Ks, device, args):
     from planamono.external.export_metric3d import metric3d_infer
 
     for i, rgb in enumerate(tqdm(rgbs, desc="Metric3D + planarity")):
-        # MoGe planarity
+        # MoGe planarity only (forward, no depth recovery)
         timer.start("moge_planarity")
-        tensor = preprocess_for_moge(rgb, device)
-        output = moge_model.model.infer(tensor, num_tokens=1600)
-        planarity_np = output['planarity'].cpu().numpy().astype(np.float32)
-        planarity_np = cv2.resize(planarity_np, (640, 480), interpolation=cv2.INTER_LINEAR)
+        planarity_np = moge_planarity_only(moge_model.model, rgb, device)
         timer.stop()
 
         # Metric3D depth + normals
