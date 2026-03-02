@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""Count scenes and frames per split for all 4 datasets.
-
-Reads actual H5 files on cluster to get frame counts.
+"""Count scenes and frames per split for all 4 datasets from GT H5 files.
 
 Usage:
     python planamono/splits/count_splits.py
@@ -31,12 +29,14 @@ def count_scannetpp(args):
         with open(path) as f:
             scenes = [l.strip() for l in f if l.strip()]
         n_frames = 0
+        n_valid_scenes = 0
         for scene_id in scenes:
             gt_h5 = os.path.join(args.scannetpp_gt_root, scene_id, "rendered.h5")
             if os.path.exists(gt_h5):
                 with h5py.File(gt_h5, "r") as hf:
                     n_frames += hf["frame_ids"].shape[0]
-        print(f"  {split_name}: {len(scenes)} scenes, {n_frames} frames")
+                n_valid_scenes += 1
+        print(f"  {split_name}: {n_valid_scenes}/{len(scenes)} scenes, {n_frames} frames")
         total += n_frames
     print(f"  TOTAL: {total} frames")
 
@@ -51,9 +51,16 @@ def count_hypersim(args):
     total = 0
     for split_name in ["train", "val", "test"]:
         split_df = df[df["split_partition_name"] == split_name]
-        n_frames = len(split_df)
-        n_scenes = split_df.groupby(["scene_name", "camera_name"]).ngroups
-        print(f"  {split_name}: {n_scenes} scene/cam groups, {n_frames} frames")
+        groups = split_df.groupby(["scene_name", "camera_name"])
+        n_frames = 0
+        n_valid_groups = 0
+        for (scene, cam), group_df in groups:
+            gt_h5 = os.path.join(args.hypersim_data_root, scene, f"rendered_planes_{cam}.h5")
+            if os.path.exists(gt_h5):
+                with h5py.File(gt_h5, "r") as hf:
+                    n_frames += hf["frame_ids"].shape[0]
+                n_valid_groups += 1
+        print(f"  {split_name}: {n_valid_groups}/{groups.ngroups} scene/cam groups, {n_frames} frames")
         total += n_frames
     print(f"  TOTAL: {total} frames")
 
@@ -69,12 +76,14 @@ def count_vkitti2(args):
         with open(path) as f:
             scenes = [l.strip() for l in f if l.strip()]
         n_frames = 0
+        n_valid_scenes = 0
         for scene in scenes:
             h5_path = os.path.join(args.vkitti2_plane_root, scene, "clone", "scene_data.h5")
             if os.path.exists(h5_path):
                 with h5py.File(h5_path, "r") as hf:
-                    n_frames += hf["rgb"].shape[0]
-        print(f"  {split_name}: {len(scenes)} scenes, {n_frames} frames")
+                    n_frames += int(hf.attrs["num_frames"])
+                n_valid_scenes += 1
+        print(f"  {split_name}: {n_valid_scenes}/{len(scenes)} scenes, {n_frames} frames")
         total += n_frames
     print(f"  TOTAL: {total} frames")
 
@@ -90,18 +99,20 @@ def count_synthia(args):
         with open(path) as f:
             scenes = [l.strip() for l in f if l.strip()]
         n_frames = 0
+        n_valid_scenes = 0
         for scene in scenes:
-            h5_path = os.path.join(args.synthia_plane_root, split_name, scene, "scene_data.h5")
+            h5_path = os.path.join(args.synthia_plane_root, scene, "scene_data.h5")
             if os.path.exists(h5_path):
                 with h5py.File(h5_path, "r") as hf:
-                    n_frames += hf["rgb"].shape[0]
-        print(f"  {split_name}: {len(scenes)} scenes, {n_frames} frames")
+                    n_frames += int(hf.attrs["num_frames"])
+                n_valid_scenes += 1
+        print(f"  {split_name}: {n_valid_scenes}/{len(scenes)} scenes, {n_frames} frames")
         total += n_frames
     print(f"  TOTAL: {total} frames")
 
 
 def main():
-    p = argparse.ArgumentParser(description="Count scenes and frames per split")
+    p = argparse.ArgumentParser(description="Count scenes and frames per split from GT H5 files")
     p.add_argument("--scannetpp_gt_root", type=str,
                    default="/cluster/scratch/aoezkan/planeseg/dataset/scannetpp")
     p.add_argument("--hypersim_data_root", type=str,
