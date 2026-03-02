@@ -403,19 +403,23 @@ DAV2_CONFIGS = {
 
 
 def load_dav2_model(args):
-    """Load Depth Anything V2 model."""
-    dav2_repo = os.path.expanduser(args.dav2_repo)
-    sys.path.insert(0, dav2_repo)
-    from depth_anything_v2.dpt import DepthAnythingV2
+    """Load Depth Anything V2 model.
 
-    config = DAV2_CONFIGS[args.dav2_encoder]
+    Metric and non-metric variants use different classes from different paths
+    within the DAv2 repo.
+    """
+    dav2_repo = os.path.expanduser(args.dav2_repo)
+    config = DAV2_CONFIGS[args.dav2_encoder].copy()
 
     if args.metric_depth:
+        sys.path.insert(0, os.path.join(dav2_repo, 'metric_depth'))
+        from depth_anything_v2.dpt import DepthAnythingV2
         config['max_depth'] = args.max_depth
-        model = DepthAnythingV2(**config)
     else:
-        model = DepthAnythingV2(**config)
+        sys.path.insert(0, dav2_repo)
+        from depth_anything_v2.dpt import DepthAnythingV2
 
+    model = DepthAnythingV2(**config)
     model.load_state_dict(torch.load(args.dav2_checkpoint, map_location='cpu'))
     model = model.to(args.device).eval()
     return model
