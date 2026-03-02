@@ -449,8 +449,6 @@ def parse_args():
                    help="Use metric depth variant")
     p.add_argument("--max_depth", type=float, default=20.0,
                    help="Max depth for metric variant (20=indoor, 80=outdoor)")
-    p.add_argument("--use_moge_normals", action="store_true",
-                   help="Use MoGe-predicted normals instead of depth-derived normals")
     p.add_argument("--depth_blur_sigma", type=float, default=0.0,
                    help="Gaussian blur sigma on depth before normal computation (0=off, try 1.0-2.0 for metric depth)")
 
@@ -525,23 +523,20 @@ def export_dataset(dataset_name, moge_model, dav2_model, args):
 
         # Preallocate
         depth_all = np.zeros((n, args.height, args.width), dtype=np.float32)
-        normals_all = np.zeros((n, args.height, args.width, 3), dtype=np.float32)
+        dav2_normals_all = np.zeros((n, args.height, args.width, 3), dtype=np.float32)
+        moge_normals_all = np.zeros((n, args.height, args.width, 3), dtype=np.float32)
         planarity_all = np.zeros((n, args.height, args.width), dtype=np.float32)
         mask_all = np.zeros((n, args.height, args.width), dtype=np.float32)
-        planes_all = np.zeros((n, args.height, args.width), dtype=np.uint16)
+        planes_dav2_all = np.zeros((n, args.height, args.width), dtype=np.uint16)
+        planes_moge_all = np.zeros((n, args.height, args.width), dtype=np.uint16)
         gt_planes_out = np.stack(gt_planes_list[:n], axis=0)
         intrinsics_all = np.stack(Ks[:n], axis=0)
 
         for i, rgb in enumerate(tqdm(rgbs, desc=f"  {scene_label}", leave=False)):
-            # 1. Our MoGe planarity (always get normals in test_vis mode)
-            need_moge_normals = args.use_moge_normals or test_vis
-            if need_moge_normals:
-                planarity, moge_normals = run_moge_planarity(
-                    moge_model, rgb, args.device,
-                    args.height, args.width, return_normals=True)
-            else:
-                planarity = run_moge_planarity(moge_model, rgb, args.device,
-                                               args.height, args.width)
+            # 1. Our MoGe planarity + normals
+            planarity, moge_normals = run_moge_planarity(
+                moge_model, rgb, args.device,
+                args.height, args.width, return_normals=True)
 
             # 2. DAv2 depth (expects BGR uint8)
             raw_bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
@@ -561,47 +556,39 @@ def export_dataset(dataset_name, moge_model, dav2_model, args):
                 depth_for_normals = depth
             depth_normals = depth_to_normal_remi(depth_for_normals, fx, fy, cx, cy)
 
-            # Pick which normals to use for the H5 output
-            normals = moge_normals if args.use_moge_normals else depth_normals
-
             # 4. Validity mask
             valid_mask = (depth > 0).astype(np.float32)
 
-            # 5. Plan2seg with chosen normals
+            # 5. Plan2seg with both normal sources
             planarity_mask = (planarity > args.planarity_threshold).astype(np.uint8)
-            labels, _ = compute_vectorized_planar_segments_v5_relative(
-                planarity_mask, normals, depth,
+            dav2_labels, _ = compute_vectorized_planar_segments_v5_relative(
+                planarity_mask, depth_normals, depth,
+                normal_threshold_rad=args.normal_threshold_rad,
+                depth_threshold=args.depth_threshold,
+                device=args.device,
+            )
+            moge_labels, _ = compute_vectorized_planar_segments_v5_relative(
+                planarity_mask, moge_normals, depth,
                 normal_threshold_rad=args.normal_threshold_rad,
                 depth_threshold=args.depth_threshold,
                 device=args.device,
             )
 
             depth_all[i] = depth
-            normals_all[i] = normals
+            dav2_normals_all[i] = depth_normals
+            moge_normals_all[i] = moge_normals
             planarity_all[i] = planarity
             mask_all[i] = valid_mask
-            planes_all[i] = labels.astype(np.uint16)
+            planes_dav2_all[i] = dav2_labels.astype(np.uint16)
+            planes_moge_all[i] = moge_labels.astype(np.uint16)
 
             # Save visualization PNG in test_vis mode
             if test_vis:
-                # Run plan2seg with both normal sources for comparison
-                depth_labels, _ = compute_vectorized_planar_segments_v5_relative(
-                    planarity_mask, depth_normals, depth,
-                    normal_threshold_rad=args.normal_threshold_rad,
-                    depth_threshold=args.depth_threshold,
-                    device=args.device,
-                )
-                moge_labels, _ = compute_vectorized_planar_segments_v5_relative(
-                    planarity_mask, moge_normals, depth,
-                    normal_threshold_rad=args.normal_threshold_rad,
-                    depth_threshold=args.depth_threshold,
-                    device=args.device,
-                )
                 safe_scene = scene_label.replace("/", "_")
                 vis_path = os.path.join(ds_out, "test_vis",
                                         f"{safe_scene}_{frame_ids[i]}.png")
                 save_vis_png(rgb, depth, depth_normals, moge_normals, planarity,
-                             depth_labels, moge_labels, gt_planes_list[i],
+                             dav2_labels, moge_labels, gt_planes_list[i],
                              vis_path, scene_label, frame_ids[i])
                 tqdm.write(f"    Vis: {vis_path}")
 
@@ -613,10 +600,12 @@ def export_dataset(dataset_name, moge_model, dav2_model, args):
                 dt = h5py.string_dtype()
                 f.create_dataset("frame_ids", data=frame_ids[:n], dtype=dt)
                 f.create_dataset("depth", data=depth_all, dtype=np.float32)
-                f.create_dataset("normals", data=normals_all, dtype=np.float32)
+                f.create_dataset("dav2_normals", data=dav2_normals_all, dtype=np.float32)
+                f.create_dataset("moge_normals", data=moge_normals_all, dtype=np.float32)
                 f.create_dataset("planarity", data=planarity_all, dtype=np.float32)
                 f.create_dataset("mask", data=mask_all, dtype=np.float32)
-                f.create_dataset("planes", data=planes_all, dtype=np.uint16)
+                f.create_dataset("planes_dav2_normals", data=planes_dav2_all, dtype=np.uint16)
+                f.create_dataset("planes_moge_normals", data=planes_moge_all, dtype=np.uint16)
                 f.create_dataset("gt_planes", data=gt_planes_out, dtype=np.uint16)
                 f.create_dataset("intrinsics", data=intrinsics_all, dtype=np.float32)
             tqdm.write(f"  Saved: {out_h5} ({n} frames)")
@@ -642,7 +631,7 @@ def main():
     print(f"DAv2 ckpt:  {args.dav2_checkpoint}")
     print(f"DAv2 enc:   {args.dav2_encoder}")
     print(f"Metric:     {args.metric_depth} (max_depth={args.max_depth})")
-    print(f"Normals:    {'MoGe' if args.use_moge_normals else 'depth-derived'}")
+    print(f"Normals:    both (DAv2 depth-derived + MoGe)")
     print(f"Datasets:   {', '.join(datasets)}")
     print(f"Output:     {out_label}")
     print(f"Resolution: {args.height}x{args.width}")
