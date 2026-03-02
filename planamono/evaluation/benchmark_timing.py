@@ -10,8 +10,6 @@ Methods:
   2. DAv2 (DAv2 depth + depth_to_normal + our planarity + plan2seg)
   3. Metric3D (Metric3D depth+normals + our planarity + plan2seg)
   4. Pseudo-mono (MoGe depth + RANSAC)
-  5. PlaneRecTR (end-to-end)
-
 Usage:
     python planamono/evaluation/benchmark_timing.py --checkpoint /cluster/scratch/ayavuz/moge_HIRES_4datasets/model_epoch1.pt
 """
@@ -260,23 +258,6 @@ def benchmark_pseudo_mono(moge_model, rgbs, device, args):
     return timer.report("Pseudo-mono (MoGe + RANSAC)")
 
 
-def benchmark_planrectr(predictor, rgbs, device, args, infer_h, infer_w):
-    """PlaneRecTR: end-to-end plane segmentation"""
-    timer = Timer()
-    for rgb in tqdm(rgbs, desc="PlaneRecTR"):
-        timer.start("planrectr_total")
-        img_resized = cv2.resize(rgb, (infer_w, infer_h))
-        img_bgr = cv2.cvtColor(img_resized, cv2.COLOR_RGB2BGR)
-        with torch.no_grad():
-            predictions = predictor(img_bgr)
-        sem_seg = predictions["sem_seg"].argmax(dim=0).cpu().numpy().astype(np.uint16)
-        if sem_seg.shape[0] != 480 or sem_seg.shape[1] != 640:
-            sem_seg = cv2.resize(sem_seg, (640, 480), interpolation=cv2.INTER_NEAREST)
-        timer.stop()
-
-    return timer.report("PlaneRecTR")
-
-
 def parse_args():
     p = argparse.ArgumentParser(description="Benchmark per-frame inference timing")
     p.add_argument("--checkpoint", type=str, required=True)
@@ -301,11 +282,6 @@ def parse_args():
     p.add_argument("--skip_metric3d", action="store_true")
     p.add_argument("--skip_dav2", action="store_true")
     p.add_argument("--skip_pseudo", action="store_true")
-    p.add_argument("--skip_planrectr", action="store_true")
-    p.add_argument("--planrectr_config", type=str,
-                   default=os.path.expanduser("~/PlaneRecTR/configs/PlaneRecTRScanNetV1/PlaneRecTR_R50_demo_480x640.yaml"))
-    p.add_argument("--planrectr_checkpoint", type=str, default=None)
-    p.add_argument("--planrectr_repo", type=str, default=os.path.expanduser("~/PlaneRecTR"))
     return p.parse_args()
 
 
@@ -358,27 +334,6 @@ def main():
     if not args.skip_pseudo:
         t_pseudo = benchmark_pseudo_mono(moge_wrapper, rgbs, args.device, args)
 
-    # 5. PlaneRecTR
-    if not args.skip_planrectr:
-        print("\nLoading PlaneRecTR...")
-        planrectr_repo = os.path.expanduser(args.planrectr_repo)
-        sys.path.insert(0, planrectr_repo)
-        from detectron2.config import get_cfg
-        from detectron2.projects.deeplab import add_deeplab_config
-        from detectron2.engine.defaults import DefaultPredictor
-        from PlaneRecTR import add_PlaneRecTR_config
-        cfg = get_cfg()
-        add_deeplab_config(cfg)
-        add_PlaneRecTR_config(cfg)
-        cfg.merge_from_file(args.planrectr_config)
-        if args.planrectr_checkpoint:
-            cfg.MODEL.WEIGHTS = args.planrectr_checkpoint
-        cfg.MODEL.DEVICE = args.device
-        cfg.freeze()
-        predictor = DefaultPredictor(cfg)
-        infer_h, infer_w = cfg.INPUT.IMAGE_SIZE
-        t_planrectr = benchmark_planrectr(predictor, rgbs, args.device, args, infer_h, infer_w)
-
     # Summary
     print(f"\n{'=' * 60}")
     print(f"  SUMMARY (mean ms / FPS)")
@@ -390,8 +345,6 @@ def main():
         print(f"  {'Metric3D + planarity':30s}: {t_m3d:7.1f} ms  ({1000/t_m3d:.1f} FPS)")
     if not args.skip_pseudo:
         print(f"  {'Pseudo-mono (RANSAC)':30s}: {t_pseudo:7.1f} ms  ({1000/t_pseudo:.1f} FPS)")
-    if not args.skip_planrectr:
-        print(f"  {'PlaneRecTR':30s}: {t_planrectr:7.1f} ms  ({1000/t_planrectr:.1f} FPS)")
 
 
 if __name__ == "__main__":
