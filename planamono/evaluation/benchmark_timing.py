@@ -62,6 +62,7 @@ def load_scannetpp_frames(rgb_root, gt_root, scene_id, n_frames=100, out_h=480, 
 def load_multi_scene_frames(rgb_root, gt_root, splits_root, n_scenes=10, frames_per_scene=100):
     """Load frames from multiple random ScanNet++ test scenes."""
     import random
+    random.seed(42)
     split_file = os.path.join(splits_root, "scannetpp", "nvs_sem_test_with_planes.txt")
     with open(split_file) as f:
         all_scenes = [l.strip() for l in f if l.strip()]
