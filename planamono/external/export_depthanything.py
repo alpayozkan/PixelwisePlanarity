@@ -337,24 +337,28 @@ def iter_vkitti2_scenes(args):
     split_file = os.path.join(args.splits_root, "vkitti2", "test.txt")
     with open(split_file) as f:
         scenes = [l.strip() for l in f if l.strip()]
-    for scene in scenes:
-        h5_path = os.path.join(args.vkitti2_plane_root, scene, "clone", "scene_data.h5")
-        if not os.path.exists(h5_path):
+    for scene in sorted(scenes):
+        scene_dir = os.path.join(args.vkitti2_plane_root, scene)
+        if not os.path.isdir(scene_dir):
             continue
-        with h5py.File(h5_path, "r") as hf:
-            n = hf["rgb"].shape[0]
-            native_h, native_w = hf["rgb"].shape[1], hf["rgb"].shape[2]
-            K_native = make_K(FX, FY, CX, CY)
-            K_out = scale_K(K_native, native_w, native_h, args.width, args.height)
-            frame_ids = [f"{i:04d}" for i in range(n)]
-            rgbs = [cv2.resize(hf["rgb"][i], (args.width, args.height)) for i in range(n)]
-            if "planes" in hf:
-                gt_planes = [resize_gt_planes(hf["planes"][i], args.height, args.width) for i in range(n)]
-            else:
-                gt_planes = [np.zeros((args.height, args.width), dtype=np.uint16)] * n
-        Ks = [K_out] * n
-        yield f"{scene}/clone", os.path.join(scene, "clone", "rendered_v2.h5"), \
-              frame_ids, rgbs, gt_planes, Ks
+        for variant in sorted(os.listdir(scene_dir)):
+            h5_path = os.path.join(scene_dir, variant, "scene_data.h5")
+            if not os.path.exists(h5_path):
+                continue
+            with h5py.File(h5_path, "r") as hf:
+                n = int(hf.attrs.get("num_frames", hf["rgb"].shape[0]))
+                native_h, native_w = hf["rgb"].shape[1], hf["rgb"].shape[2]
+                K_native = make_K(FX, FY, CX, CY)
+                K_out = scale_K(K_native, native_w, native_h, args.width, args.height)
+                frame_ids = [f"{i:04d}" for i in range(n)]
+                rgbs = [cv2.resize(hf["rgb"][i], (args.width, args.height)) for i in range(n)]
+                if "planes" in hf:
+                    gt_planes = [resize_gt_planes(hf["planes"][i], args.height, args.width) for i in range(n)]
+                else:
+                    gt_planes = [np.zeros((args.height, args.width), dtype=np.uint16)] * n
+            Ks = [K_out] * n
+            yield f"{scene}/{variant}", os.path.join(scene, variant, "rendered_v2.h5"), \
+                  frame_ids, rgbs, gt_planes, Ks
 
 
 def iter_synthia_scenes(args):

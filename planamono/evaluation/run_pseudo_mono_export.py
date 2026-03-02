@@ -222,15 +222,19 @@ def iter_vkitti2_scenes(args):
     split_file = os.path.join(args.splits_root, "vkitti2", "test.txt")
     with open(split_file) as f:
         scenes = [l.strip() for l in f if l.strip()]
-    for scene in scenes:
-        h5_path = os.path.join(args.vkitti2_plane_root, scene, "clone", "scene_data.h5")
-        if not os.path.exists(h5_path):
+    for scene in sorted(scenes):
+        scene_dir = os.path.join(args.vkitti2_plane_root, scene)
+        if not os.path.isdir(scene_dir):
             continue
-        with h5py.File(h5_path, "r") as hf:
-            n = hf["rgb"].shape[0]
-            frame_ids = [f"{i:04d}" for i in range(n)]
-            rgbs = [cv2.resize(hf["rgb"][i], (args.width, args.height)) for i in range(n)]
-        yield f"{scene}/clone", os.path.join(scene, "clone", "rendered_v2.h5"), frame_ids, rgbs
+        for variant in sorted(os.listdir(scene_dir)):
+            h5_path = os.path.join(scene_dir, variant, "scene_data.h5")
+            if not os.path.exists(h5_path):
+                continue
+            with h5py.File(h5_path, "r") as hf:
+                n = int(hf.attrs.get("num_frames", hf["rgb"].shape[0]))
+                frame_ids = [f"{i:04d}" for i in range(n)]
+                rgbs = [cv2.resize(hf["rgb"][i], (args.width, args.height)) for i in range(n)]
+            yield f"{scene}/{variant}", os.path.join(scene, variant, "rendered_v2.h5"), frame_ids, rgbs
 
 
 def iter_synthia_scenes(args):
