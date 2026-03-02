@@ -2,19 +2,18 @@
 """
 Benchmark per-frame inference timing for all methods.
 
-Runs on a single ScanNet++ scene (100 frames) and reports mean ms and FPS
-for each method and its components.
+Runs on 10 random ScanNet++ test scenes (100 frames each, 1000 total) and
+reports mean ms and FPS for each method and its components.
 
 Methods:
   1. Ours (MoGe planarity + plan2seg)
   2. DAv2 (DAv2 depth + depth_to_normal + our planarity + plan2seg)
   3. Metric3D (Metric3D depth+normals + our planarity + plan2seg)
   4. Pseudo-mono (MoGe depth + RANSAC)
+  5. PlaneRecTR (end-to-end)
 
 Usage:
-    python planamono/evaluation/benchmark_timing.py \
-        --checkpoint /cluster/scratch/ayavuz/moge_HIRES_4datasets/model_epoch1.pt \
-        --dav2_checkpoint /cluster/scratch/ayavuz/checkpoints/depth_anything_v2_vitl.pth
+    python planamono/evaluation/benchmark_timing.py --checkpoint /cluster/scratch/ayavuz/moge_HIRES_4datasets/model_epoch1.pt
 """
 
 import os
@@ -35,7 +34,7 @@ from planamono.shared.utils.depth_normal import depth_to_normal_remi
 from planamono.shared.segmentation.plan2seg import compute_vectorized_planar_segments_v5_relative
 
 
-def load_scannetpp_frames(rgb_root, gt_root, scene_id, splits_root, n_frames=100, out_h=480, out_w=640):
+def load_scannetpp_frames(rgb_root, gt_root, scene_id, n_frames=100, out_h=480, out_w=640):
     """Load n_frames from a ScanNet++ scene."""
     import json
     gt_h5 = os.path.join(gt_root, scene_id, "rendered.h5")
@@ -60,6 +59,36 @@ def load_scannetpp_frames(rgb_root, gt_root, scene_id, splits_root, n_frames=100
         rgbs.append(cv2.resize(rgb, (out_w, out_h)))
         Ks.append(K)
     return rgbs, Ks
+
+
+def load_multi_scene_frames(rgb_root, gt_root, splits_root, n_scenes=10, frames_per_scene=100):
+    """Load frames from multiple random ScanNet++ test scenes."""
+    import random
+    split_file = os.path.join(splits_root, "scannetpp", "nvs_sem_test_with_planes.txt")
+    with open(split_file) as f:
+        all_scenes = [l.strip() for l in f if l.strip()]
+
+    # Filter to scenes that actually exist
+    valid_scenes = []
+    for sid in all_scenes:
+        gt_h5 = os.path.join(gt_root, sid, "rendered.h5")
+        rgb_dir = os.path.join(rgb_root, sid, "iphone", "rgb")
+        if os.path.exists(gt_h5) and os.path.isdir(rgb_dir):
+            valid_scenes.append(sid)
+
+    n_scenes = min(n_scenes, len(valid_scenes))
+    selected = random.sample(valid_scenes, n_scenes)
+    selected.sort()
+
+    all_rgbs, all_Ks, scene_labels = [], [], []
+    for sid in selected:
+        rgbs, Ks = load_scannetpp_frames(rgb_root, gt_root, sid, frames_per_scene)
+        print(f"  {sid}: {len(rgbs)} frames")
+        all_rgbs.extend(rgbs)
+        all_Ks.extend(Ks)
+        scene_labels.append(f"{sid} ({len(rgbs)})")
+
+    return all_rgbs, all_Ks, selected, scene_labels
 
 
 def preprocess_for_moge(rgb_uint8, device):
@@ -258,9 +287,8 @@ def parse_args():
     p.add_argument("--metric3d_model", type=str, default="metric3d_vit_large")
     p.add_argument("--metric3d_repo", type=str, default="~/Metric3D")
     p.add_argument("--device", type=str, default="cuda")
-    p.add_argument("--n_frames", type=int, default=100)
-    p.add_argument("--scene_id", type=str, default=None,
-                   help="ScanNet++ scene ID (default: first available test scene)")
+    p.add_argument("--n_scenes", type=int, default=10)
+    p.add_argument("--frames_per_scene", type=int, default=100)
     p.add_argument("--planarity_threshold", type=float, default=0.5)
     p.add_argument("--normal_threshold_rad", type=float, default=0.15)
     p.add_argument("--depth_threshold", type=float, default=0.1)
@@ -284,20 +312,15 @@ def parse_args():
 def main():
     args = parse_args()
 
-    # Pick scene
-    if args.scene_id is None:
-        split_file = os.path.join(args.splits_root, "scannetpp", "nvs_sem_test_with_planes.txt")
-        with open(split_file) as f:
-            args.scene_id = f.readline().strip()
-    print(f"Scene: {args.scene_id}")
-    print(f"Frames: {args.n_frames}")
+    print(f"Scenes: {args.n_scenes}")
+    print(f"Frames per scene: {args.frames_per_scene}")
 
-    # Load frames
+    # Load frames from multiple scenes
     print("Loading frames...")
-    rgbs, Ks = load_scannetpp_frames(
+    rgbs, Ks, scene_ids, scene_labels = load_multi_scene_frames(
         args.scannetpp_rgb_root, args.scannetpp_gt_root,
-        args.scene_id, args.splits_root, args.n_frames)
-    print(f"Loaded {len(rgbs)} frames")
+        args.splits_root, args.n_scenes, args.frames_per_scene)
+    print(f"Loaded {len(rgbs)} frames from {len(scene_ids)} scenes")
 
     # Load MoGe (shared across methods)
     print("Loading MoGe...")
