@@ -143,55 +143,77 @@ def random_label_colormap(num_labels):
     return colors
 
 
-def save_vis_png(rgb, depth, normals, planarity, labels, gt_planes,
+def save_vis_png(rgb, depth, depth_normals, moge_normals, planarity,
+                 depth_labels, moge_labels, gt_planes,
                  out_path, scene_label, frame_id):
-    """Save a single-frame visualization as a 2x3 grid PNG."""
+    """Save a single-frame visualization as a 3x3 grid PNG.
+
+    Row 1: RGB, DAv2 Depth, Planarity
+    Row 2: Depth-derived normals, segmentation, overlay
+    Row 3: MoGe normals, segmentation, overlay
+    """
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
 
-    fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+    fig, axes = plt.subplots(3, 3, figsize=(18, 18))
     fig.suptitle(f"{scene_label} / {frame_id}", fontsize=14)
 
-    # 1. Original RGB
+    # --- Row 1: RGB, Depth, Planarity ---
     axes[0, 0].imshow(rgb)
     axes[0, 0].set_title("RGB")
     axes[0, 0].axis("off")
 
-    # 2. Depth
     valid = depth > 0
     vmin = depth[valid].min() if valid.any() else 0
     vmax = depth[valid].max() if valid.any() else 1
     axes[0, 1].imshow(depth, cmap="turbo", vmin=vmin, vmax=vmax)
-    axes[0, 1].set_title("Depth")
+    axes[0, 1].set_title("DAv2 Depth")
     axes[0, 1].axis("off")
 
-    # 3. Normals (map [-1,1] -> [0,1] for display)
-    normals_vis = (normals * 0.5 + 0.5).clip(0, 1)
-    axes[0, 2].imshow(normals_vis)
-    axes[0, 2].set_title("Normals")
+    axes[0, 2].imshow(planarity, cmap="gray", vmin=0, vmax=1)
+    axes[0, 2].set_title("Planarity")
     axes[0, 2].axis("off")
 
-    # 4. Planarity probability
-    axes[1, 0].imshow(planarity, cmap="gray", vmin=0, vmax=1)
-    axes[1, 0].set_title("Planarity")
+    # --- Row 2: Depth-derived normals + segmentation ---
+    dn_vis = (depth_normals * 0.5 + 0.5).clip(0, 1)
+    axes[1, 0].imshow(dn_vis)
+    axes[1, 0].set_title("Depth-derived Normals")
     axes[1, 0].axis("off")
 
-    # 5. Plane segmentation (colored labels)
-    num_labels = int(labels.max()) + 1
-    cmap = random_label_colormap(num_labels)
-    seg_vis = cmap[labels.astype(np.int32)]
-    axes[1, 1].imshow(seg_vis)
-    axes[1, 1].set_title(f"Segmentation ({num_labels - 1} planes)")
+    n_dl = int(depth_labels.max()) + 1
+    cmap_dl = random_label_colormap(n_dl)
+    seg_dl = cmap_dl[depth_labels.astype(np.int32)]
+    axes[1, 1].imshow(seg_dl)
+    axes[1, 1].set_title(f"Seg (depth normals, {n_dl - 1} planes)")
     axes[1, 1].axis("off")
 
-    # 6. Segmentation overlay on RGB
-    overlay = rgb.copy().astype(np.float32)
-    mask = labels > 0
-    overlay[mask] = overlay[mask] * 0.4 + seg_vis[mask].astype(np.float32) * 0.6
-    axes[1, 2].imshow(overlay.astype(np.uint8))
-    axes[1, 2].set_title("Overlay")
+    overlay_dl = rgb.copy().astype(np.float32)
+    m_dl = depth_labels > 0
+    overlay_dl[m_dl] = overlay_dl[m_dl] * 0.4 + seg_dl[m_dl].astype(np.float32) * 0.6
+    axes[1, 2].imshow(overlay_dl.astype(np.uint8))
+    axes[1, 2].set_title("Overlay (depth normals)")
     axes[1, 2].axis("off")
+
+    # --- Row 3: MoGe normals + segmentation ---
+    mn_vis = (moge_normals * 0.5 + 0.5).clip(0, 1)
+    axes[2, 0].imshow(mn_vis)
+    axes[2, 0].set_title("MoGe Normals")
+    axes[2, 0].axis("off")
+
+    n_ml = int(moge_labels.max()) + 1
+    cmap_ml = random_label_colormap(n_ml)
+    seg_ml = cmap_ml[moge_labels.astype(np.int32)]
+    axes[2, 1].imshow(seg_ml)
+    axes[2, 1].set_title(f"Seg (MoGe normals, {n_ml - 1} planes)")
+    axes[2, 1].axis("off")
+
+    overlay_ml = rgb.copy().astype(np.float32)
+    m_ml = moge_labels > 0
+    overlay_ml[m_ml] = overlay_ml[m_ml] * 0.4 + seg_ml[m_ml].astype(np.float32) * 0.6
+    axes[2, 2].imshow(overlay_ml.astype(np.uint8))
+    axes[2, 2].set_title("Overlay (MoGe normals)")
+    axes[2, 2].axis("off")
 
     plt.tight_layout()
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
@@ -505,9 +527,10 @@ def export_dataset(dataset_name, moge_model, dav2_model, args):
         intrinsics_all = np.stack(Ks[:n], axis=0)
 
         for i, rgb in enumerate(tqdm(rgbs, desc=f"  {scene_label}", leave=False)):
-            # 1. Our MoGe planarity (+ normals if requested)
-            if args.use_moge_normals:
-                planarity, normals = run_moge_planarity(
+            # 1. Our MoGe planarity (always get normals in test_vis mode)
+            need_moge_normals = args.use_moge_normals or test_vis
+            if need_moge_normals:
+                planarity, moge_normals = run_moge_planarity(
                     moge_model, rgb, args.device,
                     args.height, args.width, return_normals=True)
             else:
@@ -518,21 +541,22 @@ def export_dataset(dataset_name, moge_model, dav2_model, args):
             raw_bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
             depth = dav2_model.infer_image(raw_bgr)  # (H, W) numpy
             depth = depth.astype(np.float32)
-            # Resize depth to output resolution if needed
             if depth.shape != (args.height, args.width):
                 depth = cv2.resize(depth, (args.width, args.height),
                                    interpolation=cv2.INTER_LINEAR)
 
-            # 3. Compute normals from depth if not using MoGe normals
-            if not args.use_moge_normals:
-                K = Ks[i]
-                fx, fy, cx, cy = K[0, 0], K[1, 1], K[0, 2], K[1, 2]
-                normals = depth_to_normal_remi(depth, fx, fy, cx, cy)  # (H, W, 3)
+            # 3. Compute depth-derived normals
+            K = Ks[i]
+            fx, fy, cx, cy = K[0, 0], K[1, 1], K[0, 2], K[1, 2]
+            depth_normals = depth_to_normal_remi(depth, fx, fy, cx, cy)
+
+            # Pick which normals to use for the H5 output
+            normals = moge_normals if args.use_moge_normals else depth_normals
 
             # 4. Validity mask
             valid_mask = (depth > 0).astype(np.float32)
 
-            # 5. Plan2seg
+            # 5. Plan2seg with chosen normals
             planarity_mask = (planarity > args.planarity_threshold).astype(np.uint8)
             labels, _ = compute_vectorized_planar_segments_v5_relative(
                 planarity_mask, normals, depth,
@@ -549,11 +573,25 @@ def export_dataset(dataset_name, moge_model, dav2_model, args):
 
             # Save visualization PNG in test_vis mode
             if test_vis:
+                # Run plan2seg with both normal sources for comparison
+                depth_labels, _ = compute_vectorized_planar_segments_v5_relative(
+                    planarity_mask, depth_normals, depth,
+                    normal_threshold_rad=args.normal_threshold_rad,
+                    depth_threshold=args.depth_threshold,
+                    device=args.device,
+                )
+                moge_labels, _ = compute_vectorized_planar_segments_v5_relative(
+                    planarity_mask, moge_normals, depth,
+                    normal_threshold_rad=args.normal_threshold_rad,
+                    depth_threshold=args.depth_threshold,
+                    device=args.device,
+                )
                 safe_scene = scene_label.replace("/", "_")
                 vis_path = os.path.join(ds_out, "test_vis",
                                         f"{safe_scene}_{frame_ids[i]}.png")
-                save_vis_png(rgb, depth, normals, planarity, labels,
-                             gt_planes_list[i], vis_path, scene_label, frame_ids[i])
+                save_vis_png(rgb, depth, depth_normals, moge_normals, planarity,
+                             depth_labels, moge_labels, gt_planes_list[i],
+                             vis_path, scene_label, frame_ids[i])
                 tqdm.write(f"    Vis: {vis_path}")
 
         # Save H5 (skip in test_vis mode)
