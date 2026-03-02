@@ -169,9 +169,9 @@ def moge_planarity_only(model, rgb, device):
     """Run MoGe forward() and extract only planarity (no depth recovery)."""
     import torch.nn.functional as torchF
     tensor = preprocess_for_moge(rgb, device)
-    with torch.no_grad():
+    with torch.no_grad(), torch.autocast(device_type='cuda', dtype=torch.float16):
         output = model.forward(tensor.unsqueeze(0), num_tokens=1600)
-    planarity = output['planarity'][0]  # (476, 644)
+    planarity = output['planarity'][0].float()  # (476, 644)
     planarity = torchF.interpolate(planarity[None, None], (480, 640),
                                     mode='bilinear', align_corners=False)[0, 0]
     return planarity.cpu().numpy().astype(np.float32)
