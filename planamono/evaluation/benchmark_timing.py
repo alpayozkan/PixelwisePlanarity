@@ -103,32 +103,24 @@ class Timer:
 
 
 def benchmark_ours(moge_model, rgbs, Ks, device, args):
-    """Our method: MoGe planarity + depth + normals + plan2seg"""
+    """Our method: MoGe infer (depth+normals+planarity) + plan2seg"""
     timer = Timer()
-    import torch.nn.functional as torchF
     for rgb in tqdm(rgbs, desc="Ours (MoGe + plan2seg)"):
-        # MoGe forward
-        timer.start("moge_forward")
+        # MoGe infer (full pipeline: forward + depth recovery + masking)
+        timer.start("moge_infer")
         tensor = preprocess_for_moge(rgb, device)
-        with torch.no_grad():
-            output = moge_model.model.forward(tensor.unsqueeze(0), num_tokens=1600)
+        output = moge_model.model.infer(tensor, num_tokens=1600)
         timer.stop()
 
-        # Extract planarity + normals + depth
+        # Extract to numpy
         timer.start("moge_postprocess")
-        planarity = output['planarity'][0]
-        planarity = torchF.interpolate(planarity[None, None], (480, 640), mode='bilinear', align_corners=False)[0, 0]
-        planarity_np = planarity.cpu().numpy().astype(np.float32)
-
-        normal = output['normal'][0]
-        normal = torchF.interpolate(normal.permute(2, 0, 1)[None], (480, 640), mode='bilinear', align_corners=False)[0].permute(1, 2, 0)
-        norm_mag = torch.norm(normal, dim=2, keepdim=True).clamp(min=1e-8)
-        normal = normal / norm_mag
-        normals_np = normal.cpu().numpy().astype(np.float32)
-
-        depth = output['depth'][0]
-        depth = torchF.interpolate(depth[None, None], (480, 640), mode='bilinear', align_corners=False)[0, 0]
-        depth_np = depth.cpu().numpy().astype(np.float32)
+        planarity_np = output['planarity'].cpu().numpy().astype(np.float32)
+        normals_np = output['normal'].cpu().numpy().astype(np.float32)
+        depth_np = output['depth'].cpu().numpy().astype(np.float32)
+        # Resize to 480x640
+        planarity_np = cv2.resize(planarity_np, (640, 480), interpolation=cv2.INTER_LINEAR)
+        normals_np = cv2.resize(normals_np, (640, 480), interpolation=cv2.INTER_LINEAR)
+        depth_np = cv2.resize(depth_np, (640, 480), interpolation=cv2.INTER_LINEAR)
         timer.stop()
 
         # plan2seg
@@ -148,16 +140,13 @@ def benchmark_ours(moge_model, rgbs, Ks, device, args):
 def benchmark_dav2(moge_model, dav2_model, rgbs, Ks, device, args):
     """DAv2: DAv2 depth + depth_to_normal + our planarity + plan2seg"""
     timer = Timer()
-    import torch.nn.functional as torchF
     for i, rgb in enumerate(tqdm(rgbs, desc="DAv2 + planarity")):
         # MoGe planarity
         timer.start("moge_planarity")
         tensor = preprocess_for_moge(rgb, device)
-        with torch.no_grad():
-            output = moge_model.model.forward(tensor.unsqueeze(0), num_tokens=1600)
-        planarity = output['planarity'][0]
-        planarity = torchF.interpolate(planarity[None, None], (480, 640), mode='bilinear', align_corners=False)[0, 0]
-        planarity_np = planarity.cpu().numpy().astype(np.float32)
+        output = moge_model.model.infer(tensor, num_tokens=1600)
+        planarity_np = output['planarity'].cpu().numpy().astype(np.float32)
+        planarity_np = cv2.resize(planarity_np, (640, 480), interpolation=cv2.INTER_LINEAR)
         timer.stop()
 
         # DAv2 depth
@@ -191,7 +180,6 @@ def benchmark_dav2(moge_model, dav2_model, rgbs, Ks, device, args):
 def benchmark_metric3d(moge_model, metric3d_model, rgbs, Ks, device, args):
     """Metric3D: depth+normals + our planarity + plan2seg"""
     timer = Timer()
-    import torch.nn.functional as torchF
 
     # Import metric3d_infer from our export script
     from planamono.external.export_metric3d import metric3d_infer
@@ -200,11 +188,9 @@ def benchmark_metric3d(moge_model, metric3d_model, rgbs, Ks, device, args):
         # MoGe planarity
         timer.start("moge_planarity")
         tensor = preprocess_for_moge(rgb, device)
-        with torch.no_grad():
-            output = moge_model.model.forward(tensor.unsqueeze(0), num_tokens=1600)
-        planarity = output['planarity'][0]
-        planarity = torchF.interpolate(planarity[None, None], (480, 640), mode='bilinear', align_corners=False)[0, 0]
-        planarity_np = planarity.cpu().numpy().astype(np.float32)
+        output = moge_model.model.infer(tensor, num_tokens=1600)
+        planarity_np = output['planarity'].cpu().numpy().astype(np.float32)
+        planarity_np = cv2.resize(planarity_np, (640, 480), interpolation=cv2.INTER_LINEAR)
         timer.stop()
 
         # Metric3D depth + normals
