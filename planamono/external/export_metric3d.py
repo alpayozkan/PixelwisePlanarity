@@ -531,23 +531,27 @@ def export_dataset(dataset_name, moge_model, metric3d_model, args):
     os.makedirs(ds_out, exist_ok=True)
 
     test_vis = getattr(args, 'test_vis', False)
-    max_frames = 5 if test_vis else args.max_frames
+    max_frames = args.max_frames
 
     total_frames = 0
     total_scenes = 0
 
     for scene_label, h5_rel, frame_ids, rgbs, gt_planes_list, Ks in \
             DATASET_ITERS[dataset_name](args):
+        if test_vis and total_scenes >= 5:
+            break
         if max_frames is not None and total_frames >= max_frames:
             break
 
         n = len(frame_ids)
-        if max_frames is not None:
+        if test_vis:
+            n = 1  # 1 frame per scene in test_vis mode
+        elif max_frames is not None:
             n = min(n, max_frames - total_frames)
-            frame_ids = frame_ids[:n]
-            rgbs = rgbs[:n]
-            gt_planes_list = gt_planes_list[:n]
-            Ks = Ks[:n]
+        frame_ids = frame_ids[:n]
+        rgbs = rgbs[:n]
+        gt_planes_list = gt_planes_list[:n]
+        Ks = Ks[:n]
 
         # Preallocate
         depth_all = np.zeros((n, args.height, args.width), dtype=np.float32)
