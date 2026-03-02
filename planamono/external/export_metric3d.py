@@ -486,6 +486,8 @@ def parse_args():
     # Dataset / output
     p.add_argument("--dataset", type=str, required=True,
                    choices=["scannetpp", "hypersim", "vkitti2", "synthia", "all"])
+    p.add_argument("--skip_datasets", type=str, nargs="+", default=[],
+                   help="Datasets to skip (e.g. --skip_datasets scannetpp)")
     p.add_argument("--output_dir", type=str, default=None,
                    help="Output root (default: /cluster/scratch/ayavuz/dataset/metric3d_{dataset})")
     p.add_argument("--device", type=str, default="cuda")
@@ -625,6 +627,7 @@ def export_dataset(dataset_name, moge_model, metric3d_model, args):
 def main():
     args = parse_args()
     datasets = list(DATASET_ITERS.keys()) if args.dataset == "all" else [args.dataset]
+    datasets = [d for d in datasets if d not in args.skip_datasets]
 
     # Load models
     moge_wrapper = MoGePlanarityInference(args.checkpoint, device=args.device)
