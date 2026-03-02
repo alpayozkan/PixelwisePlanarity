@@ -451,6 +451,8 @@ def parse_args():
                    help="Max depth for metric variant (20=indoor, 80=outdoor)")
     p.add_argument("--use_moge_normals", action="store_true",
                    help="Use MoGe-predicted normals instead of depth-derived normals")
+    p.add_argument("--depth_blur_sigma", type=float, default=0.0,
+                   help="Gaussian blur sigma on depth before normal computation (0=off, try 1.0-2.0 for metric depth)")
 
     # Dataset / output
     p.add_argument("--dataset", type=str, required=True,
@@ -552,7 +554,12 @@ def export_dataset(dataset_name, moge_model, dav2_model, args):
             # 3. Compute depth-derived normals
             K = Ks[i]
             fx, fy, cx, cy = K[0, 0], K[1, 1], K[0, 2], K[1, 2]
-            depth_normals = depth_to_normal_remi(depth, fx, fy, cx, cy)
+            if args.depth_blur_sigma > 0:
+                ksize = int(np.ceil(args.depth_blur_sigma * 3) * 2 + 1)
+                depth_for_normals = cv2.GaussianBlur(depth, (ksize, ksize), args.depth_blur_sigma)
+            else:
+                depth_for_normals = depth
+            depth_normals = depth_to_normal_remi(depth_for_normals, fx, fy, cx, cy)
 
             # Pick which normals to use for the H5 output
             normals = moge_normals if args.use_moge_normals else depth_normals
