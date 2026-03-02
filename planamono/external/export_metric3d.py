@@ -240,8 +240,7 @@ def iter_hypersim_scenes(args):
     test_df = df[df["split_partition_name"] == "test"]
     groups = test_df.groupby(["scene_name", "camera_name"])
 
-    metadata_csv = os.path.join(args.hypersim_data_root, "metadata_camera_parameters.csv")
-    intrinsics_map = load_hypersim_intrinsics_map(metadata_csv)
+    intrinsics_map = load_hypersim_intrinsics_map(args.hypersim_metadata_csv)
     native_h, native_w = 768, 1024
 
     for (scene, cam), group_df in groups:
@@ -512,6 +511,8 @@ def parse_args():
                    default="/cluster/scratch/aoezkan/planeseg/dataset/scannetpp")
     p.add_argument("--hypersim_data_root", type=str,
                    default="/cluster/scratch/aoezkan/planeseg/dataset/hypersim")
+    p.add_argument("--hypersim_metadata_csv", type=str,
+                   default="/cluster/scratch/ayavuz/metadata_camera_parameters.csv")
     p.add_argument("--vkitti2_plane_root", type=str,
                    default="/cluster/scratch/ayavuz/dataset/vkitti2_planes")
     p.add_argument("--synthia_plane_root", type=str,
