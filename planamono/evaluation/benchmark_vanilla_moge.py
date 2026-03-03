@@ -142,9 +142,11 @@ def main():
 
     # 2. Ours (MoGe + planarity head)
     print("\nLoading our MoGe (with planarity)...")
-    our_model = MoGeModel.from_pretrained(args.checkpoint).to(args.device).eval()
+    from planamono.inference.planarity.moge_inference import MoGePlanarityInference
+    our_wrapper = MoGePlanarityInference(args.checkpoint, device=args.device)
+    our_model = our_wrapper.model
     m_ours, f_ours = benchmark_model(our_model, rgbs, args.device, "Ours (MoGe + planarity)")
-    del our_model
+    del our_model, our_wrapper
     torch.cuda.empty_cache()
 
     # Summary
