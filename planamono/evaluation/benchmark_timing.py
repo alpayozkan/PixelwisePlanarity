@@ -189,7 +189,8 @@ def benchmark_dav2(moge_model, dav2_model, rgbs, Ks, device, args):
         # DAv2 depth
         timer.start("dav2_depth")
         raw_bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-        depth = dav2_model.infer_image(raw_bgr).astype(np.float32)
+        with torch.autocast(device_type='cuda', dtype=torch.float16):
+            depth = dav2_model.infer_image(raw_bgr).astype(np.float32)
         if depth.shape != (480, 640):
             depth = cv2.resize(depth, (640, 480), interpolation=cv2.INTER_LINEAR)
         timer.stop()
@@ -229,7 +230,8 @@ def benchmark_metric3d(moge_model, metric3d_model, rgbs, Ks, device, args):
 
         # Metric3D depth + normals
         timer.start("metric3d_infer")
-        depth, normals = metric3d_infer(metric3d_model, rgb, Ks[i], device)
+        with torch.autocast(device_type='cuda', dtype=torch.float16):
+            depth, normals = metric3d_infer(metric3d_model, rgb, Ks[i], device)
         timer.stop()
 
         # plan2seg
