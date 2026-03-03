@@ -1,0 +1,26 @@
+\begin{table*}[t]
+\centering
+\caption{Synthia (Outdoor Synthetic)}
+\label{tab:synthia}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{l r r r r r r r r r r r r r r}
+\toprule
+\multicolumn{1}{l}{} &  &  & \multicolumn{3}{c}{Segmentation} & \multicolumn{3}{c}{@2.0cm} & \multicolumn{3}{c}{@5.0cm} & \multicolumn{3}{c}{@10.0cm} \\
+\cmidrule(lr){4-6} \cmidrule(lr){7-9} \cmidrule(lr){10-12} \cmidrule(lr){13-15}
+Method & \#Sc & \#Fr & RI & VOI & SC & P & R & F1 & P & R & F1 & P & R & F1 \\
+\midrule
+\textit{GT} & 89 & 8,426 & 1.000 & 0.000 & 1.000 & 0.782 & 0.390 & 0.520 & 0.819 & 0.411 & 0.547 & 0.848 & 0.430 & 0.571 \\
+\textbf{Ours} & 89 & 8,426 & 0.760 & 1.705 & 0.640 & \textbf{0.958} & 0.320 & \textbf{0.480} & \textbf{0.971} & 0.325 & \textbf{0.487} & \textbf{0.977} & 0.327 & 0.490 \\
+ZP-ft (dinov2, 60k) & 89 & 8,426 & 0.804 & 1.309 & 0.691 & 0.361 & 0.254 & 0.298 & 0.382 & 0.270 & 0.317 & 0.423 & 0.300 & 0.351 \\
+ZP-ft (dinov2, 165k) & 89 & 8,426 & \textbf{0.807} & \textbf{1.291} & \textbf{0.698} & 0.369 & 0.256 & 0.302 & 0.392 & 0.273 & 0.322 & 0.431 & 0.301 & 0.355 \\
+ZP (released) & 89 & 8,426 & 0.793 & 1.722 & 0.646 & 0.445 & 0.320 & 0.372 & 0.499 & \textbf{0.358} & 0.417 & 0.577 & \textbf{0.413} & 0.482 \\
+PlaneRCNN & 89 & 8,426 & 0.676 & 2.209 & 0.523 & 0.566 & \textbf{0.333} & 0.420 & 0.605 & 0.355 & 0.447 & 0.668 & 0.391 & \textbf{0.493} \\
+\midrule
+\multicolumn{15}{l}{\textit{Generalization (indoor-trained)}} \\
+\textbf{Ours (indoor)} & 89 & 8,426 & 0.715 & \textbf{1.971} & \textbf{0.594} & \textbf{0.864} & 0.326 & \textbf{0.473} & \textbf{0.895} & 0.338 & \textbf{0.490} & \textbf{0.907} & 0.343 & \textbf{0.498} \\
+ZP-ft-in (dinov2, 60k) & 89 & 8,426 & \textbf{0.741} & 2.458 & 0.537 & 0.352 & \textbf{0.341} & 0.346 & 0.399 & \textbf{0.387} & 0.393 & 0.475 & \textbf{0.460} & 0.467 \\
+ZP-ft-in (dinov2, 165k) & 89 & 8,426 & 0.740 & 2.472 & 0.533 & 0.345 & 0.333 & 0.339 & 0.390 & 0.377 & 0.384 & 0.470 & 0.454 & 0.462 \\
+\bottomrule
+\end{tabular}%
+}
+\end{table*}

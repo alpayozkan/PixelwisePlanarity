@@ -1,0 +1,46 @@
+\begin{figure}[tb]
+\centering
+\setlength{\tabcolsep}{1pt}
+\renewcommand{\arraystretch}{0.75}
+
+\resizebox{\linewidth}{!}{\begin{tabular}{ccccc}
+\scriptsize \textsc{Input} &
+\scriptsize \textsc{GT (Ours) seg} &
+\scriptsize \textsc{GT (Ours) inliers} &
+\scriptsize \textsc{PlaneRCNN-GT seg} &
+\scriptsize \textsc{PlaneRCNN-GT inliers} \\
+
+\includegraphics[width=0.19\linewidth]{figures/qualitative/scannetpp/segmentation/rgb/016_3db0a1c8f3_frame_002075.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/scannetpp/segmentation/gt/016_3db0a1c8f3_frame_002075.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/scannetpp/inliers/gt/016_3db0a1c8f3_frame_002075_P0.99_R0.66.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/scannetpp/segmentation/planercnn_gt_v1/016_3db0a1c8f3_frame_002075.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/scannetpp/inliers/planercnn_gt_v1/016_3db0a1c8f3_frame_002075_P0.69_R0.53.png} \\
+\noalign{\vskip 1pt}
+\includegraphics[width=0.19\linewidth]{figures/qualitative/scannetpp/segmentation/rgb/019_27dd4da69e_frame_009450.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/scannetpp/segmentation/gt/019_27dd4da69e_frame_009450.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/scannetpp/inliers/gt/019_27dd4da69e_frame_009450_P0.98_R0.81.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/scannetpp/segmentation/planercnn_gt_v1/019_27dd4da69e_frame_009450.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/scannetpp/inliers/planercnn_gt_v1/019_27dd4da69e_frame_009450_P0.85_R0.76.png} \\
+\noalign{\vskip 1pt}
+\includegraphics[width=0.19\linewidth]{figures/qualitative/scannetpp/segmentation/rgb/023_1ada7a0617_frame_005450.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/scannetpp/segmentation/gt/023_1ada7a0617_frame_005450.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/scannetpp/inliers/gt/023_1ada7a0617_frame_005450_P0.99_R0.87.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/scannetpp/segmentation/planercnn_gt_v1/023_1ada7a0617_frame_005450.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/scannetpp/inliers/planercnn_gt_v1/023_1ada7a0617_frame_005450_P0.93_R0.86.png} \\
+\noalign{\vskip 1pt}
+\includegraphics[width=0.19\linewidth]{figures/qualitative/scannetpp/segmentation/rgb/026_c50d2d1d42_frame_008625.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/scannetpp/segmentation/gt/026_c50d2d1d42_frame_008625.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/scannetpp/inliers/gt/026_c50d2d1d42_frame_008625_P0.98_R0.56.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/scannetpp/segmentation/planercnn_gt_v1/026_c50d2d1d42_frame_008625.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/scannetpp/inliers/planercnn_gt_v1/026_c50d2d1d42_frame_008625_P0.79_R0.57.png} \\
+\noalign{\vskip 1pt}
+\includegraphics[width=0.19\linewidth]{figures/qualitative/scannetpp/segmentation/rgb/039_f3d64c30f8_frame_003550.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/scannetpp/segmentation/gt/039_f3d64c30f8_frame_003550.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/scannetpp/inliers/gt/039_f3d64c30f8_frame_003550_P0.99_R0.81.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/scannetpp/segmentation/planercnn_gt_v1/039_f3d64c30f8_frame_003550.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/scannetpp/inliers/planercnn_gt_v1/039_f3d64c30f8_frame_003550_P0.98_R0.60.png} \\
+
+\end{tabular}}
+\caption{\textbf{GT vs.\ PlaneRCNN-GT on ScanNet\texttt{++}.} For each sample: input image, GT segmentation, GT inlier overlay, PlaneRCNN-GT segmentation, and PlaneRCNN-GT inlier overlay. Green\,=\,inlier within 1\,cm; red\,=\,outlier.}
+\label{fig:qual_combined_gt_vs_planercnn}
+\end{figure}

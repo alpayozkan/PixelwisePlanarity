@@ -30,3 +30,9 @@ scannetpp_rend_plane_path = '/cluster/scratch/aoezkan/planeseg/dataset/scannetpp
 
 # Legacy paths (for backward compatibility)
 hypersim_rend_plane_path = '/cluster/scratch/aoezkan/planeseg/dataset/Hypersim'
+
+# ============ VKITTI2 and Synthia ============
+# vkitti2_path = '/cluster/scratch/aoezkan/planeseg/dataset/vkitti2'
+# synthia_path = '/cluster/scratch/aoezkan/planeseg/dataset/synthia'
+vkitti2_path = '/cluster/scratch/ayavuz/dataset/vkitti2_planes'
+synthia_path = '/cluster/scratch/ayavuz/dataset/synthia_planes'

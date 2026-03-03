@@ -1,0 +1,42 @@
+\begin{figure}[tb]
+\centering
+\setlength{\tabcolsep}{1pt}
+\renewcommand{\arraystretch}{0.75}
+
+\resizebox{\linewidth}{!}{\begin{tabular}{ccccc}
+\scriptsize \textsc{Input} &
+\scriptsize \textsc{GT} &
+\scriptsize \textsc{Ours} &
+\scriptsize \textsc{ZeroPlane (ft)} &
+\scriptsize \textsc{PlaneRCNN} \\
+
+\includegraphics[width=0.19\linewidth]{figures/qualitative/hypersim/inliers/rgb/000_ai_055_001_0030.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/hypersim/inliers/gt/000_ai_055_001_0030_P1.00_R0.61.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/hypersim/inliers/ours/000_ai_055_001_0030_P0.87_R0.23.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/hypersim/inliers/zeroplane_finetuned_dinov2_60k/000_ai_055_001_0030_P0.07_R0.06.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/hypersim/inliers/planercnn/000_ai_055_001_0030_P0.28_R0.10.png} \\
+\includegraphics[width=0.19\linewidth]{figures/qualitative/hypersim/inliers/rgb/001_ai_008_006_0073.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/hypersim/inliers/gt/001_ai_008_006_0073_P1.00_R0.93.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/hypersim/inliers/ours/001_ai_008_006_0073_P1.00_R0.70.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/hypersim/inliers/zeroplane_finetuned_dinov2_60k/001_ai_008_006_0073_P0.33_R0.31.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/hypersim/inliers/planercnn/001_ai_008_006_0073_P0.73_R0.50.png} \\
+\includegraphics[width=0.19\linewidth]{figures/qualitative/hypersim/inliers/rgb/002_ai_002_007_0009.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/hypersim/inliers/gt/002_ai_002_007_0009_P1.00_R0.62.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/hypersim/inliers/ours/002_ai_002_007_0009_P0.99_R0.46.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/hypersim/inliers/zeroplane_finetuned_dinov2_60k/002_ai_002_007_0009_P0.50_R0.49.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/hypersim/inliers/planercnn/002_ai_002_007_0009_P0.22_R0.18.png} \\
+\includegraphics[width=0.19\linewidth]{figures/qualitative/hypersim/inliers/rgb/030_ai_036_005_0057.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/hypersim/inliers/gt/030_ai_036_005_0057_P1.00_R0.90.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/hypersim/inliers/ours/030_ai_036_005_0057_P0.99_R0.57.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/hypersim/inliers/zeroplane_finetuned_dinov2_60k/030_ai_036_005_0057_P0.33_R0.32.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/hypersim/inliers/planercnn/030_ai_036_005_0057_P0.76_R0.48.png} \\
+\includegraphics[width=0.19\linewidth]{figures/qualitative/hypersim/inliers/rgb/004_ai_017_006_0086.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/hypersim/inliers/gt/004_ai_017_006_0086_P1.00_R0.79.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/hypersim/inliers/ours/004_ai_017_006_0086_P1.00_R0.55.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/hypersim/inliers/zeroplane_finetuned_dinov2_60k/004_ai_017_006_0086_P0.28_R0.24.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/hypersim/inliers/planercnn/004_ai_017_006_0086_P0.74_R0.47.png} \\
+
+\end{tabular}}
+\caption{\textbf{Inlier/outlier quality} on Hypersim (indoor).}
+\label{fig:qual_inl_hypersim}
+\end{figure}

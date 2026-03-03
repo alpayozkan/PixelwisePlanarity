@@ -1,0 +1,148 @@
+\documentclass[10pt]{article}
+\usepackage[margin=1cm, landscape]{geometry}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+
+\begin{document}
+
+\title{Plane Segmentation -- Baseline Results}
+\maketitle
+
+\begin{table}[t]
+\centering
+\caption{Ground Truth Quality Comparison}
+\label{tab:gt_quality}
+\begin{tabular}{l r r r r r r r r r}
+\toprule
+\multicolumn{1}{l}{} & \multicolumn{3}{c}{@1mm} & \multicolumn{3}{c}{@5mm} & \multicolumn{3}{c}{@10mm} \\
+\cmidrule(lr){2-4} \cmidrule(lr){5-7} \cmidrule(lr){8-10}
+Method & P & R & F1 & P & R & F1 & P & R & F1 \\
+\midrule
+Our GT (ScanNet++) & \textbf{0.602} & \textbf{0.440} & \textbf{0.508} & \textbf{0.940} & \textbf{0.682} & \textbf{0.790} & \textbf{0.968} & \textbf{0.701} & \textbf{0.813} \\
+PlaneRCNN GT (ScanNet++) & 0.507 & 0.370 & 0.428 & 0.887 & 0.639 & 0.743 & 0.936 & 0.672 & 0.782 \\
+PlaneRCNN GT (ScanNet) & 0.000 & 0.000 & 0.000 & 0.067 & 0.063 & 0.065 & 0.248 & 0.232 & 0.240 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\clearpage
+
+\begin{table*}[t]
+\centering
+\caption{ScanNet++ (Indoor Real)}
+\label{tab:scannetpp}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{l r r r r r r r r r r r r r r}
+\toprule
+\multicolumn{1}{l}{} &  &  & \multicolumn{3}{c}{Segmentation} & \multicolumn{3}{c}{@0.1cm} & \multicolumn{3}{c}{@0.5cm} & \multicolumn{3}{c}{@1.0cm} \\
+\cmidrule(lr){4-6} \cmidrule(lr){7-9} \cmidrule(lr){10-12} \cmidrule(lr){13-15}
+Method & \#Sc & \#Fr & RI & VOI & SC & P & R & F1 & P & R & F1 & P & R & F1 \\
+\midrule
+\textit{GT} & 42 & 14,439 & 1.000 & 0.000 & 1.000 & 0.603 & 0.440 & 0.509 & 0.940 & 0.682 & 0.790 & 0.968 & 0.701 & 0.813 \\
+\textbf{Ours} & 42 & 14,439 & 0.807 & \textbf{1.740} & \textbf{0.647} & \textbf{0.660} & \textbf{0.390} & \textbf{0.490} & \textbf{0.903} & \textbf{0.541} & \textbf{0.676} & \textbf{0.935} & 0.560 & \textbf{0.700} \\
+ZP-ft (dinov2, 60k) & 42 & 14,439 & 0.800 & 1.910 & 0.570 & 0.171 & 0.155 & 0.162 & 0.386 & 0.351 & 0.368 & 0.461 & 0.420 & 0.439 \\
+ZP-ft (dinov2, 165k) & 42 & 14,439 & 0.799 & 1.904 & 0.569 & 0.166 & 0.150 & 0.158 & 0.378 & 0.343 & 0.360 & 0.454 & 0.412 & 0.432 \\
+ZP (released) & 42 & 14,439 & \textbf{0.813} & 2.044 & 0.577 & 0.283 & 0.258 & 0.270 & 0.588 & 0.536 & 0.561 & 0.704 & \textbf{0.641} & 0.671 \\
+PlaneRCNN & 1 & 216 & 0.811 & 2.104 & 0.593 & 0.452 & 0.358 & 0.400 & 0.619 & 0.488 & 0.546 & 0.711 & 0.559 & 0.626 \\
+\midrule
+\multicolumn{15}{l}{\textit{Generalization (indoor-trained)}} \\
+\textbf{Ours (indoor)} & 42 & 14,439 & \textbf{0.811} & \textbf{1.737} & \textbf{0.651} & \textbf{0.656} & \textbf{0.396} & \textbf{0.494} & \textbf{0.902} & \textbf{0.552} & \textbf{0.685} & \textbf{0.936} & \textbf{0.572} & \textbf{0.710} \\
+ZP-ft-in (dinov2, 60k) & 42 & 14,439 & 0.798 & 1.909 & 0.567 & 0.160 & 0.140 & 0.149 & 0.366 & 0.322 & 0.343 & 0.443 & 0.390 & 0.415 \\
+ZP-ft-in (dinov2, 165k) & 42 & 14,439 & 0.797 & 1.907 & 0.568 & 0.160 & 0.140 & 0.149 & 0.367 & 0.323 & 0.344 & 0.444 & 0.390 & 0.415 \\
+\bottomrule
+\end{tabular}%
+}
+\end{table*}
+
+\clearpage
+
+\begin{table*}[t]
+\centering
+\caption{Hypersim (Indoor Synthetic)}
+\label{tab:hypersim}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{l r r r r r r r r r r r r r r}
+\toprule
+\multicolumn{1}{l}{} &  &  & \multicolumn{3}{c}{Segmentation} & \multicolumn{3}{c}{@0.1cm} & \multicolumn{3}{c}{@0.5cm} & \multicolumn{3}{c}{@1.0cm} \\
+\cmidrule(lr){4-6} \cmidrule(lr){7-9} \cmidrule(lr){10-12} \cmidrule(lr){13-15}
+Method & \#Sc & \#Fr & RI & VOI & SC & P & R & F1 & P & R & F1 & P & R & F1 \\
+\midrule
+\textit{GT} & 68 & 10,646 & 1.000 & 0.000 & 1.000 & 0.997 & 0.786 & 0.879 & 0.999 & 0.787 & 0.881 & 1.000 & 0.787 & 0.881 \\
+\textbf{Ours} & 68 & 10,646 & 0.756 & 2.815 & 0.504 & \textbf{0.793} & \textbf{0.433} & \textbf{0.560} & \textbf{0.831} & \textbf{0.452} & \textbf{0.585} & \textbf{0.849} & 0.461 & 0.598 \\
+ZP-ft (dinov2, 60k) & 68 & 10,646 & \textbf{0.890} & 2.319 & 0.584 & 0.343 & 0.314 & 0.328 & 0.373 & 0.341 & 0.356 & 0.406 & 0.372 & 0.389 \\
+ZP-ft (dinov2, 165k) & 68 & 10,646 & 0.890 & \textbf{2.309} & \textbf{0.587} & 0.343 & 0.313 & 0.328 & 0.374 & 0.341 & 0.357 & 0.408 & 0.372 & 0.389 \\
+ZP (released) & 68 & 10,646 & 0.863 & 2.491 & 0.520 & 0.354 & 0.311 & 0.331 & 0.391 & 0.343 & 0.365 & 0.432 & 0.379 & 0.403 \\
+PlaneRCNN & 1 & 100 & 0.854 & 2.412 & 0.540 & 0.533 & 0.405 & 0.460 & 0.585 & 0.444 & 0.505 & 0.770 & \textbf{0.582} & \textbf{0.663} \\
+\midrule
+\multicolumn{15}{l}{\textit{Generalization (indoor-trained)}} \\
+\textbf{Ours (indoor)} & 68 & 10,646 & 0.748 & 2.836 & 0.499 & \textbf{0.806} & \textbf{0.427} & \textbf{0.558} & \textbf{0.842} & \textbf{0.444} & \textbf{0.582} & \textbf{0.860} & \textbf{0.454} & \textbf{0.594} \\
+ZP-ft-in (dinov2, 60k) & 68 & 10,646 & 0.883 & 2.336 & 0.572 & 0.327 & 0.285 & 0.305 & 0.356 & 0.309 & 0.331 & 0.390 & 0.339 & 0.363 \\
+ZP-ft-in (dinov2, 165k) & 68 & 10,646 & \textbf{0.884} & \textbf{2.322} & \textbf{0.576} & 0.332 & 0.288 & 0.308 & 0.362 & 0.313 & 0.336 & 0.396 & 0.343 & 0.368 \\
+\bottomrule
+\end{tabular}%
+}
+\end{table*}
+
+\clearpage
+
+\begin{table*}[t]
+\centering
+\caption{Synthia (Outdoor Synthetic)}
+\label{tab:synthia}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{l r r r r r r r r r r r r r r}
+\toprule
+\multicolumn{1}{l}{} &  &  & \multicolumn{3}{c}{Segmentation} & \multicolumn{3}{c}{@2.0cm} & \multicolumn{3}{c}{@5.0cm} & \multicolumn{3}{c}{@10.0cm} \\
+\cmidrule(lr){4-6} \cmidrule(lr){7-9} \cmidrule(lr){10-12} \cmidrule(lr){13-15}
+Method & \#Sc & \#Fr & RI & VOI & SC & P & R & F1 & P & R & F1 & P & R & F1 \\
+\midrule
+\textit{GT} & 89 & 8,426 & 1.000 & 0.000 & 1.000 & 0.782 & 0.390 & 0.520 & 0.819 & 0.411 & 0.547 & 0.848 & 0.430 & 0.571 \\
+\textbf{Ours} & 89 & 8,426 & 0.760 & 1.705 & 0.640 & \textbf{0.958} & 0.320 & \textbf{0.480} & \textbf{0.971} & 0.325 & \textbf{0.487} & \textbf{0.977} & 0.327 & 0.490 \\
+ZP-ft (dinov2, 60k) & 89 & 8,426 & 0.804 & 1.309 & 0.691 & 0.361 & 0.254 & 0.298 & 0.382 & 0.270 & 0.317 & 0.423 & 0.300 & 0.351 \\
+ZP-ft (dinov2, 165k) & 89 & 8,426 & \textbf{0.807} & \textbf{1.291} & \textbf{0.698} & 0.369 & 0.256 & 0.302 & 0.392 & 0.273 & 0.322 & 0.431 & 0.301 & 0.355 \\
+ZP (released) & 89 & 8,426 & 0.793 & 1.722 & 0.646 & 0.445 & 0.320 & 0.372 & 0.499 & \textbf{0.358} & 0.417 & 0.577 & \textbf{0.413} & 0.482 \\
+PlaneRCNN & 89 & 8,426 & 0.676 & 2.209 & 0.523 & 0.566 & \textbf{0.333} & 0.420 & 0.605 & 0.355 & 0.447 & 0.668 & 0.391 & \textbf{0.493} \\
+\midrule
+\multicolumn{15}{l}{\textit{Generalization (indoor-trained)}} \\
+\textbf{Ours (indoor)} & 89 & 8,426 & 0.715 & \textbf{1.971} & \textbf{0.594} & \textbf{0.864} & 0.326 & \textbf{0.473} & \textbf{0.895} & 0.338 & \textbf{0.490} & \textbf{0.907} & 0.343 & \textbf{0.498} \\
+ZP-ft-in (dinov2, 60k) & 89 & 8,426 & \textbf{0.741} & 2.458 & 0.537 & 0.352 & \textbf{0.341} & 0.346 & 0.399 & \textbf{0.387} & 0.393 & 0.475 & \textbf{0.460} & 0.467 \\
+ZP-ft-in (dinov2, 165k) & 89 & 8,426 & 0.740 & 2.472 & 0.533 & 0.345 & 0.333 & 0.339 & 0.390 & 0.377 & 0.384 & 0.470 & 0.454 & 0.462 \\
+\bottomrule
+\end{tabular}%
+}
+\end{table*}
+
+\clearpage
+
+\begin{table*}[t]
+\centering
+\caption{VKITTI2 (Outdoor Synthetic)}
+\label{tab:vkitti2}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{l r r r r r r r r r r r r r r}
+\toprule
+\multicolumn{1}{l}{} &  &  & \multicolumn{3}{c}{Segmentation} & \multicolumn{3}{c}{@2.0cm} & \multicolumn{3}{c}{@5.0cm} & \multicolumn{3}{c}{@10.0cm} \\
+\cmidrule(lr){4-6} \cmidrule(lr){7-9} \cmidrule(lr){10-12} \cmidrule(lr){13-15}
+Method & \#Sc & \#Fr & RI & VOI & SC & P & R & F1 & P & R & F1 & P & R & F1 \\
+\midrule
+\textit{GT} & 20 & 2,360 & 1.000 & 0.000 & 1.000 & 0.997 & 0.199 & 0.332 & 0.999 & 0.200 & 0.333 & 1.000 & 0.200 & 0.333 \\
+\textbf{Ours} & 20 & 2,360 & 0.790 & 0.937 & 0.808 & \textbf{0.967} & 0.242 & \textbf{0.387} & \textbf{0.989} & 0.248 & 0.397 & \textbf{0.998} & 0.250 & 0.400 \\
+ZP-ft (dinov2, 60k) & 20 & 2,360 & \textbf{0.896} & \textbf{0.432} & \textbf{0.897} & 0.805 & 0.183 & 0.298 & 0.816 & 0.186 & 0.303 & 0.827 & 0.188 & 0.307 \\
+ZP-ft (dinov2, 165k) & 20 & 2,360 & 0.894 & 0.436 & 0.894 & 0.797 & 0.181 & 0.295 & 0.805 & 0.183 & 0.298 & 0.816 & 0.186 & 0.303 \\
+ZP (released) & 20 & 2,360 & 0.665 & 1.332 & 0.692 & 0.659 & \textbf{0.271} & 0.384 & 0.685 & \textbf{0.284} & \textbf{0.401} & 0.745 & \textbf{0.308} & \textbf{0.436} \\
+PlaneRCNN & 20 & 2,360 & 0.552 & 1.920 & 0.538 & 0.446 & 0.221 & 0.296 & 0.465 & 0.232 & 0.309 & 0.488 & 0.243 & 0.325 \\
+\midrule
+\multicolumn{15}{l}{\textit{Generalization (indoor-trained)}} \\
+\textbf{Ours (indoor)} & 20 & 2,360 & \textbf{0.718} & \textbf{1.267} & \textbf{0.746} & \textbf{0.821} & \textbf{0.242} & \textbf{0.374} & \textbf{0.835} & 0.250 & \textbf{0.385} & \textbf{0.842} & 0.255 & \textbf{0.391} \\
+ZP-ft-in (dinov2, 60k) & 20 & 2,360 & 0.434 & 2.675 & 0.385 & 0.251 & 0.233 & 0.241 & 0.292 & \textbf{0.270} & 0.281 & 0.334 & \textbf{0.309} & 0.321 \\
+ZP-ft-in (dinov2, 165k) & 20 & 2,360 & 0.433 & 2.675 & 0.384 & 0.225 & 0.210 & 0.217 & 0.260 & 0.243 & 0.251 & 0.308 & 0.287 & 0.297 \\
+\bottomrule
+\end{tabular}%
+}
+\end{table*}
+
+\clearpage
+
+\end{document}

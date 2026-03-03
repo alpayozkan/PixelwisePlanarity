@@ -10,7 +10,7 @@ And produces summary tables for precision/recall and segmentation metrics.
 import pandas as pd
 from pathlib import Path
 
-from planamono.evaluation.quantitative.evaluate_all_baselines import METHODS, THRESHOLDS, EVAL_ROOT
+from planamono.evaluation.quantitative.evaluate_all_baselines import METHODS, THRESHOLDS, EVAL_ROOT, EXP_VER
 
 # Root directory where eval results are stored (imported from evaluate_all_baselines)
 ROOT = EVAL_ROOT
@@ -82,7 +82,7 @@ def aggregate_results(root: Path = ROOT, output_dir: Path = None):
 
     if rows_pr:
         df_pr = pd.DataFrame(rows_pr)
-        out_path = output_dir / "table_precision_recall_baselines.csv"
+        out_path = output_dir / f"table_precision_recall_baselines_{EXP_VER}.csv"
         df_pr.to_csv(out_path, index=False)
         print(f"Saved: {out_path}")
     else:
@@ -121,7 +121,7 @@ def aggregate_results(root: Path = ROOT, output_dir: Path = None):
 
     if rows_seg:
         df_seg = pd.DataFrame(rows_seg)
-        out_path = output_dir / "table_segmentation_baselines.csv"
+        out_path = output_dir / f"table_segmentation_baselines_{EXP_VER}.csv"
         df_seg.to_csv(out_path, index=False)
         print(f"Saved: {out_path}")
     else:
@@ -185,12 +185,12 @@ def aggregate_results(root: Path = ROOT, output_dir: Path = None):
         df_combined = df_combined.sort_values("_sort_key").drop(columns=["_sort_key"]).reset_index(drop=True)
 
         # Save CSV
-        out_path = output_dir / "table_combined_baselines.csv"
+        out_path = output_dir / f"table_combined_baselines_{EXP_VER}.csv"
         df_combined.to_csv(out_path, index=False)
         print(f"Saved: {out_path}")
 
         # Save XLSX
-        xlsx_path = output_dir / "table_combined_baselines.xlsx"
+        xlsx_path = output_dir / f"table_combined_baselines_{EXP_VER}.xlsx"
         df_combined.to_excel(xlsx_path, index=False, sheet_name="Combined Results")
         print(f"Saved: {xlsx_path}")
 

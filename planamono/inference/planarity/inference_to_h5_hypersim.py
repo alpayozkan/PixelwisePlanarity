@@ -36,9 +36,23 @@ import pandas as pd
 
 from planamono.shared.datasets.hypersim_plane_dataset import HypersimPlaneDataset
 from planamono.shared.segmentation import compute_vectorized_planar_segments_v5
+from planamono.shared.segmentation import compute_vectorized_planar_segments_v5_relative
+from planamono.shared.segmentation import compute_vectorized_planar_segments_v6
+from planamono.shared.segmentation import compute_vectorized_planar_segments_v10
+from planamono.shared.segmentation import compute_vectorized_planar_segments_v11
 from planamono.shared.utils.label_utils import remap_labels
 from planamono.inference.planarity.moge_inference import MoGePlanarityInference
+from planamono.inference.planarity.moge_inference_neck_head import (
+    MoGePlanarityNeckHeadInference,
+    MoGePlanarityProjNeckHeadInference,
+)
 from planamono.paths import repo_path
+
+ARCH_CLASSES = {
+    "4head": MoGePlanarityInference,
+    "neck_head": MoGePlanarityNeckHeadInference,
+    "proj_neck_head": MoGePlanarityProjNeckHeadInference,
+}
 
 
 # ============================================================
@@ -180,6 +194,7 @@ def process_batch(
     args,
     timer,
     hypersim_root,
+    seg_fn=compute_vectorized_planar_segments_v5,
 ) -> List[Dict]:
     """
     Run batch inference and segmentation for Hypersim.
@@ -243,7 +258,11 @@ def process_batch(
         images_tensor, original_sizes = inference_model.preprocess_images(rgb_images)
 
         with torch.no_grad():
-            outputs = inference_model.model(images_tensor, num_tokens=args.num_tokens)
+            # Use _forward for neck_head/proj_neck_head, model() for 4head
+            if hasattr(inference_model, '_forward'):
+                outputs = inference_model._forward(images_tensor, num_tokens=args.num_tokens)
+            else:
+                outputs = inference_model.model(images_tensor, num_tokens=args.num_tokens)
 
         results = []
 
@@ -298,15 +317,24 @@ def process_batch(
             # Apply planarity threshold
             planarity_mask = (planarity_rgb > args.threshold_planarity).astype(np.int32)
 
-        # Run vectorized segmentation (v5 is faster)
+        # Run vectorized segmentation
         with timer("segmentation_compute"):
-            labels, _ = compute_vectorized_planar_segments_v5(
+            seg_kwargs = dict(
+                neighbor_match_count_thresh=args.neighbor_match_count_thresh,
+            )
+            if args.seg_version in ("v10", "v11"):
+                seg_kwargs.update(
+                    adaptive_frac=args.adaptive_frac,
+                    min_valid_neighbors=args.min_valid_neighbors,
+                    min_segment_pixels=args.min_segment_pixels,
+                )
+            labels, _ = seg_fn(
                 planarity_mask,
                 normal_rgb.transpose(1, 2, 0),  # (H, W, 3)
                 depth_moge_rgb,
                 np.deg2rad(args.normal_threshold_deg),
                 args.depth_threshold,
-                args.neighbor_match_count_thresh,
+                **seg_kwargs,
             )
 
         with timer("segmentation_remap"):
@@ -361,6 +389,12 @@ def main():
     parser.add_argument("--neighbor_match_count_thresh", type=int,
                         default=DEFAULT_CONFIG["neighbor_match_count_thresh"],
                         help="Minimum matching neighbors for connectivity")
+    parser.add_argument("--seg_version", type=str, default="v5",
+                        choices=["v5", "v5_relative", "v6", "v10", "v11"],
+                        help="Segmentation algorithm version")
+    parser.add_argument("--adaptive_frac", type=float, default=0.75)
+    parser.add_argument("--min_valid_neighbors", type=int, default=3)
+    parser.add_argument("--min_segment_pixels", type=int, default=50)
 
     # Processing
     parser.add_argument("--split", type=str, default=DEFAULT_CONFIG["split"],
@@ -369,6 +403,9 @@ def main():
                         help="Limit number of scenes (for testing)")
     parser.add_argument("--num_workers", type=int, default=DEFAULT_CONFIG["num_workers"])
     parser.add_argument("--device", type=str, default="cuda")
+    parser.add_argument("--architecture", type=str, default="4head",
+                        choices=["4head", "neck_head", "proj_neck_head"],
+                        help="Model architecture (4head=original, neck_head/proj_neck_head=separate modules)")
 
     args = parser.parse_args()
 
@@ -388,8 +425,18 @@ def main():
     print(f"Batch size:   {args.batch_size}")
     print(f"Planarity θ:  {args.threshold_planarity}")
     print(f"Normal θ:     {args.normal_threshold_deg}°")
-    print(f"Depth θ:      {args.depth_threshold}m")
+    print(f"Depth θ:      {args.depth_threshold}{'(relative)' if args.seg_version == 'v6' else 'm'}")
+    print(f"Seg version:  {args.seg_version}")
     print("=" * 60)
+
+    seg_fn_map = {
+        "v5": compute_vectorized_planar_segments_v5,
+        "v5_relative": compute_vectorized_planar_segments_v5_relative,
+        "v6": compute_vectorized_planar_segments_v6,
+        "v10": compute_vectorized_planar_segments_v10,
+        "v11": compute_vectorized_planar_segments_v11,
+    }
+    seg_fn = seg_fn_map[args.seg_version]
 
     # Load dataset
     print("[INFO] Loading dataset...")
@@ -421,8 +468,9 @@ def main():
     )
 
     # Load model
-    print("[INFO] Loading MoGe model...")
-    inference_model = MoGePlanarityInference(args.model_path, device=args.device)
+    print(f"[INFO] Loading MoGe model (architecture={args.architecture})...")
+    model_cls = ARCH_CLASSES[args.architecture]
+    inference_model = model_cls(args.model_path, device=args.device)
 
     # Optimizations
     inference_model.model.encoder.use_memory_efficient_attention = False
@@ -444,7 +492,7 @@ def main():
 
     with timer("total_pipeline"):
         for batch_idx, batch in enumerate(tqdm(dataloader, desc="Processing")):
-            batch_outputs = process_batch(batch, inference_model, args, timer, args.hypersim_root)
+            batch_outputs = process_batch(batch, inference_model, args, timer, args.hypersim_root, seg_fn=seg_fn)
 
             # Accumulate results by scene
             for output in batch_outputs:

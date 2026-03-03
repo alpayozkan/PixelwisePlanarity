@@ -13,6 +13,7 @@ FAST VERSION - Optimizations:
 """
 
 import os
+import argparse
 import torch
 from torch.utils.data import DataLoader
 import numpy as np
@@ -49,11 +50,16 @@ RANSAC_ITERATIONS = 200
 # Inlier ratio threshold for quality gate
 INLIER_RATIO_GATE = 0.9
 
-exp_name = 'ourplanarity_gtseg_v1'
+EXP_VER = "v6"
+EXP_TAG = "moge_mixed_bce_476644_ep6"  # Change this to match the model
+
+exp_name = f'ourplanarity_gtseg_{EXP_TAG}_{EXP_VER}'
 csv_out_dir = f"/cluster/scratch/aoezkan/planeseg/scannetpp/eval/{exp_name}"
 h5_root = f"/cluster/scratch/aoezkan/planeseg/scannetpp/inference/{exp_name}_h5"
 
-model_path = "/cluster/scratch/aoezkan/moge_runs/scannetpp/moge_scannetpp_4heads_v3/final_planarity_4heads_model.pt"
+model_path = os.environ.get("MODEL_PATH",
+    "/cluster/scratch/ayavuz/moge_mixed_output_bce_476644_fixed/model_epoch6.pt"
+)
 dataset_dir = "/cluster/scratch/aoezkan/planeseg/dataset/scannetpp"
 num_workers = 4
 
@@ -122,9 +128,17 @@ def process_batch_inference(
 # ============================================================
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--inference-only", action="store_true",
+                        help="Only produce H5 files, skip evaluation")
+    cli_args = parser.parse_args()
+
+    inference_only = cli_args.inference_only
+
     print(f"[CONFIG] Experiment: {exp_name}")
     print(f"[CONFIG] Device: {device}")
     print(f"[CONFIG] Max scenes: {max_scenes_val}")
+    print(f"[CONFIG] Inference only: {inference_only}")
     print(f"[CONFIG] Compute plane metrics: {COMPUTE_PLANE_METRICS}")
     print(f"[CONFIG] RANSAC iterations: {RANSAC_ITERATIONS}")
 
@@ -136,7 +150,7 @@ if __name__ == "__main__":
         sem_label_root=os.path.join(dataset_dir, ""),
         depth_label_root=scannetpp_rend_plane_path,
         split_txt_dir=os.path.join(repo_path, "splits", "scannetpp"),
-        split="val",
+        split="test",
         max_scenes=max_scenes_val,
     )
 
@@ -175,7 +189,7 @@ if __name__ == "__main__":
 
     print("==> Running streaming pipeline")
 
-    thresholds = (0.01, 0.02, 0.05)
+    thresholds = (0.001, 0.005, 0.01)
     N_JOBS = min(16, os.cpu_count())
 
     def eval_frame_wrapper(frame_data, thresholds):
@@ -211,30 +225,32 @@ if __name__ == "__main__":
                 inference_model, args, timer
             )
 
-            for i, data in enumerate(batch_data):
-                data["K_np"] = Ks[i].numpy()
-                data["c2w_np"] = c2ws[i].numpy()
-
-            # Use loky backend (safer for numpy, avoids segfaults)
-            outputs = Parallel(
-                n_jobs=N_JOBS,
-                backend="loky",
-            )(
-                delayed(eval_frame_wrapper)(frame_data, thresholds)
-                for frame_data in batch_data
-            )
-
-            for (metrics, labels), frame_data in zip(outputs, batch_data):
+            # Accumulate predictions for H5
+            for frame_data in batch_data:
                 scene_id = frame_data["scene_id"]
                 frame_id = frame_data["frame_id"]
-
-                results[(scene_id, frame_id)] = metrics
-
                 if scene_id not in scene_predictions:
                     scene_predictions[scene_id] = []
-                scene_predictions[scene_id].append((frame_id, labels))
+                scene_predictions[scene_id].append((frame_id, frame_data["labels"]))
 
-    print(f"[PIPELINE] Processed {len(results)} frames")
+            if not inference_only:
+                for i, data in enumerate(batch_data):
+                    data["K_np"] = Ks[i].numpy()
+                    data["c2w_np"] = c2ws[i].numpy()
+
+                outputs = Parallel(
+                    n_jobs=N_JOBS,
+                    backend="loky",
+                )(
+                    delayed(eval_frame_wrapper)(frame_data, thresholds)
+                    for frame_data in batch_data
+                )
+
+                for (metrics, labels), frame_data in zip(outputs, batch_data):
+                    results[(frame_data["scene_id"], frame_data["frame_id"])] = metrics
+
+    num_frames = sum(len(v) for v in scene_predictions.values())
+    print(f"[PIPELINE] Processed {num_frames} frames")
 
     # ============================================================
     # SAVE RESULTS
@@ -244,9 +260,10 @@ if __name__ == "__main__":
     with timer("h5_write"):
         save_predictions_h5(scene_predictions, h5_root)
 
-    print("==> Saving results")
-    save_results_csv(results, csv_out_dir)
-    save_runtime(timer, csv_out_dir)
+    if not inference_only:
+        print("==> Saving results")
+        save_results_csv(results, csv_out_dir)
+        save_runtime(timer, csv_out_dir)
 
-    timer.print_summary(num_frames=len(results))
-    print(f"\n[DONE] Processed {len(results)} frames in {timer.format_time(timer.total_elapsed())}")
+    timer.print_summary(num_frames=num_frames)
+    print(f"\n[DONE] Processed {num_frames} frames in {timer.format_time(timer.total_elapsed())}")

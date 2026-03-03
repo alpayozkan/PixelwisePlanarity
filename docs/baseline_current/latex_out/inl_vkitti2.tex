@@ -1,0 +1,42 @@
+\begin{figure}[tb]
+\centering
+\setlength{\tabcolsep}{1pt}
+\renewcommand{\arraystretch}{0.75}
+
+\resizebox{\linewidth}{!}{\begin{tabular}{ccccc}
+\scriptsize \textsc{Input} &
+\scriptsize \textsc{GT} &
+\scriptsize \textsc{Ours} &
+\scriptsize \textsc{ZeroPlane (ft)} &
+\scriptsize \textsc{PlaneRCNN} \\
+
+\includegraphics[width=0.19\linewidth]{figures/qualitative/vkitti2/inliers/rgb/000_Scene18_morning_00240.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/vkitti2/inliers/gt/000_Scene18_morning_00240_P1.00_R0.14.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/vkitti2/inliers/ours/000_Scene18_morning_00240_P0.98_R0.22.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/vkitti2/inliers/zeroplane_finetuned_dinov2_60k/000_Scene18_morning_00240_P0.95_R0.15.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/vkitti2/inliers/planercnn/000_Scene18_morning_00240_P0.36_R0.16.png} \\
+\includegraphics[width=0.19\linewidth]{figures/qualitative/vkitti2/inliers/rgb/001_Scene18_15-deg-right_00170.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/vkitti2/inliers/gt/001_Scene18_15-deg-right_00170_P1.00_R0.15.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/vkitti2/inliers/ours/001_Scene18_15-deg-right_00170_P1.00_R0.23.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/vkitti2/inliers/zeroplane_finetuned_dinov2_60k/001_Scene18_15-deg-right_00170_P0.93_R0.14.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/vkitti2/inliers/planercnn/001_Scene18_15-deg-right_00170_P0.23_R0.14.png} \\
+\includegraphics[width=0.19\linewidth]{figures/qualitative/vkitti2/inliers/rgb/002_Scene20_30-deg-left_00550.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/vkitti2/inliers/gt/002_Scene20_30-deg-left_00550_P1.00_R0.28.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/vkitti2/inliers/ours/002_Scene20_30-deg-left_00550_P1.00_R0.26.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/vkitti2/inliers/zeroplane_finetuned_dinov2_60k/002_Scene20_30-deg-left_00550_P0.94_R0.28.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/vkitti2/inliers/planercnn/002_Scene20_30-deg-left_00550_P0.53_R0.27.png} \\
+\includegraphics[width=0.19\linewidth]{figures/qualitative/vkitti2/inliers/rgb/003_Scene20_15-deg-right_00775.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/vkitti2/inliers/gt/003_Scene20_15-deg-right_00775_P1.00_R0.19.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/vkitti2/inliers/ours/003_Scene20_15-deg-right_00775_P1.00_R0.33.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/vkitti2/inliers/zeroplane_finetuned_dinov2_60k/003_Scene20_15-deg-right_00775_P0.97_R0.23.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/vkitti2/inliers/planercnn/003_Scene20_15-deg-right_00775_P0.49_R0.16.png} \\
+\includegraphics[width=0.19\linewidth]{figures/qualitative/vkitti2/inliers/rgb/004_Scene20_15-deg-right_00330.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/vkitti2/inliers/gt/004_Scene20_15-deg-right_00330_P0.99_R0.12.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/vkitti2/inliers/ours/004_Scene20_15-deg-right_00330_P1.00_R0.15.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/vkitti2/inliers/zeroplane_finetuned_dinov2_60k/004_Scene20_15-deg-right_00330_P0.92_R0.12.png} &
+\includegraphics[width=0.19\linewidth]{figures/qualitative/vkitti2/inliers/planercnn/004_Scene20_15-deg-right_00330_P0.33_R0.25.png} \\
+
+\end{tabular}}
+\caption{\textbf{Inlier/outlier quality} on VKITTI2 (outdoor).}
+\label{fig:qual_inl_vkitti2}
+\end{figure}

@@ -261,12 +261,14 @@ def evaluate_single_frame_old(
 
     # Clustering metrics (pure img-to-img)
     clustering = compute_clustering_metrics(gt_seg_np, labels)
+    bp_metrics = compute_binary_planarity_metrics(gt_seg_np, labels)
 
     metrics = {
         "scene_id": scene_id,
         "frame_idx": frame_idx,
         **clustering,
-        **metric_thr
+        **metric_thr,
+        **bp_metrics
     }
 
     return metrics, labels
@@ -313,6 +315,57 @@ def compute_clustering_metrics(
     sc = segmentation_covering_fast(gt_seg, pred_seg)
 
     return {"rand_index": ri, "voi": voi, "sc": sc}
+
+
+def compute_binary_planarity_metrics(
+    gt_seg: np.ndarray,
+    pred_seg: np.ndarray,
+    bg_label: int = 0,
+) -> Dict[str, float]:
+    """
+    Compute binary planarity classification metrics.
+
+    Treats the problem as binary: planar (label > bg_label) vs non-planar (label == bg_label).
+
+    All metrics are prefixed with 'bp_' (binary planarity) to avoid conflicts
+    with existing 3D plane geometry metrics (prec@/rec@).
+
+    Args:
+        gt_seg: (H, W) ground truth segmentation (0 = non-planar, >0 = planar)
+        pred_seg: (H, W) predicted segmentation (0 = non-planar, >0 = planar)
+        bg_label: Background/non-planar label value (default 0)
+
+    Returns:
+        {
+            "bp_accuracy": float,   # (TP + TN) / total
+            "bp_precision": float,  # TP / (TP + FP)
+            "bp_recall": float,     # TP / (TP + FN)
+            "bp_f1": float,         # 2 * precision * recall / (precision + recall)
+            "bp_iou": float,        # TP / (TP + FP + FN), Jaccard index for planar class
+        }
+    """
+    gt_planar = gt_seg != bg_label
+    pred_planar = pred_seg != bg_label
+
+    tp = (gt_planar & pred_planar).sum()
+    tn = (~gt_planar & ~pred_planar).sum()
+    fp = (~gt_planar & pred_planar).sum()
+    fn = (gt_planar & ~pred_planar).sum()
+
+    total = tp + tn + fp + fn
+    accuracy = (tp + tn) / max(total, 1)
+    precision = tp / max(tp + fp, 1)
+    recall = tp / max(tp + fn, 1)
+    f1 = 2 * precision * recall / max(precision + recall, 1e-8)
+    iou = tp / max(tp + fp + fn, 1)
+
+    return {
+        "bp_accuracy": float(accuracy),
+        "bp_precision": float(precision),
+        "bp_recall": float(recall),
+        "bp_f1": float(f1),
+        "bp_iou": float(iou),
+    }
 
 
 def compute_plane_metrics_old(
@@ -578,12 +631,14 @@ def evaluate_single_frame_multigates(
 
     # Clustering metrics (pure img-to-img, gate-independent)
     clustering = compute_clustering_metrics(gt_seg_np, labels)
+    bp_metrics = compute_binary_planarity_metrics(gt_seg_np, labels)
 
     metrics = {
         "scene_id": scene_id,
         "frame_idx": frame_idx,
         **clustering,
-        **metric_thr
+        **metric_thr,
+        **bp_metrics
     }
 
     return metrics, labels
@@ -652,11 +707,15 @@ def evaluate_single_frame(
     # Clustering metrics (pure img-to-img)
     clustering = compute_clustering_metrics(gt_seg_np, labels)
 
+    # Binary planarity metrics
+    bp_metrics = compute_binary_planarity_metrics(gt_seg_np, labels)
+
     metrics = {
         "scene_id": scene_id,
         "frame_idx": frame_idx,
         **clustering,
-        **metric_thr
+        **metric_thr,
+        **bp_metrics
     }
 
     return metrics, labels
@@ -728,12 +787,14 @@ def evaluate_single_frame_hypersim(
             metric_thr[f"rec@{thr*100:.1f}cm"] = np.nan
 
     clustering = compute_clustering_metrics(gt_seg_np, labels)
+    bp_metrics = compute_binary_planarity_metrics(gt_seg_np, labels)
 
     metrics = {
         "scene_id": scene_id,
         "frame_idx": frame_idx,
         **clustering,
-        **metric_thr
+        **metric_thr,
+        **bp_metrics
     }
 
     return metrics, labels
@@ -804,12 +865,14 @@ def evaluate_single_frame_hypersim_multigates(
                 metric_thr[f"rec@{thresh_str}_gate{gate}"] = np.nan
 
     clustering = compute_clustering_metrics(gt_seg_np, labels)
+    bp_metrics = compute_binary_planarity_metrics(gt_seg_np, labels)
 
     metrics = {
         "scene_id": scene_id,
         "frame_idx": frame_idx,
         **clustering,
-        **metric_thr
+        **metric_thr,
+        **bp_metrics
     }
 
     return metrics, labels

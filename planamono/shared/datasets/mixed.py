@@ -27,6 +27,7 @@ class MixedPlanarityDataset(Dataset):
         sample["image"] = TF.resize(sample["image"], [H, W], interpolation=TF.InterpolationMode.BILINEAR)
         sample["depth"] = TF.resize(sample["depth"], [H, W], interpolation=TF.InterpolationMode.BILINEAR)
         sample["plane"] = TF.resize(sample["plane"], [H, W], interpolation=TF.InterpolationMode.NEAREST)
-        sample["semantic"] = TF.resize(sample["semantic"], [H, W], interpolation=TF.InterpolationMode.NEAREST)
+        sem_key = "sem" if "sem" in sample else "semantic"
+        sample[sem_key] = TF.resize(sample[sem_key], [H, W], interpolation=TF.InterpolationMode.NEAREST)
 
         return sample

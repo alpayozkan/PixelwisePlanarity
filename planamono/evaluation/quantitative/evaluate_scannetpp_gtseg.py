@@ -23,7 +23,7 @@ import os
 import torch
 from torch.utils.data import DataLoader
 
-from planamono.shared.datasets.scannetpp import ScanNetPPPlanarityDataset, ScanNetPPPlaneDataset
+from planamono.shared.datasets.scannetpp import ScanNetPPPlaneDataset
 from planamono.paths import *
 # from planamono.moge.moge_planarity_scannet import MoGePlanarityHead
 
@@ -284,7 +284,7 @@ val_dataset = ScanNetPPPlaneDataset(
     sem_label_root=os.path.join(dataset_dir, ""),
     depth_label_root=scannetpp_rend_plane_path,
     split_txt_dir=os.path.join(repo_path, "splits", "scannetpp"),
-    split="val",
+    split="test",
     max_scenes=max_scenes_val,
 )
 

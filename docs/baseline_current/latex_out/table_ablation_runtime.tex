@@ -1,0 +1,15 @@
+\begin{table}[t]
+  \centering
+  \caption{Segmentation cue ablation runtime (per-frame avg, ScanNet++ test, RTX 3090)}
+  \label{tab:ablation_runtime}
+  \begin{tabular}{l r r r r r r}
+    \toprule
+    Method & Frames & Model (ms) & Seg (ms) & Pre/Post (ms) & Compute (ms) & FPS \\
+    \midrule
+    Depth only & 14,439 & 2367.8 & 64.9 & 22.8 & 2455.5 & 0.4 \\
+    Normal only & 14,439 & 2376.4 & 308.2 & 24.5 & 2709.0 & 0.4 \\
+    Normal + Depth & 14,439 & 2313.8 & 290.0 & 23.1 & 2626.9 & 0.4 \\
+    \textbf{Normal + Depth + Planarity} & 14,439 & 2311.2 & 147.4 & 22.4 & 2481.0 & 0.4 \\
+    \bottomrule
+  \end{tabular}
+\end{table}

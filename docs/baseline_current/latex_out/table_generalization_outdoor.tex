@@ -1,0 +1,25 @@
+\begin{table}[H]
+\centering
+\caption{Generalization: indoor-trained models evaluated on outdoor datasets (Synthia and VKITTI2).}
+\label{tab:generalization_outdoor}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{l r r r r r r r r r r r r}
+\toprule
+\multicolumn{1}{l}{} & \multicolumn{3}{c}{Segmentation} & \multicolumn{3}{c}{@2.0cm} & \multicolumn{3}{c}{@5.0cm} & \multicolumn{3}{c}{@10.0cm} \\
+\cmidrule(lr){2-4} \cmidrule(lr){5-7} \cmidrule(lr){8-10} \cmidrule(lr){11-13}
+Method & RI & VOI & SC & P & R & F1 & P & R & F1 & P & R & F1 \\
+\multicolumn{13}{l}{\textit{Synthia (Outdoor Synthetic)}} \\
+\midrule
+\textbf{Ours (indoor)} & 0.715 & \textbf{1.971} & \textbf{0.594} & \textbf{0.864} & 0.326 & \textbf{0.473} & \textbf{0.895} & 0.338 & \textbf{0.490} & \textbf{0.907} & 0.343 & \textbf{0.498} \\
+ZP-ft-in (dinov2, 60k) & \textbf{0.741} & 2.458 & 0.537 & 0.352 & \textbf{0.341} & 0.346 & 0.399 & \textbf{0.387} & 0.393 & 0.475 & \textbf{0.460} & 0.467 \\
+ZP-ft-in (dinov2, 165k) & 0.740 & 2.472 & 0.533 & 0.345 & 0.333 & 0.339 & 0.390 & 0.377 & 0.384 & 0.470 & 0.454 & 0.462 \\
+\midrule
+\multicolumn{13}{l}{\textit{VKITTI2 (Outdoor Synthetic)}} \\
+\midrule
+\textbf{Ours (indoor)} & \textbf{0.718} & \textbf{1.267} & \textbf{0.746} & \textbf{0.821} & \textbf{0.242} & \textbf{0.374} & \textbf{0.835} & 0.250 & \textbf{0.385} & \textbf{0.842} & 0.255 & \textbf{0.391} \\
+ZP-ft-in (dinov2, 60k) & 0.434 & 2.675 & 0.385 & 0.251 & 0.233 & 0.241 & 0.292 & \textbf{0.270} & 0.281 & 0.334 & \textbf{0.309} & 0.321 \\
+ZP-ft-in (dinov2, 165k) & 0.433 & 2.675 & 0.384 & 0.225 & 0.210 & 0.217 & 0.260 & 0.243 & 0.251 & 0.308 & 0.287 & 0.297 \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}

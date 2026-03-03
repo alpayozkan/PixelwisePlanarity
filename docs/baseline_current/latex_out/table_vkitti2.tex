@@ -1,0 +1,34 @@
+\begin{table*}[t]
+\centering
+\caption{VKITTI2 (Outdoor Synthetic)}
+\label{tab:vkitti2}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{l r r r r r r r r r r r r}
+\toprule
+\multicolumn{1}{l}{} & \multicolumn{3}{c}{Segmentation} & \multicolumn{3}{c}{@2.0cm} & \multicolumn{3}{c}{@5.0cm} & \multicolumn{3}{c}{@10.0cm} \\
+\cmidrule(lr){2-4} \cmidrule(lr){5-7} \cmidrule(lr){8-10} \cmidrule(lr){11-13}
+Method & RI & VOI & SC & P & R & F1 & P & R & F1 & P & R & F1 \\
+\midrule
+\textit{GT} & 1.000 & 0.000 & 1.000 & 0.997 & 0.199 & 0.332 & 0.999 & 0.200 & 0.333 & 1.000 & 0.200 & 0.333 \\
+\textbf{Ours} & 0.790 & 0.937 & 0.808 & 0.967 & 0.242 & 0.387 & 0.989 & 0.248 & 0.397 & \textbf{0.998} & 0.250 & 0.400 \\
+ZP-ft (dinov2, 60k) & \textbf{0.896} & \textbf{0.432} & \textbf{0.897} & 0.805 & 0.183 & 0.298 & 0.816 & 0.186 & 0.303 & 0.827 & 0.188 & 0.307 \\
+ZP-ft (dinov2, 165k) & 0.894 & 0.436 & 0.894 & 0.797 & 0.181 & 0.295 & 0.805 & 0.183 & 0.298 & 0.816 & 0.186 & 0.303 \\
+ZP (released) & 0.665 & 1.332 & 0.692 & 0.659 & 0.271 & 0.384 & 0.685 & 0.284 & 0.401 & 0.745 & 0.308 & 0.436 \\
+PlaneRCNN & 0.552 & 1.920 & 0.538 & 0.446 & 0.221 & 0.296 & 0.465 & 0.232 & 0.309 & 0.488 & 0.243 & 0.325 \\
+PlaneTR & 0.619 & 1.376 & 0.606 & 0.031 & 0.031 & 0.031 & 0.035 & 0.035 & 0.035 & 0.041 & 0.041 & 0.041 \\
+PlanRecTR (lowres) & 0.535 & 1.878 & 0.502 & 0.124 & 0.079 & 0.097 & 0.137 & 0.088 & 0.107 & 0.155 & 0.100 & 0.121 \\
+PlanRecTR (highres) & 0.494 & 2.247 & 0.451 & 0.245 & 0.182 & 0.209 & 0.257 & 0.190 & 0.218 & 0.271 & 0.200 & 0.230 \\
+PlanarRecon & 0.511 & 2.129 & 0.467 & 0.288 & 0.191 & 0.230 & 0.303 & 0.201 & 0.242 & 0.319 & 0.212 & 0.254 \\
+MoGe ep3 v5\_rel (plan=0.3, norm=5°, match=8, depth\_rel=0.025) & 0.568 & 2.149 & 0.598 & 0.621 & \textbf{0.290} & 0.395 & 0.636 & \textbf{0.302} & 0.410 & 0.646 & \textbf{0.309} & 0.418 \\
+MoGe ep3 v5origparams\_rel (plan=0.6, norm=10°, match=24, depth\_rel=0.025) & 0.642 & 1.678 & 0.673 & 0.691 & 0.217 & 0.330 & 0.689 & 0.222 & 0.336 & 0.692 & 0.225 & 0.340 \\
+MoGe 4ds ep2 v5\_rel (plan=0.3, norm=5°, match=8, depth\_rel=0.025) & 0.781 & 0.971 & 0.800 & 0.949 & 0.275 & \textbf{0.426} & 0.981 & 0.285 & \textbf{0.442} & 0.994 & 0.289 & \textbf{0.448} \\
+MoGe 4ds ep2 v5origparams\_rel (plan=0.6, norm=10°, match=24, depth\_rel=0.025) & 0.776 & 0.987 & 0.789 & \textbf{0.973} & 0.211 & 0.347 & \textbf{0.990} & 0.216 & 0.354 & 0.997 & 0.217 & 0.357 \\
+\midrule
+\multicolumn{13}{l}{\textit{Generalization (indoor-trained)}} \\
+\textbf{Ours (indoor)} & \textbf{0.718} & \textbf{1.267} & \textbf{0.746} & \textbf{0.821} & \textbf{0.242} & \textbf{0.374} & \textbf{0.835} & 0.250 & \textbf{0.385} & \textbf{0.842} & 0.255 & \textbf{0.391} \\
+ZP-ft-in (dinov2, 60k) & 0.434 & 2.675 & 0.385 & 0.251 & 0.233 & 0.241 & 0.292 & \textbf{0.270} & 0.281 & 0.334 & \textbf{0.309} & 0.321 \\
+ZP-ft-in (dinov2, 165k) & 0.433 & 2.675 & 0.384 & 0.225 & 0.210 & 0.217 & 0.260 & 0.243 & 0.251 & 0.308 & 0.287 & 0.297 \\
+\bottomrule
+\end{tabular}%
+}
+\end{table*}

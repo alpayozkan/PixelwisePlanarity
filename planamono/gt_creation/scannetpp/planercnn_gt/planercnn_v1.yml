@@ -1,0 +1,355 @@
+# PlaneRCNN GT v1 Configuration for ScanNet++
+#
+# Changes from planercnn_default.yml:
+#   - Stricter RANSAC thresholds (tighter inlier distance, more iterations)
+#   - Stricter coverage gate (60% → was 50%)
+#   - Higher min vertex count (200 → was 100)
+#   - Label mappings updated for ScanNet++ semantic classes
+#     (original was copied from ScanNet which has different label names)
+
+# --- Paths ---
+mesh_root: "/cluster/scratch/aoezkan/planeseg/dataset_mesh/scannetpp_planercnn_v1"
+output_root: "/cluster/scratch/aoezkan/planeseg/dataset/scannetpp_planercnn_v1"
+
+# --- Plane Fitting (RANSAC) ---
+num_planes_per_segment: 2
+plane_area_threshold: 200         # stricter: 200 (was 100)
+num_iterations: 300               # more iterations: 300 (was 200)
+plane_diff_threshold: 0.01        # tighter inlier distance: 1cm (was 2cm)
+fitting_error_threshold: 0.01     # matches plane_diff_threshold
+coverage_gate: 0.6                # stricter: 60% (was 50%)
+floor_error_scale: 3.0
+
+# --- Merging / Orthogonality ---
+orthogonal_threshold_deg: 60
+parallel_threshold_deg: 30
+
+# --- Rendering ---
+target_width: 640
+target_height: 480
+frame_skip: 25
+
+# --- Per-Label Plane Count Bounds ---
+# Updated for ScanNet++ semantic_classes.txt labels.
+# Format: label: [min_planes, max_planes]
+# Labels not listed default to [0, 5].
+label_num_planes:
+  # --- Structural: always planar ---
+  wall: [1, 3]
+  floor: [1, 1]
+  ceiling: [1, 3]
+  fake ceiling: [1, 3]
+  false ceiling: [1, 3]
+  suspended ceiling: [1, 3]
+  roof: [1, 3]
+  door: [1, 2]
+  sliding door: [1, 2]
+  garage door: [1, 2]
+  entrance: [1, 1]
+  stairs: [1, 5]
+
+  # --- Flat surfaces: always planar ---
+  picture: [1, 1]
+  painting: [1, 1]
+  poster: [1, 1]
+  whiteboard: [1, 1]
+  whiteboards: [1, 2]
+  blackboard: [1, 1]
+  interactive board: [1, 1]
+  pinboard: [1, 1]
+  board: [1, 1]
+  banner: [1, 1]
+  television: [1, 1]
+  tv: [1, 1]
+  tv screen: [1, 1]
+  flat panel display: [1, 1]
+  monitor: [1, 1]
+  mirror: [1, 1]
+  window: [1, 2]
+  skylight: [1, 1]
+
+  # --- Floor coverings: always planar ---
+  floor mat: [1, 1]
+  carpet: [1, 1]
+  rug: [1, 1]
+  bathroom mat: [1, 1]
+  gym mat: [1, 1]
+
+  # --- Wall elements ---
+  doorframe: [1, 2]
+  window frame: [1, 2]
+  windowframe: [1, 2]
+  window sill: [1, 1]
+  windowsill: [1, 1]
+  shower wall: [1, 3]
+  brick wall: [1, 3]
+  tile wall: [1, 3]
+  glass wall: [1, 3]
+  partition: [1, 2]
+  shower partition: [1, 2]
+  room divider: [1, 2]
+  folding screen: [1, 2]
+  bathroom stall: [1, 3]
+
+  # --- Tables and desks ---
+  table: [0, 5]
+  desk: [0, 5]
+  office table: [0, 5]
+  office desk: [0, 5]
+  computer desk: [0, 5]
+  classroom table: [0, 5]
+  conference table: [0, 5]
+  coffee table: [0, 5]
+  dining table: [0, 5]
+  side table: [0, 5]
+  high table: [0, 5]
+  joined tables: [0, 5]
+  ping pong table: [0, 5]
+  foosball table: [0, 5]
+  work bench: [0, 5]
+  experiment bench: [0, 5]
+  laboratory bench: [0, 5]
+  bench: [0, 5]
+  bar counter: [0, 5]
+  counter: [0, 5]
+  kitchen counter: [0, 5]
+
+  # --- Seating ---
+  chair: [0, 5]
+  office chair: [0, 5]
+  office visitor chair: [0, 5]
+  dining chair: [0, 5]
+  rolling chair: [0, 5]
+  stool: [0, 3]
+  high stool: [0, 3]
+  bar stool: [0, 3]
+  sofa: [0, 10]
+  couch: [0, 10]
+  sofa chair: [0, 5]
+  arm chair: [0, 5]
+  armchair: [0, 5]
+  lounge chair: [0, 5]
+  l-shaped sofa: [0, 10]
+  seat: [0, 5]
+  beanbag: [0, 0]
+
+  # --- Storage / Cabinets ---
+  cabinet: [0, 5]
+  storage cabinet: [0, 5]
+  kitchen cabinet: [0, 5]
+  office cabinet: [0, 5]
+  file cabinet: [0, 5]
+  laboratory cabinet: [0, 5]
+  bathroom cabinet: [0, 5]
+  wall cabinet: [0, 5]
+  open cabinet: [0, 5]
+  cupboard: [0, 5]
+  wardrobe: [0, 5]
+  closet: [0, 5]
+  bookshelf: [0, 5]
+  book shelf: [0, 5]
+  shelf: [0, 5]
+  storage rack: [0, 5]
+  rack: [0, 5]
+  shoe rack: [0, 5]
+  tv stand: [0, 5]
+  dresser: [0, 5]
+  nightstand: [0, 5]
+  bedside table: [0, 5]
+
+  # --- Beds ---
+  bed: [0, 5]
+  loft bed: [0, 5]
+  headboard: [1, 1]
+  mattress: [0, 1]
+
+  # --- Bathroom ---
+  toilet: [0, 5]
+  urinal: [0, 3]
+  sink: [0, 5]
+  kitchen sink: [0, 5]
+  bathtub: [0, 5]
+  shower floor: [1, 1]
+  shower ceiling: [1, 1]
+
+  # --- Kitchen appliances (boxy, planar faces) ---
+  refrigerator: [0, 5]
+  fridge: [0, 5]
+  microwave: [0, 5]
+  oven: [0, 5]
+  stove: [0, 5]
+  dishwasher: [0, 5]
+  washing machine: [0, 5]
+  clothes dryer: [0, 5]
+  range hood: [0, 3]
+
+  # --- Electronics (flat screens) ---
+  laptop: [0, 2]
+  printer: [0, 5]
+  photocopy machine: [0, 5]
+  copier: [0, 5]
+
+  # --- Structural elements ---
+  beam: [1, 2]
+  steel beam: [1, 2]
+  ceiling beam: [1, 2]
+  pillar: [0, 4]
+  pipe: [0, 0]
+  pipes: [0, 0]
+  ceiling pipe: [0, 0]
+  air duct: [0, 0]
+  electrical duct: [0, 0]
+  electric duct: [0, 0]
+  cable tray: [0, 0]
+  wire tray: [0, 0]
+  ventilation pipe: [0, 0]
+  air pipe: [0, 0]
+
+  # --- Flat panel / access panels ---
+  electrical panel: [1, 1]
+  electrical control panel: [1, 1]
+  electrical box: [0, 5]
+  power socket: [0, 1]
+  light switch: [0, 1]
+
+  # --- Raised/stage surfaces ---
+  raised floor: [1, 1]
+  stage: [1, 3]
+
+  # --- Lighting ---
+  ceiling lamp: [0, 0]
+  ceiling light: [0, 0]
+  ceiling lights: [0, 0]
+  standing lamp: [0, 0]
+  floor lamp: [0, 0]
+  table lamp: [0, 0]
+  lamp: [0, 0]
+  light: [0, 0]
+
+  # --- Miscellaneous labeled ---
+  radiator: [0, 3]
+  heater: [0, 3]
+  air conditioner: [0, 5]
+  floor mounted air conditioner: [0, 5]
+  projector: [0, 3]
+  overhead projector: [0, 3]
+  fire extinguisher: [0, 0]
+  smoke detector: [0, 0]
+  container: [0, 5]
+  crate: [0, 5]
+  beverage crate: [0, 5]
+  pallet cage: [0, 5]
+  cardboard box: [0, 5]
+  box: [0, 5]
+  bin: [0, 5]
+  trash can: [0, 5]
+  trash bin: [0, 5]
+  basket: [0, 0]
+  laundry basket: [0, 0]
+  bucket: [0, 0]
+
+  # --- Catch-all categories ---
+  object: [0, 5]
+  objects: [0, 5]
+  structure: [0, 5]
+  decoration: [0, 1]
+  unannotated: [0, 5]
+  "": [0, 0]
+
+# --- Non-Planar Labels ---
+# Objects that are never planar regardless of label_num_planes
+non_planar_labels:
+  - bicycle
+  - bottle
+  - bottles
+  - water bottle
+  - pillow
+  - cushion
+  - curtain
+  - blinds
+  - blind
+  - rolling blinds
+  - roller blinds
+  - vertical blinds
+  - window blind
+  - blind rail
+  - person
+  - lamp
+  - standing lamp
+  - floor lamp
+  - table lamp
+  - ceiling lamp
+  - ceiling light
+  - ceiling lights
+  - light
+  - bag
+  - backpack
+  - suitcase
+  - book
+  - books
+  - paper
+  - papers
+  - towel
+  - kitchen towel
+  - shower curtain
+  - clothes
+  - cloth
+  - jacket
+  - coat
+  - shirt
+  - shoe
+  - shoes
+  - plant
+  - plant pot
+  - christmas tree
+  - blanket
+  - comforter
+  - duvet
+  - bedsheet
+  - tablecloth
+  - cable
+  - cables
+  - hose
+  - umbrella
+  - basket
+  - laundry basket
+  - bucket
+  - mug
+  - cup
+  - keyboard
+  - mouse
+  - telephone
+  - speaker
+  - tripod
+  - clothes hanger
+  - cloth hangers
+  - coat hanger
+  - coat rack
+  - cloth rack
+  - coat stand
+  - drying rack
+  - vacuum cleaner
+  - fan
+  - pedestal fan
+  - desk fan
+  - standing fan
+  - ceiling ventilator
+  - exhaust fan
+  - fire extinguisher
+  - smoke detector
+  - power strip
+  - tap
+  - paper towel dispenser
+  - toilet paper
+  - folder
+  - file folder
+  - paper bag
+  - cardboard
+  - cardboards
+  - frame
+  - decoration
+  - backdrop
+  - drum
+  - microscope
+  - robot car
+  - beanbag

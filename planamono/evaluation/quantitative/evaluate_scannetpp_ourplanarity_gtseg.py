@@ -332,7 +332,7 @@ val_dataset = ScanNetPPPlaneDataset(
     sem_label_root=os.path.join(dataset_dir, ""),
     depth_label_root=scannetpp_rend_plane_path,
     split_txt_dir=os.path.join(repo_path, "splits", "scannetpp"),
-    split="val",
+    split="test",
     max_scenes=max_scenes_val,
 )
 

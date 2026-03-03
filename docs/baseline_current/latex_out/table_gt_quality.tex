@@ -1,0 +1,16 @@
+\begin{table}[t]
+\centering
+\caption{Ground Truth Quality Comparison}
+\label{tab:gt_quality}
+\begin{tabular}{l r r r r r r r r r}
+\toprule
+\multicolumn{1}{l}{} & \multicolumn{3}{c}{@1mm} & \multicolumn{3}{c}{@5mm} & \multicolumn{3}{c}{@10mm} \\
+\cmidrule(lr){2-4} \cmidrule(lr){5-7} \cmidrule(lr){8-10}
+Method & P & R & F1 & P & R & F1 & P & R & F1 \\
+\midrule
+Our GT (ScanNet++) & \textbf{0.602} & \textbf{0.440} & \textbf{0.508} & \textbf{0.940} & \textbf{0.682} & \textbf{0.790} & \textbf{0.968} & \textbf{0.701} & \textbf{0.813} \\
+PlaneRCNN GT (ScanNet++) & 0.507 & 0.370 & 0.428 & 0.887 & 0.639 & 0.743 & 0.936 & 0.672 & 0.782 \\
+PlaneRCNN GT (ScanNet) & 0.000 & 0.000 & 0.000 & 0.067 & 0.063 & 0.065 & 0.248 & 0.232 & 0.240 \\
+\bottomrule
+\end{tabular}
+\end{table}

@@ -1,0 +1,19 @@
+\begin{table}[t]
+  \centering
+  \caption{Runtime comparison on ScanNet++ test set (per-frame avg)}
+  \label{tab:runtime_combined}
+  \begin{tabular}{l r r r r r r}
+    \toprule
+    Method & Frames & Model (ms) & Seg (ms) & Pre/Post (ms) & Compute (ms) & FPS \\
+    \midrule
+    \textbf{Ours (v5 seg)} & 14,439 & 126.2 & 29.6 & 82.4 & 238.2 & 4.2 \\
+    \textbf{Ours (v6 seg)} & 14,439 & 187.5 & 53.0 & 90.5 & 331.0 & 3.0 \\
+    ZeroPlane 75k & 14,439 & 338.3 & --- & 3.9 & 342.2 & 2.9 \\
+    ZeroPlane 145k & 14,439 & 338.4 & --- & 3.7 & 342.1 & 2.9 \\
+    Depth only & 14,439 & 2367.8 & 64.9 & 22.8 & 2455.5 & 0.4 \\
+    Normal only & 14,439 & 2376.4 & 308.2 & 24.5 & 2709.0 & 0.4 \\
+    Normal + Depth & 14,439 & 2313.8 & 290.0 & 23.1 & 2626.9 & 0.4 \\
+    \textbf{Normal + Depth + Planarity} & 14,439 & 2311.2 & 147.4 & 22.4 & 2481.0 & 0.4 \\
+    \bottomrule
+  \end{tabular}
+\end{table}

@@ -1,0 +1,26 @@
+\begin{table*}[t]
+\centering
+\caption{VKITTI2 (Outdoor Synthetic)}
+\label{tab:vkitti2}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{l r r r r r r r r r r r r r r}
+\toprule
+\multicolumn{1}{l}{} &  &  & \multicolumn{3}{c}{Segmentation} & \multicolumn{3}{c}{@2.0cm} & \multicolumn{3}{c}{@5.0cm} & \multicolumn{3}{c}{@10.0cm} \\
+\cmidrule(lr){4-6} \cmidrule(lr){7-9} \cmidrule(lr){10-12} \cmidrule(lr){13-15}
+Method & \#Sc & \#Fr & RI & VOI & SC & P & R & F1 & P & R & F1 & P & R & F1 \\
+\midrule
+\textit{GT} & 20 & 2,360 & 1.000 & 0.000 & 1.000 & 0.997 & 0.199 & 0.332 & 0.999 & 0.200 & 0.333 & 1.000 & 0.200 & 0.333 \\
+\textbf{Ours} & 20 & 2,360 & 0.790 & 0.937 & 0.808 & \textbf{0.967} & 0.242 & \textbf{0.387} & \textbf{0.989} & 0.248 & 0.397 & \textbf{0.998} & 0.250 & 0.400 \\
+ZP-ft (dinov2, 60k) & 20 & 2,360 & \textbf{0.896} & \textbf{0.432} & \textbf{0.897} & 0.805 & 0.183 & 0.298 & 0.816 & 0.186 & 0.303 & 0.827 & 0.188 & 0.307 \\
+ZP-ft (dinov2, 165k) & 20 & 2,360 & 0.894 & 0.436 & 0.894 & 0.797 & 0.181 & 0.295 & 0.805 & 0.183 & 0.298 & 0.816 & 0.186 & 0.303 \\
+ZP (released) & 20 & 2,360 & 0.665 & 1.332 & 0.692 & 0.659 & \textbf{0.271} & 0.384 & 0.685 & \textbf{0.284} & \textbf{0.401} & 0.745 & \textbf{0.308} & \textbf{0.436} \\
+PlaneRCNN & 20 & 2,360 & 0.552 & 1.920 & 0.538 & 0.446 & 0.221 & 0.296 & 0.465 & 0.232 & 0.309 & 0.488 & 0.243 & 0.325 \\
+\midrule
+\multicolumn{15}{l}{\textit{Generalization (indoor-trained)}} \\
+\textbf{Ours (indoor)} & 20 & 2,360 & \textbf{0.718} & \textbf{1.267} & \textbf{0.746} & \textbf{0.821} & \textbf{0.242} & \textbf{0.374} & \textbf{0.835} & 0.250 & \textbf{0.385} & \textbf{0.842} & 0.255 & \textbf{0.391} \\
+ZP-ft-in (dinov2, 60k) & 20 & 2,360 & 0.434 & 2.675 & 0.385 & 0.251 & 0.233 & 0.241 & 0.292 & \textbf{0.270} & 0.281 & 0.334 & \textbf{0.309} & 0.321 \\
+ZP-ft-in (dinov2, 165k) & 20 & 2,360 & 0.433 & 2.675 & 0.384 & 0.225 & 0.210 & 0.217 & 0.260 & 0.243 & 0.251 & 0.308 & 0.287 & 0.297 \\
+\bottomrule
+\end{tabular}%
+}
+\end{table*}

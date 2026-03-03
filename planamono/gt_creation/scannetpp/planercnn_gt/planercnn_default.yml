@@ -1,0 +1,78 @@
+# PlaneRCNN GT Configuration for ScanNet++
+# See PLANERCNN_GT.md for parameter documentation.
+
+# --- Paths ---
+mesh_root: "/cluster/scratch/aoezkan/planeseg/dataset_mesh/scannetpp_planercnn"
+output_root: "/cluster/scratch/aoezkan/planeseg/dataset/scannetpp_planercnn"
+
+# --- Plane Fitting (RANSAC) ---
+num_planes_per_segment: 2         # Max planes extracted per object via RANSAC
+plane_area_threshold: 100         # Min vertices for a valid plane (also min RANSAC inlier count)
+num_iterations: 200               # RANSAC iterations per plane extraction
+plane_diff_threshold: 0.02        # RANSAC inlier distance in meters (point-to-plane)
+fitting_error_threshold: 0.02     # Max mean LS error to accept single-plane fit (typically == plane_diff_threshold)
+coverage_gate: 0.5                # If RANSAC explains < this fraction of object vertices → non-planar
+floor_error_scale: 3.0            # Relaxed fitting error multiplier for 'floor' label
+
+# --- Merging / Orthogonality ---
+orthogonal_threshold_deg: 60      # Max angle (degrees) between normals to consider orthogonal pair
+parallel_threshold_deg: 30        # Min angle (degrees) to treat as parallel for merging (unused in current pipeline)
+
+# --- Rendering ---
+target_width: 640
+target_height: 480
+frame_skip: 25                    # Render every N-th frame from iPhone trajectory
+
+# --- Per-Label Plane Count Bounds ---
+# Format: label: [min_planes, max_planes]
+# Labels not listed default to [0, 5]
+label_num_planes:
+  wall: [1, 3]
+  floor: [1, 1]
+  door: [1, 2]
+  picture: [1, 1]
+  entrance: [1, 1]
+  floor mat: [1, 1]
+  cabinet: [0, 5]
+  bed: [0, 5]
+  chair: [0, 5]
+  sofa: [0, 10]
+  table: [0, 5]
+  window: [0, 2]
+  bookshelf: [0, 5]
+  counter: [0, 10]
+  desk: [0, 10]
+  shelf: [0, 5]
+  shelves: [0, 5]
+  ceiling: [0, 5]
+  whiteboard: [1, 5]
+  night stand: [1, 5]
+  toilet: [0, 5]
+  sink: [0, 5]
+  bathtub: [0, 5]
+  refridgerator: [0, 5]
+  otherprop: [0, 5]
+  otherstructure: [0, 5]
+  otherfurniture: [0, 5]
+  unannotated: [0, 5]
+  "": [0, 0]
+
+# --- Non-Planar Labels ---
+# Objects with these labels are always treated as non-planar (max_planes forced to 0)
+non_planar_labels:
+  - bicycle
+  - bottle
+  - water bottle
+  - pillow
+  - curtain
+  - person
+  - mirror
+  - lamp
+  - bag
+  - book
+  - books
+  - paper
+  - towel
+  - shower curtain
+  - box
+  - clothes

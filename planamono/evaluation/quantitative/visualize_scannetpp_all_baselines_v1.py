@@ -592,7 +592,7 @@ def main():
         sem_label_root=os.path.join(DATASET_DIR, ""),
         depth_label_root=scannetpp_rend_plane_path,
         split_txt_dir=os.path.join(repo_path, "splits", "scannetpp"),
-        split="val",
+        split="test",
         max_scenes=args.max_scenes,
     )
     print(f"[DATA] Loaded {len(val_dataset)} frames from {len(val_dataset.scene_ids)} scenes")

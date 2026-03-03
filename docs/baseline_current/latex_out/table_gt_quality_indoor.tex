@@ -1,0 +1,26 @@
+\begin{table}[H]
+\centering
+\caption{Ground truth quality comparison (indoor datasets).}
+\label{tab:gt_quality_indoor}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{l r r r r r r r r r}
+\toprule
+\multicolumn{1}{l}{} & \multicolumn{3}{c}{@0.1cm} & \multicolumn{3}{c}{@0.5cm} & \multicolumn{3}{c}{@1.0cm} \\
+\cmidrule(lr){2-4} \cmidrule(lr){5-7} \cmidrule(lr){8-10}
+GT Method & P & R & F1 & P & R & F1 & P & R & F1 \\
+\multicolumn{10}{l}{\textit{ScanNet++ (Indoor Real)}} \\
+\midrule
+Our GT (ScanNet++) & \textbf{0.602} & \textbf{0.440} & \textbf{0.508} & \textbf{0.940} & \textbf{0.682} & \textbf{0.790} & \textbf{0.968} & \textbf{0.701} & \textbf{0.813} \\
+PlaneRCNN GT (ScanNet++) & 0.507 & 0.370 & 0.428 & 0.887 & 0.639 & 0.743 & 0.936 & 0.672 & 0.782 \\
+\midrule
+\multicolumn{10}{l}{\textit{ScanNet (Indoor Real)}} \\
+\midrule
+PlaneRCNN GT (ScanNet) & 0.000 & 0.000 & 0.000 & 0.067 & 0.063 & 0.065 & 0.248 & 0.232 & 0.240 \\
+\midrule
+\multicolumn{10}{l}{\textit{Hypersim (Indoor Synthetic)}} \\
+\midrule
+GT & 0.997 & 0.786 & 0.879 & 0.999 & 0.787 & 0.881 & 1.000 & 0.787 & 0.881 \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}

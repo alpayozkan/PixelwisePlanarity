@@ -275,6 +275,139 @@ class MoGePlanarityInference:
 
             return results
 
+    def predict_metric(self, image_path, num_tokens=1024, return_all_heads=False):
+        """
+        Perform planarity prediction with metric depth via model.infer().
+
+        Unlike predict() which calls model.forward() (raw affine output),
+        this method calls model.infer() which applies:
+          1. Focal length + shift recovery from the affine point map
+          2. Depth reprojection through recovered intrinsics
+          3. Metric scale from scale_head (meters)
+
+        Return dict keys (when return_all_heads=True):
+          - planarity_probability: (H, W) float32 [0, 1]
+          - planarity_binary: (H, W) uint8
+          - planarity_probability_full / planarity_binary_full: resized to original
+          - depth: (H, W) float32, metric z-depth in meters (0 where masked)
+          - normal: (H, W, 3) float32, unit normals (0 where masked)
+          - points: (H, W, 3) float32, metric 3D points (0 where masked)
+          - mask: (H, W) bool, valid pixel mask
+          - intrinsics: (3, 3) float32, recovered camera intrinsics
+        """
+        with torch.no_grad():
+            image_tensor, original_size = self.preprocess_image(image_path)
+
+            # model.infer() handles autocast internally
+            outputs = self.model.infer(
+                image_tensor,
+                num_tokens=num_tokens,
+                force_projection=True,
+                apply_mask=True,
+            )
+
+            results = {}
+
+            # Planarity (infer() applies mask: zeros where invalid)
+            if 'planarity' in outputs:
+                planarity_prob = outputs['planarity'].squeeze().cpu().numpy()
+                planarity_binary = (planarity_prob > 0.5).astype(np.uint8)
+
+                results['planarity_probability'] = planarity_prob
+                results['planarity_binary'] = planarity_binary
+
+                if original_size != planarity_prob.shape:
+                    results['planarity_probability_full'] = cv2.resize(
+                        planarity_prob, (original_size[1], original_size[0])
+                    )
+                    results['planarity_binary_full'] = cv2.resize(
+                        planarity_binary, (original_size[1], original_size[0]),
+                        interpolation=cv2.INTER_NEAREST,
+                    )
+
+            if return_all_heads:
+                if 'mask' in outputs:
+                    # infer() returns bool mask (not sigmoid float)
+                    results['mask'] = outputs['mask'].squeeze().cpu().numpy()
+
+                if 'depth' in outputs:
+                    depth = outputs['depth'].squeeze().cpu().numpy()
+                    # Replace inf (masked pixels) with 0 for downstream compat
+                    depth = np.where(np.isfinite(depth), depth, 0.0).astype(np.float32)
+                    results['depth'] = depth
+
+                if 'normal' in outputs:
+                    normal = outputs['normal'].squeeze().cpu().numpy()
+                    results['normal'] = normal
+
+                if 'points' in outputs:
+                    points = outputs['points'].squeeze().cpu().numpy()
+                    points = np.where(np.isfinite(points), points, 0.0).astype(np.float32)
+                    results['points'] = points
+
+                if 'intrinsics' in outputs:
+                    results['intrinsics'] = outputs['intrinsics'].squeeze().cpu().numpy()
+
+            return results
+
+    def predict_batch_fast_metric(self, image_paths, num_tokens=1024, return_all_heads=False):
+        """
+        Batch prediction with metric depth via model.infer().
+
+        Same as predict_batch_fast() but uses model.infer() for metric output.
+        model.infer() supports batched 4D input natively.
+        """
+        with torch.no_grad():
+            images, original_sizes = self.preprocess_images(image_paths)
+
+            outputs = self.model.infer(
+                images,
+                num_tokens=num_tokens,
+                force_projection=True,
+                apply_mask=True,
+            )
+
+            B = images.shape[0]
+            results = []
+
+            for i in range(B):
+                res = {}
+                h0, w0 = original_sizes[i]
+
+                planarity = outputs['planarity'][i].cpu().numpy()
+                planarity_bin = (planarity > 0.5).astype(np.uint8)
+
+                res['planarity_probability'] = planarity
+                res['planarity_probability_full'] = cv2.resize(planarity, (w0, h0))
+                res['planarity_binary'] = planarity_bin
+                res['planarity_binary_full'] = cv2.resize(
+                    planarity_bin, (w0, h0), interpolation=cv2.INTER_NEAREST
+                )
+
+                if return_all_heads:
+                    if 'mask' in outputs:
+                        res['mask'] = outputs['mask'][i].cpu().numpy()
+
+                    if 'depth' in outputs:
+                        depth = outputs['depth'][i].cpu().numpy()
+                        depth = np.where(np.isfinite(depth), depth, 0.0).astype(np.float32)
+                        res['depth'] = depth
+
+                    if 'normal' in outputs:
+                        res['normal'] = outputs['normal'][i].cpu().numpy()
+
+                    if 'points' in outputs:
+                        points = outputs['points'][i].cpu().numpy()
+                        points = np.where(np.isfinite(points), points, 0.0).astype(np.float32)
+                        res['points'] = points
+
+                    if 'intrinsics' in outputs:
+                        res['intrinsics'] = outputs['intrinsics'][i].cpu().numpy()
+
+                results.append(res)
+
+            return results
+
     def predict_batch(self, image_paths, num_tokens=1024, batch_size=4):
         """
         Perform batch prediction on multiple images.

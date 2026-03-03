@@ -240,3 +240,114 @@ def plane_merge(labels, moge_signals):
     )
 
     return labels_merged
+
+
+# ──────────────────────────────────────────────────────────────────
+# v11 post-merge: dilation-based gap bridging + mean-normal/depth check
+# ──────────────────────────────────────────────────────────────────
+
+def postmerge_adjacent_segments(
+    labels: np.ndarray,
+    normal: np.ndarray,
+    depth: np.ndarray,
+    merge_normal_deg: float = 10.0,
+    merge_offset_m: float = 0.02,
+    merge_min_pixels: int = 50,
+    merge_gap_px: int = 5,
+) -> np.ndarray:
+    """Merge nearby segments whose mean normals and depths are similar.
+
+    Uses binary dilation to bridge non-planar gaps between segments.
+    Iterates greedily (largest pairs first) until convergence.
+
+    Args:
+        labels: (H, W) int32 segment labels (0 = background)
+        normal: (H, W, 3) surface normals
+        depth: (H, W) depth in meters
+        merge_normal_deg: max angle between mean normals to merge
+        merge_offset_m: max mean-depth difference for merge (meters)
+        merge_min_pixels: ignore segments smaller than this
+        merge_gap_px: dilation radius to bridge non-planar gaps (pixels)
+
+    Returns:
+        labels_merged: (H, W) int32 relabeled 1..N
+    """
+    from scipy.ndimage import binary_dilation
+
+    labels = labels.copy()
+    cos_thresh = np.cos(np.deg2rad(merge_normal_deg))
+
+    # Disk structuring element for dilation
+    sz = 2 * merge_gap_px + 1
+    yy, xx = np.mgrid[:sz, :sz]
+    struct = ((yy - merge_gap_px) ** 2 + (xx - merge_gap_px) ** 2) <= merge_gap_px ** 2
+
+    def _plane_params(labels, normal, depth):
+        """label -> (mean_normal, mean_depth, pixel_count)"""
+        params = {}
+        for lab in np.unique(labels):
+            if lab == 0:
+                continue
+            mask = labels == lab
+            count = int(mask.sum())
+            if count < merge_min_pixels:
+                continue
+            n_mean = normal[mask].mean(axis=0)
+            n_norm = np.linalg.norm(n_mean)
+            if n_norm < 1e-6:
+                continue
+            params[lab] = (n_mean / n_norm, float(depth[mask].mean()), count)
+        return params
+
+    def _nearby_pairs(labels, params, struct):
+        """Find segment pairs within dilation radius."""
+        adj = set()
+        for lab in params:
+            mask = labels == lab
+            dilated = binary_dilation(mask, structure=struct)
+            for other in np.unique(labels[dilated & ~mask]):
+                if other > 0 and other != lab and other in params:
+                    adj.add((min(lab, other), max(lab, other)))
+        return adj
+
+    for _ in range(20):
+        params = _plane_params(labels, normal, depth)
+        if len(params) < 2:
+            break
+
+        candidates = []
+        for a, b in _nearby_pairs(labels, params, struct):
+            n_a, d_a, cnt_a = params[a]
+            n_b, d_b, cnt_b = params[b]
+            if abs(np.dot(n_a, n_b)) < cos_thresh:
+                continue
+            if abs(d_a - d_b) > merge_offset_m:
+                continue
+            candidates.append((cnt_a + cnt_b, a, b))
+
+        if not candidates:
+            break
+
+        candidates.sort(reverse=True)
+        used = set()
+        n_merged = 0
+        for _, a, b in candidates:
+            if a in used or b in used:
+                continue
+            labels[labels == b] = a
+            used.add(b)
+            n_merged += 1
+
+        if n_merged == 0:
+            break
+
+    # Relabel contiguously
+    unique = np.unique(labels)
+    unique = unique[unique > 0]
+    if len(unique) > 0:
+        lut = np.zeros(labels.max() + 1, dtype=np.int32)
+        for new_id, old_id in enumerate(unique, start=1):
+            lut[old_id] = new_id
+        labels = lut[labels.ravel()].reshape(labels.shape)
+
+    return labels
