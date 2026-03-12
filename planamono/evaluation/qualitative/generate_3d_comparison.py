@@ -479,8 +479,8 @@ def process_scene(scene_id, frame_id, model, device, args):
         cv2.imwrite(os.path.join(method_dir, "seg_2d_flat.png"),
                     cv2.cvtColor(seg_flat, cv2.COLOR_RGB2BGR))
 
-        # Build 3D point cloud (use random colors for vivid 3D renders, not RGB texture)
-        pts, colors = build_pointcloud(pts_3d, labels, num_planes, None,
+        # Build 3D point cloud with RGB texture
+        pts, colors = build_pointcloud(pts_3d, labels, num_planes, rgb_img,
                                        min_plane_px=args.min_plane_px)
         if pts is None:
             print(f"  [{method_name}] No valid planes for 3D render")
