@@ -1,3 +1,6 @@
 # scene_id  frame_id
-# One scene-frame pair per line. Frame ID matches the frame_ids in rendered.h5.
-0d2ee665be 0
+27dd4da69e 011325
+5f99900f09 005450
+5eb31827b7 006175
+c4c04e6d6c 009125
+c5439f4607 008875
