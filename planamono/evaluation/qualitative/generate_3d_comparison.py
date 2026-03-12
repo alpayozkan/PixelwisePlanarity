@@ -334,11 +334,6 @@ def load_zeroplane_data(scene_id, frame_id, args):
 
     H, W = depth.shape
 
-    # ZeroPlane labels: 0-based planes, label 20 = non-planar → remap to 1-based
-    nonplanar_mask = labels == 20
-    labels = labels + 1
-    labels[nonplanar_mask] = 0
-
     # Scale K from original resolution to depth resolution
     K_orig_w = K[0, 2] * 2
     K_orig_h = K[1, 2] * 2
@@ -550,7 +545,7 @@ def main():
     p.add_argument("--normal_threshold_rad", type=float, default=0.087)
     p.add_argument("--depth_threshold", type=float, default=0.025)
     p.add_argument("--neighbor_match_count", type=int, default=8)
-    p.add_argument("--min_plane_px", type=int, default=100)
+    p.add_argument("--min_plane_px", type=int, default=200)
 
     # Rendering
     p.add_argument("--rotations", type=float, nargs="+", default=[0, 1, 2, 3],
