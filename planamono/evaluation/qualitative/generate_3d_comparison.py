@@ -137,28 +137,34 @@ def build_pointcloud(pts_3d, labels, num_planes, rgb_img, min_plane_px=100,
 
 def render_pointcloud_image(pts, colors, width, height, rot_x, rot_y,
                             bg_color=(255, 255, 255), point_radius=1):
-    """Orthographic projection with z-buffering."""
+    """Perspective projection with z-buffering."""
     centroid = np.median(pts, axis=0)
     R = rotation_matrix(rot_x, rot_y)
     pts_r = (R @ (pts - centroid).T).T
     x, y, z = pts_r[:, 0], pts_r[:, 1], pts_r[:, 2]
 
-    margin = 0.05
-    xmin, xmax = np.percentile(x, [1, 99])
-    ymin, ymax = np.percentile(y, [1, 99])
-    scale = min(width * (1 - 2 * margin) / max(xmax - xmin, 1e-6),
-                height * (1 - 2 * margin) / max(ymax - ymin, 1e-6))
-    cx, cy = width / 2.0, height / 2.0
-    xmid, ymid = (xmin + xmax) / 2.0, (ymin + ymax) / 2.0
+    # Shift z so all points are in front of virtual camera
+    z_near = np.percentile(z, 1)
+    z_cam = z - z_near + 0.1  # ensure z > 0
+    z_cam = np.maximum(z_cam, 0.01)
 
-    px = ((x - xmid) * scale + cx).astype(np.int32)
-    py = (-(y - ymid) * scale + cy).astype(np.int32)
+    # Auto-compute focal length so scene fills ~80% of frame
+    margin = 0.1
+    z_med = np.median(z_cam)
+    x_half = np.percentile(np.abs(x), 95)
+    y_half = np.percentile(np.abs(y), 95)
+    fx = (width / 2) * (1 - margin) * z_med / max(x_half, 1e-6)
+    fy = (height / 2) * (1 - margin) * z_med / max(y_half, 1e-6)
+    f = min(fx, fy)
+
+    px = (f * x / z_cam + width / 2).astype(np.int32)
+    py = (-f * y / z_cam + height / 2).astype(np.int32)
 
     img = np.full((height, width, 3), bg_color, dtype=np.uint8)
     zbuf = np.full((height, width), np.inf, dtype=np.float32)
 
     order = np.argsort(-z)
-    px, py, z = px[order], py[order], z[order]
+    px, py, z_sorted = px[order], py[order], z[order]
     cs = colors[order]
 
     for i in range(len(px)):
@@ -167,8 +173,8 @@ def render_pointcloud_image(pts, colors, width, height, rot_x, rot_y,
             for dy in range(-point_radius, point_radius + 1):
                 for dx in range(-point_radius, point_radius + 1):
                     nx_, ny_ = xi + dx, yi + dy
-                    if 0 <= nx_ < width and 0 <= ny_ < height and z[i] < zbuf[ny_, nx_]:
-                        zbuf[ny_, nx_] = z[i]
+                    if 0 <= nx_ < width and 0 <= ny_ < height and z_sorted[i] < zbuf[ny_, nx_]:
+                        zbuf[ny_, nx_] = z_sorted[i]
                         img[ny_, nx_] = cs[i]
     return img
 
