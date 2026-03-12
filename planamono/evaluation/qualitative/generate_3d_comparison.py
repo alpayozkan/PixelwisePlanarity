@@ -233,7 +233,12 @@ def load_gt_data(scene_id, frame_id, args):
     pose_file = os.path.join(rgb_root, scene_id, "iphone", "pose_intrinsic_imu.json")
     with open(pose_file) as f:
         pose_data = json.load(f)
-    K = np.array(pose_data[frame_id]["intrinsic"], dtype=np.float64)
+    # Try both "frame_XXXXXX" and raw frame_id as keys
+    pose_key = f"frame_{frame_id}" if f"frame_{frame_id}" in pose_data else frame_id
+    if pose_key not in pose_data:
+        print(f"  [GT] No pose for frame {frame_id} in {scene_id}")
+        return None
+    K = np.array(pose_data[pose_key]["intrinsic"], dtype=np.float64)
 
     H, W = depth.shape
     # Scale K from original iPhone resolution to GT label resolution
@@ -304,7 +309,7 @@ def load_zeroplane_data(scene_id, frame_id, args):
     num_planes = int(labels.max())
 
     # Load RGB
-    rgb_path = os.path.join(args.rgb_root, scene_id, "iphone", "rgb", f"{frame_id}.jpg")
+    rgb_path = os.path.join(args.rgb_root, scene_id, "iphone", "rgb", f"frame_{frame_id}.jpg")
     rgb = cv2.cvtColor(cv2.imread(rgb_path), cv2.COLOR_BGR2RGB)
     rgb = cv2.resize(rgb, (W, H))
 
@@ -388,7 +393,7 @@ def process_scene(scene_id, frame_id, model, device, args):
     scene_dir = os.path.join(args.output_root, scene_id)
 
     # Load RGB
-    rgb_path = os.path.join(args.rgb_root, scene_id, "iphone", "rgb", f"{frame_id}.jpg")
+    rgb_path = os.path.join(args.rgb_root, scene_id, "iphone", "rgb", f"frame_{frame_id}.jpg")
     if not os.path.exists(rgb_path):
         print(f"  RGB not found: {rgb_path}")
         return
@@ -486,7 +491,7 @@ def main():
     p.add_argument("--output_root", type=str,
                    default="/cluster/scratch/ayavuz/3d_vis/scannetpp")
     p.add_argument("--rgb_root", type=str,
-                   default="/cluster/project/cvg/Shared_datasets/scannetpp_v2/data")
+                   default="/cluster/project/cvg/Shared_datasets/scannet++/data")
     p.add_argument("--gt_root", type=str,
                    default="/cluster/scratch/aoezkan/planeseg/dataset/scannetpp")
     p.add_argument("--zeroplane_root", type=str,
