@@ -484,6 +484,16 @@ def process_scene(scene_id, frame_id, model, device, args):
         pointclouds[method_name] = (pts, colors)
         print(f"  [{method_name}] {len(pts):,} projected points")
 
+        # Frontal render (rot_x=0, rot_y=0) — should match 2D camera view
+        img_front = render_pointcloud_image(
+            pts, colors,
+            width=args.width, height=args.height,
+            rot_x=0, rot_y=0,
+            point_radius=args.point_radius,
+        )
+        cv2.imwrite(os.path.join(method_dir, "3d_frontal.png"),
+                    cv2.cvtColor(img_front, cv2.COLOR_RGB2BGR))
+
         # 3D renders at each rotation
         for rot_y in args.rotations:
             img = render_pointcloud_image(
