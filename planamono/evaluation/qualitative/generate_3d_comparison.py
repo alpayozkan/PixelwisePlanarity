@@ -53,8 +53,12 @@ def fit_plane_svd(pts):
     return np.array([*(n / norm), d / norm])
 
 
-def project_onto_plane_ray(pts, p):
-    """Ray-plane intersection: project points along camera rays onto fitted plane."""
+def project_onto_plane_ray(pts, p, max_displacement_factor=0.3):
+    """Ray-plane intersection: project points along camera rays onto fitted plane.
+
+    Clamps displacement to avoid overshooting when rays are nearly parallel
+    to the plane (shallow viewing angles like tables/floors).
+    """
     n = p[:3].astype(np.float64)
     d = float(p[3])
     rays = pts.astype(np.float64)
@@ -65,6 +69,13 @@ def project_onto_plane_ray(pts, p):
     projected = s[:, None] * rays
     bad = ~valid | (s <= 0)
     projected[bad] = rays[bad]
+
+    # Clamp: if projected point moved too far from original, keep original
+    disp = np.linalg.norm(projected - rays, axis=1)
+    orig_dist = np.linalg.norm(rays, axis=1)
+    too_far = disp > max_displacement_factor * (np.median(orig_dist) + 1e-8)
+    projected[too_far] = rays[too_far]
+
     return projected
 
 

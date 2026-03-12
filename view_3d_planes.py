@@ -40,29 +40,33 @@ def fit_plane_svd(pts):
     return np.array([*(n / norm), d / norm])
 
 
-def project_onto_plane_ray(pts, p):
+def project_onto_plane_ray(pts, p, max_displacement_factor=0.3):
     """Project points onto a plane along viewing rays (ray-plane intersection).
 
     For each point (which represents a viewing ray from the origin),
     find where the ray intersects the plane n·x + d = 0:
         s = -d / (n · ray),  projected = s * ray
 
-    This is geometrically correct for camera-space points: it moves each
-    point along its camera ray to the fitted plane, preserving the image
-    structure.  Falls back to the original point if the ray is parallel
-    to the plane or intersection is behind camera.
+    Clamps displacement to avoid overshooting when rays are nearly parallel
+    to the plane (shallow viewing angles like tables/floors).
     """
     n = p[:3].astype(np.float64)
     d = float(p[3])
     rays = pts.astype(np.float64)
-    denom = rays @ n                         # (N,)
+    denom = rays @ n
     valid = np.abs(denom) > 1e-8
     s = np.zeros(len(denom), dtype=np.float64)
     s[valid] = -d / denom[valid]
-    projected = s[:, None] * rays            # (N, 3)
-    # Keep original point where ray is parallel or intersection is behind camera
+    projected = s[:, None] * rays
     bad = ~valid | (s <= 0)
     projected[bad] = rays[bad]
+
+    # Clamp: if projected point moved too far from original, keep original
+    disp = np.linalg.norm(projected - rays, axis=1)
+    orig_dist = np.linalg.norm(rays, axis=1)
+    too_far = disp > max_displacement_factor * (np.median(orig_dist) + 1e-8)
+    projected[too_far] = rays[too_far]
+
     return projected
 
 
