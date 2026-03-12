@@ -218,6 +218,37 @@ def scale_K(K, from_wh, to_wh):
     return K
 
 
+def find_frame_in_h5(fids, frame_id):
+    """Find frame_id in H5 frame_ids list, trying multiple formats.
+
+    Tries: exact match, stripped leading zeros, with 'frame_' prefix.
+    Returns index or None.
+    """
+    # Exact match
+    if frame_id in fids:
+        return fids.index(frame_id)
+    # Strip leading zeros: "011325" → "11325"
+    stripped = frame_id.lstrip("0") or "0"
+    if stripped in fids:
+        return fids.index(stripped)
+    # With frame_ prefix
+    prefixed = f"frame_{frame_id}"
+    if prefixed in fids:
+        return fids.index(prefixed)
+    # Integer match
+    try:
+        fi = int(frame_id)
+        for i, fid in enumerate(fids):
+            try:
+                if int(fid) == fi:
+                    return i
+            except ValueError:
+                continue
+    except ValueError:
+        pass
+    return None
+
+
 # ── Data loading ──────────────────────────────────────────────────────────────
 
 def load_gt_data(scene_id, frame_id, args):
@@ -229,10 +260,10 @@ def load_gt_data(scene_id, frame_id, args):
     rendered_h5 = os.path.join(gt_root, scene_id, "rendered.h5")
     with h5py.File(rendered_h5, "r") as f:
         fids = [x.decode() if isinstance(x, bytes) else str(x) for x in f["frame_ids"][:]]
-        if frame_id not in fids:
-            print(f"  [GT] Frame {frame_id} not in rendered.h5 for {scene_id}")
+        idx = find_frame_in_h5(fids, frame_id)
+        if idx is None:
+            print(f"  [GT] Frame {frame_id} not in rendered.h5 for {scene_id} (has: {fids[:3]}...)")
             return None
-        idx = fids.index(frame_id)
         labels = f["planes"][idx].astype(np.int32)
 
     # GT depth (mm → meters)
@@ -244,9 +275,13 @@ def load_gt_data(scene_id, frame_id, args):
     pose_file = os.path.join(rgb_root, scene_id, "iphone", "pose_intrinsic_imu.json")
     with open(pose_file) as f:
         pose_data = json.load(f)
-    # Try both "frame_XXXXXX" and raw frame_id as keys
-    pose_key = f"frame_{frame_id}" if f"frame_{frame_id}" in pose_data else frame_id
-    if pose_key not in pose_data:
+    # Try multiple key formats for pose lookup
+    pose_key = None
+    for candidate in [frame_id, f"frame_{frame_id}", frame_id.lstrip("0") or "0"]:
+        if candidate in pose_data:
+            pose_key = candidate
+            break
+    if pose_key is None:
         print(f"  [GT] No pose for frame {frame_id} in {scene_id}")
         return None
     K = np.array(pose_data[pose_key]["intrinsic"], dtype=np.float64)
@@ -285,16 +320,10 @@ def load_zeroplane_data(scene_id, frame_id, args):
 
     with h5py.File(planes_h5, "r") as f:
         fids = [x.decode() if isinstance(x, bytes) else str(x) for x in f["frame_ids"][:]]
-        if frame_id not in fids:
-            # Try matching by index
-            fi = int(frame_id) if frame_id.isdigit() else None
-            if fi is not None and fi < len(fids):
-                idx = fi
-            else:
-                print(f"  [ZP] Frame {frame_id} not found in {scene_id}")
-                return None
-        else:
-            idx = fids.index(frame_id)
+        idx = find_frame_in_h5(fids, frame_id)
+        if idx is None:
+            print(f"  [ZP] Frame {frame_id} not found in {scene_id} (has: {fids[:3]}...)")
+            return None
         labels = f["planes"][idx].astype(np.int32)
 
     with h5py.File(depth_h5, "r") as f:
