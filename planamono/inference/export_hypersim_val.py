@@ -27,6 +27,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from planamono.inference.planarity.moge_inference import MoGePlanarityInference
+from planamono.shared.utils.depth_normal import extract_zdepth
 
 
 # ---------------------------------------------------------------------------
@@ -108,6 +109,22 @@ def resize_gt_planes(planes, out_h, out_w):
     return planes_resized.astype(np.uint16)
 
 
+def load_hypersim_gt_depth(h5_path, out_h, out_w, K_output):
+    """Load Hypersim GT depth (Euclidean distance), convert to Z-depth, resize.
+
+    Hypersim's `depth_meters.hdf5` stores per-pixel Euclidean distance from
+    the camera center to the surface. To compare with MoGe's Z-depth, we run
+    `planamono.shared.utils.depth_normal.extract_zdepth` against the output-
+    resolution K (which is already scaled to match `out_h x out_w`).
+    """
+    with h5py.File(h5_path, "r") as f:
+        depth = f["dataset"][:].astype(np.float32)
+    depth = np.nan_to_num(depth, nan=0.0, posinf=0.0, neginf=0.0)
+    depth = cv2.resize(depth, (out_w, out_h), interpolation=cv2.INTER_LINEAR)
+    depth = extract_zdepth(depth, K_output).astype(np.float32)
+    return depth
+
+
 # ---------------------------------------------------------------------------
 # Args
 # ---------------------------------------------------------------------------
@@ -140,6 +157,9 @@ def parse_args():
                         help="Output width")
     parser.add_argument("--device", type=str, default="cuda",
                         help="Device for inference")
+    parser.add_argument("--split", type=str, default="val",
+                        choices=["train", "val", "test"],
+                        help="Which split partition to export")
     return parser.parse_args()
 
 
@@ -201,6 +221,7 @@ def process_scene_camera(model, scene_name, camera_name, frame_ids,
     planarities = np.zeros((num_frames, out_h, out_w), dtype=np.float32)
     masks = np.zeros((num_frames, out_h, out_w), dtype=np.float32)
     gt_planes_out = np.zeros((num_frames, out_h, out_w), dtype=np.uint16)
+    gt_depths = np.zeros((num_frames, out_h, out_w), dtype=np.float32)
 
     # Frame IDs as strings for H5 storage (zero-padded)
     frame_id_strs = [f"{fid:04d}" for fid in frame_ids]
@@ -226,6 +247,17 @@ def process_scene_camera(model, scene_name, camera_name, frame_ids,
             tensor = preprocess_image(image_rgb, device)
             batch_tensors.append(tensor)
             batch_indices.append(idx)
+
+            # Load GT depth (Euclidean → Z) once per frame
+            gt_depth_path = os.path.join(
+                data_root, scene_name, "images",
+                f"scene_{camera_name}_geometry_hdf5",
+                f"frame.{fid:04d}.depth_meters.hdf5"
+            )
+            if os.path.exists(gt_depth_path):
+                gt_depths[idx] = load_hypersim_gt_depth(gt_depth_path, out_h, out_w, K_output)
+            else:
+                print(f"    Warning: GT depth not found: {gt_depth_path}")
 
         if not batch_tensors:
             pbar.update(batch_end - batch_start)
@@ -275,6 +307,7 @@ def process_scene_camera(model, scene_name, camera_name, frame_ids,
         f.create_dataset("planarity", data=planarities, dtype=np.float32)
         f.create_dataset("mask", data=masks, dtype=np.float32)
         f.create_dataset("gt_planes", data=gt_planes_out, dtype=np.uint16)
+        f.create_dataset("gt_depth", data=gt_depths, dtype=np.float32)
         f.create_dataset("intrinsics", data=intrinsics_all, dtype=np.float32)
 
     print(f"  Saved: {out_h5_path}")
@@ -309,8 +342,8 @@ def main():
 
     # Load val samples from split CSV
     df = pd.read_csv(args.split_csv)
-    val_df = df[df['split_partition_name'] == 'val']
-    print(f"Found {len(val_df)} validation frames")
+    val_df = df[df['split_partition_name'] == args.split]
+    print(f"Found {len(val_df)} {args.split} frames")
 
     # Load per-scene intrinsics
     intrinsics_map = load_intrinsics_map(args.metadata_csv)

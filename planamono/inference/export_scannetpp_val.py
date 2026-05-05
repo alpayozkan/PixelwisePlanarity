@@ -12,6 +12,7 @@ stored as (N, 3, 3) pixel-coordinate K matrices at the output resolution.
 
 import os
 import sys
+import json
 import argparse
 import numpy as np
 import torch
@@ -54,14 +55,17 @@ def parse_args():
                         help="Output width")
     parser.add_argument("--device", type=str, default="cuda",
                         help="Device for inference")
+    parser.add_argument("--split", type=str, default="val",
+                        choices=["train", "val", "test"],
+                        help="Which split partition to export")
     return parser.parse_args()
 
 
-def load_val_scenes(split_dir):
-    """Read validation scene IDs from split file."""
-    split_file = os.path.join(split_dir, "nvs_sem_val_with_planes_fixed.txt")
+def load_split_scenes(split_dir, split):
+    """Read scene IDs from split file for the given split."""
+    split_file = os.path.join(split_dir, f"nvs_sem_{split}_with_planes_fixed.txt")
     with open(split_file, "r") as f:
-        scenes = [line.strip() for line in f if line.strip()]
+        scenes = [line.strip() for line in f if line.strip() and not line.startswith("#")]
     return scenes
 
 
@@ -93,34 +97,90 @@ def resize_gt_planes(planes, out_h, out_w):
     return planes_resized.astype(np.uint16)
 
 
+def resize_gt_sem(sem, out_h, out_w):
+    """Resize GT semantic labels with nearest interpolation."""
+    sem_resized = cv2.resize(sem.astype(np.int32), (out_w, out_h), interpolation=cv2.INTER_NEAREST)
+    return sem_resized.astype(np.int32)
+
+
+def resize_gt_depth_mm(depth_mm, out_h, out_w):
+    """Resize GT depth (uint16 mm) to (out_h, out_w) and convert to float meters.
+
+    Bilinear interpolation; 0 (invalid) pixels are preserved by zeroing any
+    output pixel whose nearest-neighbor source is 0.
+    """
+    valid_mask = (depth_mm > 0).astype(np.float32)
+    depth_m = depth_mm.astype(np.float32) / 1000.0
+    depth_resized = cv2.resize(depth_m, (out_w, out_h), interpolation=cv2.INTER_LINEAR)
+    valid_resized = cv2.resize(valid_mask, (out_w, out_h), interpolation=cv2.INTER_NEAREST)
+    depth_resized[valid_resized < 0.5] = 0.0
+    return depth_resized.astype(np.float32)
+
+
+def scale_intrinsics(K_native, native_w, native_h, out_w, out_h):
+    """Scale 3x3 intrinsics from (native_w, native_h) to (out_w, out_h)."""
+    sx = out_w / native_w
+    sy = out_h / native_h
+    K = K_native.astype(np.float32).copy()
+    K[0, :] *= sx
+    K[1, :] *= sy
+    return K
+
+
 def process_scene(model, scene_id, rgb_root, gt_root, output_dir,
                   num_tokens, batch_size, out_h, out_w, device):
     """Process all frames of a single scene and write H5."""
-    gt_h5_path = os.path.join(gt_root, scene_id, "rendered.h5")
-    if not os.path.exists(gt_h5_path):
-        print(f"  Skipping {scene_id}: GT file not found at {gt_h5_path}")
-        return False
+    plane_h5_path = os.path.join(gt_root, scene_id, "rendered.h5")
+    sem_h5_path = os.path.join(gt_root, scene_id, "rendered_sem.h5")
+    depth_h5_path = os.path.join(gt_root, scene_id, "rendered_depth.h5")
+    pose_file = os.path.join(rgb_root, scene_id, "iphone", "pose_intrinsic_imu.json")
 
-    # Read frame_ids and GT planes from rendered.h5
-    with h5py.File(gt_h5_path, "r") as gt_f:
+    for path, label in [(plane_h5_path, "rendered.h5"),
+                        (sem_h5_path, "rendered_sem.h5"),
+                        (depth_h5_path, "rendered_depth.h5"),
+                        (pose_file, "pose_intrinsic_imu.json")]:
+        if not os.path.exists(path):
+            print(f"  Skipping {scene_id}: {label} not found at {path}")
+            return False
+
+    # Read frame_ids + GT planes / sem / depth from rendered H5s
+    with h5py.File(plane_h5_path, "r") as gt_f:
         frame_ids_raw = gt_f["frame_ids"][:]
-        # Decode bytes to str if needed
         if isinstance(frame_ids_raw[0], bytes):
             frame_ids = [fid.decode("utf-8") for fid in frame_ids_raw]
         else:
             frame_ids = list(frame_ids_raw)
-        gt_planes_all = gt_f["planes"][:]  # (N, 1440, 1920) uint16
+        gt_planes_all = gt_f["planes"][:]  # (N, H_gt, W_gt) uint16
+
+    with h5py.File(sem_h5_path, "r") as sem_f:
+        gt_sem_all = sem_f["sem"][:]  # (N, H_gt, W_gt)
+
+    with h5py.File(depth_h5_path, "r") as depth_f:
+        gt_depth_all = depth_f["depth"][:]  # (N, H_gt, W_gt) uint16 millimeters
+
+    # Per-frame GT intrinsics (native iPhone resolution) and poses
+    with open(pose_file, "r") as f:
+        pose_data = json.load(f)
+
+    # ScanNet++ iPhone capture native resolution (used to scale K to output res).
+    # Same constants used by gt_creation/scannetpp/render_scene_*.py.
+    NATIVE_W, NATIVE_H = 1920, 1440
 
     num_frames = len(frame_ids)
     print(f"  {scene_id}: {num_frames} frames")
 
     # Preallocate output arrays
-    intrinsics_all = np.zeros((num_frames, 3, 3), dtype=np.float32)
+    intrinsics_all = np.zeros((num_frames, 3, 3), dtype=np.float32)        # MoGe-recovered
     depths = np.zeros((num_frames, out_h, out_w), dtype=np.float32)
     normals = np.zeros((num_frames, out_h, out_w, 3), dtype=np.float32)
     planarities = np.zeros((num_frames, out_h, out_w), dtype=np.float32)
     masks = np.zeros((num_frames, out_h, out_w), dtype=np.float32)
     gt_planes_out = np.zeros((num_frames, out_h, out_w), dtype=np.uint16)
+    gt_sem_out = np.zeros((num_frames, out_h, out_w), dtype=np.int32)
+    gt_depth_out = np.zeros((num_frames, out_h, out_w), dtype=np.float32)
+    gt_intrinsics_all = np.zeros((num_frames, 3, 3), dtype=np.float32)
+    gt_pose_all = np.zeros((num_frames, 4, 4), dtype=np.float32)
+    has_gt_pose = np.zeros(num_frames, dtype=bool)
 
     # Process frames in batches
     pbar = tqdm(total=num_frames, desc=f"  {scene_id}", leave=False)
@@ -187,8 +247,24 @@ def process_scene(model, scene_id, rgb_root, gt_root, output_dir,
             K[1, :] *= out_h  # scale y-row to pixel coords
             intrinsics_all[idx] = K
 
-            # Resize GT planes
+            # Resize GT planes / sem / depth (per-frame index in rendered H5s)
             gt_planes_out[idx] = resize_gt_planes(gt_planes_all[idx], out_h, out_w)
+            gt_sem_out[idx] = resize_gt_sem(gt_sem_all[idx], out_h, out_w)
+            gt_depth_out[idx] = resize_gt_depth_mm(gt_depth_all[idx], out_h, out_w)
+
+            # GT intrinsics (scaled from iPhone native to output) and pose
+            fid = frame_ids[idx]
+            entry = pose_data.get(fid)
+            if entry is not None:
+                K_native = np.array(entry["intrinsic"], dtype=np.float32)
+                gt_intrinsics_all[idx] = scale_intrinsics(
+                    K_native, NATIVE_W, NATIVE_H, out_w, out_h
+                )
+                c2w = np.array(entry["aligned_pose"], dtype=np.float32)
+                gt_pose_all[idx] = c2w
+                has_gt_pose[idx] = True
+            else:
+                print(f"    Warning: missing pose entry for {fid} in {scene_id}")
 
         pbar.update(len(batch_indices))
     pbar.close()
@@ -207,6 +283,11 @@ def process_scene(model, scene_id, rgb_root, gt_root, output_dir,
         f.create_dataset("planarity", data=planarities, dtype=np.float32)
         f.create_dataset("mask", data=masks, dtype=np.float32)
         f.create_dataset("gt_planes", data=gt_planes_out, dtype=np.uint16)
+        f.create_dataset("gt_sem", data=gt_sem_out, dtype=np.int32)
+        f.create_dataset("gt_depth", data=gt_depth_out, dtype=np.float32)
+        f.create_dataset("gt_intrinsics", data=gt_intrinsics_all, dtype=np.float32)
+        f.create_dataset("gt_pose", data=gt_pose_all, dtype=np.float32)
+        f.create_dataset("has_gt_pose", data=has_gt_pose, dtype=np.bool_)
         f.create_dataset("intrinsics", data=intrinsics_all, dtype=np.float32)
 
     print(f"  Saved: {out_h5_path}")
@@ -216,12 +297,13 @@ def process_scene(model, scene_id, rgb_root, gt_root, output_dir,
 def main():
     args = parse_args()
 
-    print("MoGe ScanNet++ Validation Export")
+    print(f"MoGe ScanNet++ Export ({args.split})")
     print("=" * 50)
     print(f"Checkpoint: {args.checkpoint}")
     print(f"Output dir: {args.output_dir}")
     print(f"RGB root:   {args.rgb_root}")
     print(f"GT root:    {args.gt_root}")
+    print(f"Split:      {args.split}")
     print(f"Resolution: {args.output_height}x{args.output_width}")
     print(f"Num tokens: {args.num_tokens}")
     print(f"Batch size: {args.batch_size}")
@@ -230,9 +312,9 @@ def main():
     # Load model
     model = MoGePlanarityInference(args.checkpoint, device=args.device)
 
-    # Load val scenes
-    scenes = load_val_scenes(args.split_dir)
-    print(f"Found {len(scenes)} validation scenes")
+    # Load scenes for the requested split
+    scenes = load_split_scenes(args.split_dir, args.split)
+    print(f"Found {len(scenes)} {args.split} scenes")
 
     os.makedirs(args.output_dir, exist_ok=True)
 
