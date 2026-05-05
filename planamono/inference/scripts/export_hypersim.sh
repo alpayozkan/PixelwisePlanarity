@@ -13,8 +13,8 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem-per-cpu=16G
 #SBATCH --gpus=1
-#SBATCH --output=logs/hypersim_export_%j.out
-#SBATCH --error=logs/hypersim_export_%j.err
+#SBATCH --output=/cluster/home/ayavuz/PixelwisePlanarity/logs/hypersim_export_%j.out
+#SBATCH --error=/cluster/home/ayavuz/PixelwisePlanarity/logs/hypersim_export_%j.err
 
 set -e
 
