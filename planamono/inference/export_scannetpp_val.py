@@ -61,9 +61,16 @@ def parse_args():
     return parser.parse_args()
 
 
+SPLIT_FILES = {
+    "train": "nvs_sem_train_with_planes_fixed.txt",
+    "val":   "nvs_sem_val_with_planes_fixed.txt",
+    "test":  "nvs_sem_test_with_planes.txt",
+}
+
+
 def load_split_scenes(split_dir, split):
-    """Read scene IDs from split file for the given split."""
-    split_file = os.path.join(split_dir, f"nvs_sem_{split}_with_planes_fixed.txt")
+    """Read scene IDs from the split file for the given split."""
+    split_file = os.path.join(split_dir, SPLIT_FILES[split])
     with open(split_file, "r") as f:
         scenes = [line.strip() for line in f if line.strip() and not line.startswith("#")]
     return scenes
