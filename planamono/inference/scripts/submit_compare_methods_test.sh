@@ -108,16 +108,13 @@ echo "Scenes: ${SCENES_FOR_PART}"
 echo ""
 
 FAIL=0
+PY_SCRIPT="${PROJECT_ROOT}/inference/planarity/compare_plane_param_methods.py"
 for SCENE in ${SCENES_FOR_PART}; do
     echo ""
     echo "==> Part ${PART} — scene \$SCENE"
-    python ${PROJECT_ROOT}/inference/planarity/compare_plane_param_methods.py \\
-        --scene_id \$SCENE \\
-        --signals_root ${SIGNALS_ROOT} \\
-        --output_root ${OUTPUT_ROOT} \\
-        --methods ${METHODS} \\
-        --device cpu \\
-        || { echo "[FAIL] scene \$SCENE"; FAIL=\$((FAIL + 1)); }
+    set -x
+    python "\$PY_SCRIPT" --scene_id "\$SCENE" --signals_root "${SIGNALS_ROOT}" --output_root "${OUTPUT_ROOT}" --device cpu --methods ${METHODS} || { set +x; echo "[FAIL] scene \$SCENE"; FAIL=\$((FAIL + 1)); }
+    set +x
 done
 
 echo ""

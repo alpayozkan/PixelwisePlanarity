@@ -26,7 +26,7 @@ except Exception:
     _O3D_AVAILABLE = False
 
 
-__all__ = ["render_planes_to_depth", "planes_to_mesh"]
+__all__ = ["render_planes_to_depth", "planes_to_mesh", "planes_to_point_cloud"]
 
 
 # --------------------------------------------------------------------------- #
@@ -226,3 +226,110 @@ def planes_to_mesh(
         mesh.remove_unreferenced_vertices()
         mesh.compute_vertex_normals()
     return mesh
+
+
+# --------------------------------------------------------------------------- #
+# 3) Build a colored PointCloud from plane params (no triangulation)
+# --------------------------------------------------------------------------- #
+
+def planes_to_point_cloud(
+    plane_params: Dict[int, np.ndarray],
+    labels: np.ndarray,
+    K: np.ndarray,
+    H: int,
+    W: int,
+    c2w: Optional[np.ndarray] = None,
+    skip_labels=(0,),
+    min_pixels_per_plane: int = 50,
+    pixel_stride: int = 1,
+    color_by: Union[str, np.ndarray] = "plane_id",
+):
+    """Same backprojection as `planes_to_mesh`, but emits a colored
+    `o3d.geometry.PointCloud` instead of a triangulated surface.
+
+    For every pixel of every plane mask, intersect the viewing ray with the
+    fitted plane (`Z = −d / (a·xn + b·yn + c)`), backproject, and color the
+    resulting 3D point. No connectivity is built — useful for quick sanity
+    checks or when you don't want to commit to a mesh's triangle layout.
+
+    Args mirror `planes_to_mesh`. Returns a (possibly empty) PointCloud.
+
+    Cost vs `planes_to_mesh`: cheaper (no triangulation, no normal compute);
+    output PLY size is roughly 1/3–1/2 of the equivalent mesh PLY at the same
+    pixel_stride. For typical single-frame use, `pixel_stride=1` is fine.
+    """
+    if not _O3D_AVAILABLE:
+        raise RuntimeError("Open3D is required for planes_to_point_cloud; install via `pip install open3d`")
+
+    fx, fy = float(K[0, 0]), float(K[1, 1])
+    cx, cy = float(K[0, 2]), float(K[1, 2])
+
+    skip = {int(x) for x in skip_labels}
+
+    use_rgb_colors = isinstance(color_by, np.ndarray)
+    if use_rgb_colors:
+        rgb_array = np.asarray(color_by, dtype=np.float64)
+        if rgb_array.shape != (H, W, 3):
+            raise ValueError(f"color_by RGB array must have shape ({H}, {W}, 3); got {rgb_array.shape}")
+    elif color_by != "plane_id":
+        raise ValueError(f"color_by must be 'plane_id' or an (H,W,3) array; got {color_by!r}")
+
+    ys = np.arange(0, H, pixel_stride)
+    xs = np.arange(0, W, pixel_stride)
+    u_grid, v_grid = np.meshgrid(xs, ys)
+    xn_sub = (u_grid - cx) / fx
+    yn_sub = (v_grid - cy) / fy
+
+    if c2w is not None:
+        c2w = np.asarray(c2w, dtype=np.float64)
+
+    all_V: list = []
+    all_C: list = []
+
+    for pid, p in plane_params.items():
+        if int(pid) in skip:
+            continue
+        mask = (labels == pid)
+        if int(mask.sum()) < min_pixels_per_plane:
+            continue
+
+        a, b, c, d = float(p[0]), float(p[1]), float(p[2]), float(p[3])
+        sub_mask = mask[v_grid, u_grid]
+        if not sub_mask.any():
+            continue
+
+        denom = a * xn_sub + b * yn_sub + c
+        with np.errstate(divide="ignore", invalid="ignore"):
+            Z = -d / denom
+        good = sub_mask & (np.abs(denom) > 1e-9) & (Z > 0) & np.isfinite(Z)
+        if not good.any():
+            continue
+
+        zg = Z[good]
+        xg = xn_sub[good] * zg
+        yg = yn_sub[good] * zg
+
+        if c2w is not None:
+            ones = np.ones_like(zg)
+            pts_h = np.stack([xg, yg, zg, ones], axis=-1)
+            pts_world = pts_h @ c2w.T
+            xg, yg, zg = pts_world[:, 0], pts_world[:, 1], pts_world[:, 2]
+
+        V = np.stack([xg, yg, zg], axis=-1)
+
+        if use_rgb_colors:
+            C = rgb_array[v_grid[good], u_grid[good]].astype(np.float64)
+        else:
+            color = _color_for_plane_id(int(pid))
+            C = np.broadcast_to(color, V.shape).copy()
+
+        all_V.append(V)
+        all_C.append(C)
+
+    pcd = o3d.geometry.PointCloud()
+    if all_V:
+        V = np.concatenate(all_V, axis=0).astype(np.float64)
+        C = np.concatenate(all_C, axis=0).astype(np.float64)
+        pcd.points = o3d.utility.Vector3dVector(V)
+        pcd.colors = o3d.utility.Vector3dVector(np.clip(C, 0.0, 1.0))
+    return pcd
