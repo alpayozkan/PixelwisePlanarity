@@ -46,23 +46,23 @@ clean_structure/
 
 ### Shared Modules
 
-All core functionality is in `shared/`:
+All core functionality is in `planamono/shared/`:
 
 ```python
-# Plane fitting
-from shared.plane_fitting import backproject_v1, fit_planes_per_label_v1
+# Plane fitting (use v2 for 10x speed)
+from planamono.shared.plane_fitting import backproject_v2, fit_planes_per_label_v1
 
 # Rendering
-from shared.rendering import render_rgb_depth, raycast_semantic
+from planamono.shared.rendering import render_rgb_depth, raycast_semantic
 
-# Segmentation
-from shared.segmentation import compute_vectorized_planar_segments_v1
+# Segmentation (use v5 for GPU-accelerated speed)
+from planamono.shared.segmentation import compute_vectorized_planar_segments_v5
 
 # Utilities
-from shared.utils import depth_to_normal_remi, extract_zdepth
+from planamono.shared.utils import depth_to_normal_remi, extract_zdepth
 
 # Datasets
-from shared.datasets import ScanNetPPPlaneDataset, HypersimPlanarityDataset
+from planamono.shared.datasets import ScanNetPPPlaneDataset, HypersimPlanarityDataset
 ```
 
 ### Ground Truth Generation

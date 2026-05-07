@@ -1,0 +1,36 @@
+# Grid search configuration for v10 segmentation parameters
+# Dataset: Hypersim val split (68 scenes)
+# Model: moge_mixed_output_476644 epoch 3
+# Segmentation: v10 (adaptive threshold + small segment filter)
+# Depth: affine (via model.forward(), points[:,:,2])
+
+model_path: /cluster/scratch/ayavuz/moge_mixed_output_476644_fixed_cosLR_singlePhase_mixed_HiRes/model_epoch3.pt
+split: val
+n_scenes: null          # null = ALL val scenes
+seg_version: v10
+use_metric_depth: false
+output_dir: /cluster/scratch/aoezkan/planeseg/hypersim/grid_search/seg_params_v10
+
+# Evaluation constants
+thresholds: [0.001, 0.005, 0.01]
+ransac_iterations: 200
+inlier_ratio_gate: 0.9
+
+search_mode: one_at_a_time
+
+base_config:
+  threshold_planarity: 0.3
+  normal_threshold_deg: 5.0
+  depth_threshold: 0.025
+  neighbor_match_count_thresh: 18
+  adaptive_frac: 0.75
+  min_valid_neighbors: 3
+  min_segment_pixels: 50
+
+grid:
+  threshold_planarity: [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
+  normal_threshold_deg: [3.0, 5.0, 7.0, 10.0, 13.0]
+  depth_threshold: [0.01, 0.015, 0.02, 0.025, 0.03, 0.04]
+  adaptive_frac: [0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9]
+  min_valid_neighbors: [1, 2, 3, 5, 8]
+  min_segment_pixels: [0, 20, 50, 75, 100, 150]

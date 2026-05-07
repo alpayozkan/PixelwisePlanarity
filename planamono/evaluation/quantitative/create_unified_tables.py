@@ -118,6 +118,12 @@ METHODS = [
         },
     },
     {
+        "display": "Probe-Planamono",
+        "dirs": {
+            "scannetpp": "probe_planamono_v6",
+        },
+    },
+    {
         "display": "PlaneRCNN",
         "dirs": {
             "scannetpp": "planercnn_v1",

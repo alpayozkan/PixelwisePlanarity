@@ -271,6 +271,10 @@ METHODS = {
         "label_offset": 0,
         "nonplanar_label": None,
         "uses_gt_h5": False,
+        # pseudo_planamono uses sequential frame IDs (0000, 0001, ...) rather than
+        # actual frame numbers (000101, 000106, ...) — ordinal matching required.
+        "dataset_root": SYNTHIA_ROOT,
+        "dataset_h5_filename": "scene_data.h5",
     },
 }
 
@@ -285,15 +289,20 @@ class LazyH5SceneLoader:
     Synthia scene_id is the scene name (e.g., "test5_10segs_weather_0_...").
     """
     def __init__(self, h5_root: str, label_offset: int = 0,
-                 nonplanar_label: Optional[int] = None, h5_filename: str = "planes.h5"):
+                 nonplanar_label: Optional[int] = None, h5_filename: str = "planes.h5",
+                 dataset_root: Optional[str] = None,
+                 dataset_h5_filename: str = "scene_data.h5"):
         self.h5_root = h5_root
         self.label_offset = label_offset
         self.nonplanar_label = nonplanar_label
         self.h5_filename = h5_filename
+        self.dataset_root = dataset_root
+        self.dataset_h5_filename = dataset_h5_filename
         self._current_scene_id = None
         self._current_planes = None
         self._current_frame_ids = None
         self._frame_id_to_idx = {}
+        self._ordinal_map = {}
 
     def _load_scene(self, scene_id: str) -> bool:
         """Load a scene's predictions into memory, clearing previous."""
@@ -307,6 +316,7 @@ class LazyH5SceneLoader:
         self._current_planes = None
         self._current_frame_ids = None
         self._frame_id_to_idx = {}
+        self._ordinal_map = {}
 
         with h5py.File(h5_path, "r") as f:
             self._current_planes = f["planes"][:]
@@ -316,8 +326,47 @@ class LazyH5SceneLoader:
             ]
 
         self._frame_id_to_idx = {fid: i for i, fid in enumerate(self._current_frame_ids)}
+
+        # Build ordinal map: dataset frame IDs -> pred ordinal index.
+        # Used when the H5 uses sequential IDs (0, 1, 2, ...) instead of actual
+        # frame numbers. E.g. pseudo_planamono stores '0000','0001',... while the
+        # dataset has '000101','000106',... The i-th dataset frame maps to
+        # pred index i regardless of the actual frame number.
+        if self.dataset_root is not None:
+            # Synthia GT is under <root>/<split>/<scene>/scene_data.h5 — try both
+            for subdir in ["test", "train", ""]:
+                ds_h5_path = os.path.join(self.dataset_root, subdir, scene_id, self.dataset_h5_filename)
+                if os.path.exists(ds_h5_path):
+                    break
+            if os.path.exists(ds_h5_path):
+                with h5py.File(ds_h5_path, "r") as f:
+                    ds_frame_ids = [
+                        fid.decode() if isinstance(fid, bytes) else str(fid)
+                        for fid in f["frame_ids"][:]
+                    ]
+                for ordinal, ds_fid in enumerate(ds_frame_ids):
+                    self._ordinal_map[ds_fid] = ordinal
+                    try:
+                        self._ordinal_map[str(int(ds_fid))] = ordinal
+                    except ValueError:
+                        pass
+
         self._current_scene_id = scene_id
         return True
+
+    def _apply_postproc(self, pred: np.ndarray, target_shape: Tuple[int, int]) -> np.ndarray:
+        """Resize, remap non-planar label, apply offset."""
+        if pred.shape != target_shape:
+            pred = cv2.resize(
+                pred.astype(np.float32),
+                (target_shape[1], target_shape[0]),
+                interpolation=cv2.INTER_NEAREST
+            ).astype(np.int32)
+        if self.nonplanar_label is not None:
+            pred[pred == self.nonplanar_label] = 0
+        if self.label_offset != 0:
+            pred = pred + self.label_offset
+        return pred.astype(np.int32)
 
     def get_prediction(self, scene_id: str, frame_idx: str,
                        target_shape: Tuple[int, int]) -> Optional[np.ndarray]:
@@ -325,29 +374,24 @@ class LazyH5SceneLoader:
         if not self._load_scene(scene_id):
             return None
 
-        if frame_idx not in self._frame_id_to_idx:
-            return None
+        # Direct lookup
+        if frame_idx in self._frame_id_to_idx:
+            idx = self._frame_id_to_idx[frame_idx]
+            return self._apply_postproc(self._current_planes[idx].copy(), target_shape)
 
-        idx = self._frame_id_to_idx[frame_idx]
-        pred = self._current_planes[idx].copy()
+        # Fallback: ordinal map (for sequential-ID H5s like pseudo_planamono).
+        # The i-th frame in the dataset corresponds to pred index i.
+        if self._ordinal_map:
+            ordinal = self._ordinal_map.get(frame_idx)
+            if ordinal is None:
+                try:
+                    ordinal = self._ordinal_map.get(str(int(frame_idx)))
+                except ValueError:
+                    pass
+            if ordinal is not None and ordinal < len(self._current_frame_ids):
+                return self._apply_postproc(self._current_planes[ordinal].copy(), target_shape)
 
-        # Resize to target shape if needed
-        if pred.shape != target_shape:
-            pred = cv2.resize(
-                pred.astype(np.float32),
-                (target_shape[1], target_shape[0]),
-                interpolation=cv2.INTER_NEAREST
-            ).astype(np.int32)
-
-        # Remap non-planar label to 0
-        if self.nonplanar_label is not None:
-            pred[pred == self.nonplanar_label] = 0
-
-        # Apply label offset
-        if self.label_offset != 0:
-            pred = pred + self.label_offset
-
-        return pred.astype(np.int32)
+        return None
 
     def has_scene(self, scene_id: str) -> bool:
         """Check if a scene exists without loading it."""
@@ -400,9 +444,12 @@ def evaluate_method(
     if not uses_gt_h5:
         nonplanar_label = method_config.get("nonplanar_label", None)
         h5_filename = method_config.get("h5_filename", "planes.h5")
+        dataset_root = method_config.get("dataset_root", None)
+        dataset_h5_filename = method_config.get("dataset_h5_filename", "scene_data.h5")
         loader = LazyH5SceneLoader(
             str(h5_root), label_offset=label_offset,
             nonplanar_label=nonplanar_label, h5_filename=h5_filename,
+            dataset_root=dataset_root, dataset_h5_filename=dataset_h5_filename,
         )
 
         scene_ids = val_dataset.scene_ids

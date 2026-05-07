@@ -1,0 +1,32 @@
+# Grid search configuration for segmentation parameters
+# Dataset: ScanNet++ val split
+# Model: moge_mixed_bce_476644_ep6
+
+model_path: /cluster/scratch/ayavuz/moge_mixed_output_bce_476644_fixed/model_epoch6.pt
+split: val
+n_scenes: 5          # randomly sample from val split
+seg_version: v5
+output_dir: /cluster/scratch/aoezkan/planeseg/scannetpp/grid_search/seg_params_v5
+
+# Evaluation constants
+thresholds: [0.001, 0.005, 0.01]
+ransac_iterations: 200
+inlier_ratio_gate: 0.9
+
+# "one_at_a_time": sweep each param independently (others at base) → ~21 configs
+# "full_grid": full cartesian product → 750 configs
+search_mode: one_at_a_time
+
+# Base configuration (used as default when sweeping other params)
+base_config:
+  threshold_planarity: 0.6
+  normal_threshold_deg: 10.0
+  depth_threshold: 0.05
+  neighbor_match_count_thresh: 24
+
+# Parameter grid
+grid:
+  threshold_planarity: [0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
+  normal_threshold_deg: [5.0, 8.0, 10.0, 12.0, 15.0]
+  depth_threshold: [0.01, 0.02, 0.03, 0.05, 0.08]
+  neighbor_match_count_thresh: [12, 15, 18, 21, 24]

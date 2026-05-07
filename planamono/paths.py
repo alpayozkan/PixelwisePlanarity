@@ -36,3 +36,7 @@ hypersim_rend_plane_path = '/cluster/scratch/aoezkan/planeseg/dataset/Hypersim'
 # synthia_path = '/cluster/scratch/aoezkan/planeseg/dataset/synthia'
 vkitti2_path = '/cluster/scratch/ayavuz/dataset/vkitti2_planes'
 synthia_path = '/cluster/scratch/ayavuz/dataset/synthia_planes'
+
+# ============ NYU-v2 and 7-Scenes (ZeroPlane "_d2" NPZ format) ============
+nyuv2_path = '/cluster/scratch/aoezkan/planeseg/dataset/nyuv2_plane'
+sevenscenes_path = '/cluster/scratch/aoezkan/planeseg/dataset/sevenscenes_plane'

@@ -142,7 +142,6 @@ dependencies:
       - parso==0.8.5
       - pexpect==4.9.0
       - pillow==12.0.0
-      - planamono==0.1.0
       - platformdirs==4.5.0
       - plotly==6.5.0
       - plyfile==1.1.3

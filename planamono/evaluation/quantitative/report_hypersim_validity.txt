@@ -1,0 +1,528 @@
+================================================================================
+HYPERSIM DATASET VALIDITY REPORT
+Generated: 2026-02-10 16:15:32
+================================================================================
+
+## PATH VERIFICATION
+  HYPERSIM_ROOT:    /cluster/scratch/ayavuz/dataset/Hypersim_merged  [OK]
+  PLANE_LABEL_ROOT: /cluster/scratch/ayavuz/dataset/Hypersim_rendered  [OK]
+  PARAMS_ROOT:      /cluster/scratch/ayavuz/dataset/Hypersim_params  [OK]
+  METADATA_CSV:     /cluster/home/aoezkan/planeseg/PixelwisePlanarity/planamono/evaluation/quantitative/../../shared/datasets/metadata_camera_parameters.csv  [OK]
+  SPLIT_DIR:        /cluster/home/aoezkan/planeseg/PixelwisePlanarity/planamono/evaluation/quantitative/../../splits/hypersim  [OK]
+  H5_ROOT:          /cluster/scratch/aoezkan/planeseg/hypersim/inference  [OK]
+
+================================================================================
+SPLIT: TRAIN
+================================================================================
+
+  Scenes in split file: 319
+
+  ### 1. SCENE-LEVEL SUMMARY
+     Total scenes:                    319
+     Scenes with Hypersim data:       319
+     Scenes with GT plane labels:     296
+     Scenes with camera params dir:   319
+
+     [ISSUE] Scenes MISSING GT plane labels (23):
+       - ai_051_005
+       - ai_038_010
+       - ai_031_009
+       - ai_050_005
+       - ai_051_001
+       - ai_024_009
+       - ai_013_001
+       - ai_039_002
+       - ai_052_010
+       - ai_051_004
+       - ai_024_006
+       - ai_039_003
+       - ai_024_018
+       - ai_051_002
+       - ai_024_008
+       - ai_052_001
+       - ai_024_019
+       - ai_053_001
+       - ai_038_007
+       - ai_024_005
+       - ai_024_007
+       - ai_052_007
+       - ai_052_009
+
+  ### 2. CAMERA-LEVEL SUMMARY
+     Total cameras (from GT H5):      484
+
+
+  ### 3. FRAME-LEVEL SUMMARY
+     Total frames (from GT H5):       48400
+     Frames with both RGB+depth:      46868
+     Frames fully valid (RGB+depth):  46868
+     Frames missing RGB:              1532
+     Frames missing depth:            1532
+     Frames missing both:             1532
+
+     [ISSUE] Frames missing RGB (1532):
+       ai_001_001/cam_00: 2 frames missing (e.g., 0036, 0061)
+       ai_001_002/cam_00: 1 frames missing (e.g., 0080)
+       ai_001_002/cam_02: 2 frames missing (e.g., 0037, 0071)
+       ai_001_002/cam_03: 4 frames missing (e.g., 0008, 0026, 0060, 0088)
+       ai_002_008/cam_00: 37 frames missing (e.g., 0000, 0001, 0002, 0043, 0044...)
+       ai_003_008/cam_01: 1 frames missing (e.g., 0001)
+       ai_004_002/cam_00: 3 frames missing (e.g., 0088, 0090, 0097)
+       ai_004_002/cam_01: 17 frames missing (e.g., 0000, 0002, 0003, 0032, 0033...)
+       ai_004_010/cam_00: 50 frames missing (e.g., 0000, 0001, 0002, 0003, 0004...)
+       ai_004_010/cam_01: 19 frames missing (e.g., 0074, 0079, 0080, 0081, 0082...)
+       ai_006_007/cam_00: 1 frames missing (e.g., 0071)
+       ai_006_009/cam_02: 2 frames missing (e.g., 0002, 0018)
+       ai_007_006/cam_00: 34 frames missing (e.g., 0005, 0006, 0007, 0009, 0010...)
+       ai_007_006/cam_01: 14 frames missing (e.g., 0003, 0004, 0011, 0012, 0023...)
+       ai_007_009/cam_00: 1 frames missing (e.g., 0068)
+       ai_007_009/cam_01: 1 frames missing (e.g., 0060)
+       ai_008_001/cam_01: 11 frames missing (e.g., 0049, 0085, 0086, 0090, 0091...)
+       ai_008_001/cam_02: 10 frames missing (e.g., 0049, 0085, 0086, 0091, 0092...)
+       ai_008_001/cam_03: 4 frames missing (e.g., 0023, 0027, 0028, 0031)
+       ai_008_007/cam_01: 5 frames missing (e.g., 0082, 0083, 0085, 0095, 0098)
+       ai_010_008/cam_00: 1 frames missing (e.g., 0079)
+       ai_011_004/cam_01: 30 frames missing (e.g., 0006, 0026, 0054, 0058, 0060...)
+       ai_011_007/cam_00: 13 frames missing (e.g., 0001, 0003, 0006, 0008, 0016...)
+       ai_011_007/cam_01: 4 frames missing (e.g., 0010, 0030, 0050, 0081)
+       ai_011_010/cam_00: 91 frames missing (e.g., 0000, 0001, 0002, 0003, 0004...)
+       ai_013_007/cam_00: 5 frames missing (e.g., 0022, 0023, 0056, 0079, 0085)
+       ai_015_003/cam_00: 1 frames missing (e.g., 0084)
+       ai_015_007/cam_00: 94 frames missing (e.g., 0000, 0001, 0002, 0003, 0004...)
+       ai_016_003/cam_00: 20 frames missing (e.g., 0007, 0009, 0013, 0034, 0036...)
+       ai_016_003/cam_01: 12 frames missing (e.g., 0004, 0005, 0011, 0013, 0014...)
+       ai_021_007/cam_00: 1 frames missing (e.g., 0056)
+       ai_021_008/cam_02: 34 frames missing (e.g., 0001, 0003, 0004, 0012, 0013...)
+       ai_022_004/cam_00: 5 frames missing (e.g., 0027, 0031, 0032, 0089, 0093)
+       ai_022_004/cam_01: 14 frames missing (e.g., 0012, 0014, 0015, 0020, 0021...)
+       ai_022_007/cam_00: 58 frames missing (e.g., 0001, 0002, 0003, 0004, 0005...)
+       ai_027_003/cam_00: 2 frames missing (e.g., 0040, 0041)
+       ai_027_003/cam_03: 4 frames missing (e.g., 0000, 0001, 0002, 0003)
+       ai_027_003/cam_04: 58 frames missing (e.g., 0003, 0004, 0005, 0006, 0007...)
+       ai_027_003/cam_05: 27 frames missing (e.g., 0002, 0003, 0005, 0006, 0009...)
+       ai_027_003/cam_06: 52 frames missing (e.g., 0003, 0004, 0006, 0007, 0011...)
+       ai_027_004/cam_01: 4 frames missing (e.g., 0091, 0092, 0093, 0094)
+       ai_029_001/cam_00: 23 frames missing (e.g., 0005, 0007, 0009, 0012, 0021...)
+       ai_029_001/cam_01: 3 frames missing (e.g., 0022, 0023, 0098)
+       ai_029_002/cam_00: 1 frames missing (e.g., 0010)
+       ai_030_004/cam_00: 1 frames missing (e.g., 0003)
+       ai_030_007/cam_00: 17 frames missing (e.g., 0013, 0016, 0018, 0021, 0022...)
+       ai_030_008/cam_00: 71 frames missing (e.g., 0000, 0001, 0002, 0004, 0005...)
+       ai_030_008/cam_01: 71 frames missing (e.g., 0001, 0002, 0003, 0004, 0006...)
+       ai_030_010/cam_00: 1 frames missing (e.g., 0047)
+       ai_033_002/cam_00: 4 frames missing (e.g., 0074, 0083, 0091, 0093)
+       ai_033_002/cam_01: 2 frames missing (e.g., 0003, 0019)
+       ai_033_004/cam_00: 3 frames missing (e.g., 0002, 0089, 0091)
+       ai_033_008/cam_00: 8 frames missing (e.g., 0001, 0002, 0003, 0009, 0012...)
+       ai_035_009/cam_00: 18 frames missing (e.g., 0007, 0008, 0015, 0024, 0025...)
+       ai_036_010/cam_00: 7 frames missing (e.g., 0020, 0021, 0027, 0032, 0033...)
+       ai_037_002/cam_00: 5 frames missing (e.g., 0020, 0037, 0038, 0048, 0085)
+       ai_037_009/cam_01: 4 frames missing (e.g., 0002, 0003, 0013, 0021)
+       ai_038_005/cam_00: 22 frames missing (e.g., 0000, 0001, 0002, 0003, 0004...)
+       ai_042_003/cam_00: 1 frames missing (e.g., 0084)
+       ai_043_006/cam_00: 68 frames missing (e.g., 0005, 0007, 0008, 0009, 0010...)
+       ai_043_006/cam_01: 4 frames missing (e.g., 0004, 0010, 0064, 0086)
+       ai_044_001/cam_00: 1 frames missing (e.g., 0098)
+       ai_044_006/cam_00: 1 frames missing (e.g., 0026)
+       ai_045_004/cam_00: 1 frames missing (e.g., 0017)
+       ai_045_004/cam_01: 1 frames missing (e.g., 0070)
+       ai_045_006/cam_00: 2 frames missing (e.g., 0033, 0037)
+       ai_045_006/cam_01: 8 frames missing (e.g., 0030, 0036, 0039, 0040, 0041...)
+       ai_045_010/cam_00: 17 frames missing (e.g., 0024, 0025, 0026, 0027, 0028...)
+       ai_045_010/cam_01: 2 frames missing (e.g., 0014, 0015)
+       ai_045_010/cam_02: 15 frames missing (e.g., 0003, 0005, 0029, 0030, 0031...)
+       ai_047_003/cam_00: 1 frames missing (e.g., 0021)
+       ai_047_008/cam_00: 84 frames missing (e.g., 0000, 0001, 0002, 0003, 0004...)
+       ai_048_005/cam_01: 3 frames missing (e.g., 0000, 0043, 0051)
+       ai_048_007/cam_00: 1 frames missing (e.g., 0000)
+       ai_048_009/cam_00: 7 frames missing (e.g., 0029, 0034, 0042, 0044, 0046...)
+       ai_048_009/cam_01: 1 frames missing (e.g., 0049)
+       ai_048_009/cam_02: 1 frames missing (e.g., 0069)
+       ai_048_010/cam_01: 3 frames missing (e.g., 0000, 0002, 0042)
+       ai_048_010/cam_02: 7 frames missing (e.g., 0035, 0036, 0037, 0038, 0039...)
+       ai_048_010/cam_03: 1 frames missing (e.g., 0092)
+       ai_050_001/cam_03: 1 frames missing (e.g., 0001)
+       ai_050_002/cam_00: 3 frames missing (e.g., 0062, 0064, 0083)
+       ai_050_002/cam_01: 1 frames missing (e.g., 0098)
+       ai_050_002/cam_02: 2 frames missing (e.g., 0028, 0057)
+       ai_050_002/cam_03: 16 frames missing (e.g., 0006, 0009, 0012, 0013, 0014...)
+       ai_050_002/cam_04: 3 frames missing (e.g., 0022, 0024, 0028)
+       ai_050_004/cam_02: 1 frames missing (e.g., 0001)
+       ai_050_004/cam_03: 1 frames missing (e.g., 0094)
+       ai_052_002/cam_00: 1 frames missing (e.g., 0008)
+       ai_052_003/cam_00: 5 frames missing (e.g., 0027, 0029, 0079, 0080, 0081)
+       ai_052_003/cam_01: 16 frames missing (e.g., 0026, 0029, 0037, 0062, 0064...)
+       ai_053_012/cam_00: 2 frames missing (e.g., 0020, 0021)
+       ai_053_013/cam_00: 53 frames missing (e.g., 0000, 0001, 0002, 0003, 0004...)
+       ai_054_006/cam_01: 86 frames missing (e.g., 0002, 0003, 0004, 0005, 0006...)
+       ai_054_010/cam_00: 5 frames missing (e.g., 0082, 0083, 0084, 0093, 0094)
+       ai_054_010/cam_01: 4 frames missing (e.g., 0031, 0036, 0037, 0085)
+       ai_055_004/cam_00: 1 frames missing (e.g., 0065)
+       ai_055_008/cam_00: 17 frames missing (e.g., 0000, 0002, 0004, 0007, 0008...)
+       ai_055_008/cam_01: 44 frames missing (e.g., 0000, 0001, 0009, 0025, 0026...)
+       ai_055_008/cam_02: 22 frames missing (e.g., 0000, 0001, 0002, 0013, 0023...)
+       ai_055_009/cam_00: 1 frames missing (e.g., 0031)
+       ai_055_009/cam_01: 7 frames missing (e.g., 0044, 0045, 0046, 0047, 0048...)
+
+     [INFO] Depth-missing frames identical to RGB-missing (1532 frames)
+
+  ### 4. DATA QUALITY (content checks)
+     Frames checked:                  2420
+
+     [OK] All checked RGB frames have <1% bad pixels
+
+     [WARN] Depth frames with >5% invalid (151):
+       ai_012_007/cam_01/0000: 100.00% invalid
+       ai_015_006/cam_00/0074: 57.69% invalid
+       ai_004_010/cam_00/0086: 46.37% invalid
+       ai_008_004/cam_00/0074: 44.76% invalid
+       ai_007_006/cam_00/0072: 38.73% invalid
+       ai_002_010/cam_00/0074: 38.39% invalid
+       ai_002_010/cam_00/0049: 37.85% invalid
+       ai_004_010/cam_01/0040: 36.80% invalid
+       ai_041_009/cam_00/0099: 36.01% invalid
+       ai_035_004/cam_00/0074: 33.69% invalid
+       ai_052_008/cam_01/0024: 33.20% invalid
+       ai_011_005/cam_00/0099: 30.78% invalid
+       ai_011_001/cam_00/0099: 30.19% invalid
+       ai_004_010/cam_00/0099: 25.05% invalid
+       ai_010_002/cam_00/0074: 24.77% invalid
+       ai_011_005/cam_01/0099: 24.67% invalid
+       ai_015_006/cam_00/0049: 23.92% invalid
+       ai_015_006/cam_00/0024: 23.66% invalid
+       ai_004_010/cam_00/0074: 21.84% invalid
+       ai_004_004/cam_00/0024: 21.66% invalid
+       ... and 131 more
+
+     [WARN] Plane labels ALL ZERO (11):
+       ai_018_008/cam_01/0000
+       ai_012_007/cam_01/0000
+       ai_023_010/cam_02/0000
+       ai_007_006/cam_01/0000
+       ai_045_010/cam_01/0000
+       ai_011_008/cam_01/0000
+       ai_003_008/cam_01/0000
+       ai_034_001/cam_01/0000
+       ai_036_003/cam_03/0000
+       ai_007_009/cam_01/0000
+       ai_004_004/cam_01/0000
+
+     [OK] No negative plane label values found
+
+     Depth range (across checked frames):
+       Min depth:    0.0224 m
+       Max depth:    545.5000 m
+       Median min:   1.7715 m
+       Median max:   11.8750 m
+
+     Plane coverage (% of pixels labeled planar):
+       Mean:   74.4%
+       Median: 77.6%
+       Min:    0.0%
+       Max:    100.0%
+       Frames with <10% planar: 25
+
+  ### 5. PREDICTION H5 CHECKS
+     [ISSUE] moge_ours (moge_ours_h5):
+       Cameras with predictions: 0/484
+       Missing H5: 484
+
+     [ISSUE] moge_mixed_bce (moge_mixed_bce_h5):
+       Cameras with predictions: 0/484
+       Missing H5: 484
+
+     [ISSUE] zeroplane_mixed_dust3r (zeroplane_mixed_dust3r_h5):
+       Cameras with predictions: 0/484
+       Missing H5: 484
+
+     [ISSUE] zeroplane_mixed (zeroplane_mixed_h5):
+       Cameras with predictions: 0/484
+       Missing H5: 484
+
+
+================================================================================
+SPLIT: VAL
+================================================================================
+
+  Scenes in split file: 68
+
+  ### 1. SCENE-LEVEL SUMMARY
+     Total scenes:                    68
+     Scenes with Hypersim data:       68
+     Scenes with GT plane labels:     65
+     Scenes with camera params dir:   68
+
+     [ISSUE] Scenes MISSING GT plane labels (3):
+       - ai_055_005
+       - ai_052_005
+       - ai_051_003
+
+  ### 2. CAMERA-LEVEL SUMMARY
+     Total cameras (from GT H5):      108
+
+
+  ### 3. FRAME-LEVEL SUMMARY
+     Total frames (from GT H5):       10800
+     Frames with both RGB+depth:      10533
+     Frames fully valid (RGB+depth):  10533
+     Frames missing RGB:              267
+     Frames missing depth:            267
+     Frames missing both:             267
+
+     [ISSUE] Frames missing RGB (267):
+       ai_003_005/cam_00: 5 frames missing (e.g., 0039, 0041, 0049, 0098, 0099)
+       ai_003_010/cam_00: 2 frames missing (e.g., 0012, 0027)
+       ai_004_005/cam_01: 5 frames missing (e.g., 0050, 0060, 0062, 0067, 0097)
+       ai_024_015/cam_00: 50 frames missing (e.g., 0018, 0019, 0020, 0021, 0022...)
+       ai_027_009/cam_00: 1 frames missing (e.g., 0031)
+       ai_027_009/cam_01: 2 frames missing (e.g., 0093, 0094)
+       ai_027_009/cam_02: 5 frames missing (e.g., 0031, 0038, 0052, 0064, 0065)
+       ai_032_009/cam_00: 38 frames missing (e.g., 0000, 0001, 0002, 0019, 0020...)
+       ai_034_002/cam_00: 1 frames missing (e.g., 0067)
+       ai_037_006/cam_00: 4 frames missing (e.g., 0022, 0067, 0069, 0087)
+       ai_039_008/cam_00: 1 frames missing (e.g., 0068)
+       ai_042_002/cam_00: 2 frames missing (e.g., 0041, 0060)
+       ai_042_002/cam_01: 11 frames missing (e.g., 0027, 0028, 0036, 0040, 0041...)
+       ai_042_004/cam_00: 3 frames missing (e.g., 0055, 0060, 0078)
+       ai_046_003/cam_01: 4 frames missing (e.g., 0006, 0023, 0035, 0056)
+       ai_048_001/cam_01: 4 frames missing (e.g., 0004, 0008, 0077, 0095)
+       ai_048_001/cam_02: 14 frames missing (e.g., 0001, 0003, 0009, 0024, 0028...)
+       ai_048_006/cam_01: 1 frames missing (e.g., 0000)
+       ai_050_003/cam_01: 1 frames missing (e.g., 0005)
+       ai_050_003/cam_02: 5 frames missing (e.g., 0017, 0021, 0022, 0076, 0077)
+       ai_050_003/cam_04: 1 frames missing (e.g., 0059)
+       ai_054_004/cam_00: 10 frames missing (e.g., 0015, 0016, 0028, 0029, 0030...)
+       ai_054_004/cam_01: 17 frames missing (e.g., 0003, 0005, 0007, 0009, 0010...)
+       ai_055_002/cam_00: 74 frames missing (e.g., 0000, 0001, 0002, 0003, 0004...)
+       ai_055_002/cam_01: 6 frames missing (e.g., 0002, 0003, 0005, 0006, 0007...)
+
+     [INFO] Depth-missing frames identical to RGB-missing (267 frames)
+
+  ### 4. DATA QUALITY (content checks)
+     Frames checked:                  540
+
+     [OK] All checked RGB frames have <1% bad pixels
+
+     [WARN] Depth frames with >5% invalid (32):
+       ai_004_005/cam_01/0074: 47.59% invalid
+       ai_009_008/cam_00/0049: 33.49% invalid
+       ai_004_005/cam_01/0023: 32.19% invalid
+       ai_004_007/cam_00/0074: 27.32% invalid
+       ai_036_001/cam_00/0049: 21.30% invalid
+       ai_023_001/cam_01/0099: 20.59% invalid
+       ai_009_008/cam_00/0024: 19.35% invalid
+       ai_004_005/cam_00/0000: 17.14% invalid
+       ai_004_005/cam_00/0074: 17.00% invalid
+       ai_004_005/cam_00/0099: 14.66% invalid
+       ai_023_001/cam_01/0049: 14.08% invalid
+       ai_023_001/cam_01/0074: 12.99% invalid
+       ai_010_003/cam_01/0024: 12.95% invalid
+       ai_055_003/cam_00/0049: 12.64% invalid
+       ai_023_006/cam_00/0099: 12.39% invalid
+       ai_004_005/cam_00/0024: 11.98% invalid
+       ai_004_007/cam_00/0024: 11.73% invalid
+       ai_023_006/cam_00/0024: 10.83% invalid
+       ai_023_009/cam_01/0049: 10.63% invalid
+       ai_048_006/cam_01/0050: 10.35% invalid
+       ... and 12 more
+
+     [OK] No all-zero plane label frames found
+
+     [OK] No negative plane label values found
+
+     Depth range (across checked frames):
+       Min depth:    0.0780 m
+       Max depth:    200.6250 m
+       Median min:   1.8696 m
+       Median max:   13.7500 m
+
+     Plane coverage (% of pixels labeled planar):
+       Mean:   74.5%
+       Median: 77.9%
+       Min:    0.1%
+       Max:    100.0%
+       Frames with <10% planar: 4
+
+  ### 5. PREDICTION H5 CHECKS
+     [OK] moge_ours (moge_ours_h5):
+       Cameras with predictions: 108/108
+       Frame ID mismatches: 25
+
+     [OK] moge_mixed_bce (moge_mixed_bce_h5):
+       Cameras with predictions: 108/108
+       Frame ID mismatches: 25
+
+     [OK] zeroplane_mixed_dust3r (zeroplane_mixed_dust3r_h5):
+       Cameras with predictions: 108/108
+       Frame ID mismatches: 25
+
+     [OK] zeroplane_mixed (zeroplane_mixed_h5):
+       Cameras with predictions: 108/108
+       Frame ID mismatches: 25
+
+
+================================================================================
+SPLIT: TEST
+================================================================================
+
+  Scenes in split file: 70
+
+  ### 1. SCENE-LEVEL SUMMARY
+     Total scenes:                    70
+     Scenes with Hypersim data:       70
+     Scenes with GT plane labels:     0
+     Scenes with camera params dir:   70
+
+     [ISSUE] Scenes MISSING GT plane labels (70):
+       - ai_011_006
+       - ai_035_008
+       - ai_023_005
+       - ai_038_002
+       - ai_038_009
+       - ai_018_004
+       - ai_033_009
+       - ai_005_003
+       - ai_024_003
+       - ai_007_008
+       - ai_032_008
+       - ai_027_008
+       - ai_046_002
+       - ai_003_004
+       - ai_016_009
+       - ai_037_004
+       - ai_022_005
+       - ai_023_003
+       - ai_006_002
+       - ai_024_004
+       - ai_054_002
+       - ai_055_001
+       - ai_022_001
+       - ai_048_002
+       - ai_013_002
+       - ai_009_004
+       - ai_053_004
+       - ai_022_003
+       - ai_054_005
+       - ai_044_002
+       - ai_009_006
+       - ai_052_004
+       - ai_047_009
+       - ai_001_004
+       - ai_052_006
+       - ai_017_006
+       - ai_036_005
+       - ai_027_001
+       - ai_013_004
+       - ai_026_005
+       - ai_054_008
+       - ai_044_004
+       - ai_041_001
+       - ai_045_001
+       - ai_011_009
+       - ai_034_005
+       - ai_002_004
+       - ai_037_003
+       - ai_030_009
+       - ai_015_001
+       - ai_013_003
+       - ai_005_010
+       - ai_002_006
+       - ai_002_007
+       - ai_026_007
+       - ai_036_006
+       - ai_005_007
+       - ai_033_005
+       - ai_055_007
+       - ai_042_005
+       - ai_006_006
+       - ai_046_006
+       - ai_008_006
+       - ai_013_009
+       - ai_015_008
+       - ai_017_004
+       - ai_046_008
+       - ai_002_003
+       - ai_007_001
+       - ai_039_006
+
+  ### 2. CAMERA-LEVEL SUMMARY
+     Total cameras (from GT H5):      0
+
+
+  ### 3. FRAME-LEVEL SUMMARY
+     Total frames (from GT H5):       0
+     Frames with both RGB+depth:      0
+     Frames fully valid (RGB+depth):  0
+     Frames missing RGB:              0
+     Frames missing depth:            0
+     Frames missing both:             0
+
+  ### 4. DATA QUALITY (content checks)
+     Frames checked:                  0
+
+     [OK] All checked RGB frames have <1% bad pixels
+
+     [OK] All checked depth frames have <5% invalid pixels
+
+     [OK] No all-zero plane label frames found
+
+     [OK] No negative plane label values found
+
+  ### 5. PREDICTION H5 CHECKS
+     [OK] moge_ours (moge_ours_h5):
+       Cameras with predictions: 0/0
+
+     [OK] moge_mixed_bce (moge_mixed_bce_h5):
+       Cameras with predictions: 0/0
+
+     [OK] zeroplane_mixed_dust3r (zeroplane_mixed_dust3r_h5):
+       Cameras with predictions: 0/0
+
+     [OK] zeroplane_mixed (zeroplane_mixed_h5):
+       Cameras with predictions: 0/0
+
+
+================================================================================
+GRAND SUMMARY (ALL SPLITS)
+================================================================================
+
+  Splits checked:        train, val, test
+  Total scenes:          457
+  Scenes missing data:   0 (Hypersim_merged)
+  Scenes missing GT:     96 (Hypersim_rendered)
+  Scenes missing params: 0 (Hypersim_params)
+
+  Total cameras:         592
+  Cameras no RGB dir:    0
+  Cameras no depth dir:  0
+
+  Total frames (GT H5):  59200
+  Frames missing RGB:    1799
+  Frames missing depth:  1799
+  Frames missing both:   1799
+  Frames usable:         57401 (97.0%)
+
+  Content-checked frames: 2960
+  RGB with >1% bad:       0
+  Depth with >5% invalid: 183
+  Plane labels all-zero:  11
+  Plane labels negative:  0
+
+================================================================================
+NOTES ON DATASET CLASS BEHAVIOR (HypersimPlaneDataset)
+================================================================================
+
+  The HypersimPlaneDataset silently handles missing data:
+    - Scenes without Hypersim_merged dir:  skipped (lines 104-106)
+    - Scenes without GT plane dir:         skipped (lines 107-109)
+    - Cameras with no plane H5 files:      skipped (lines 115-117)
+    - Cameras with missing RGB dir:        skipped (line 129-131)
+    - Cameras with missing depth dir:      skipped (line 132-134)
+    - Cameras with bad intrinsics:         skipped (line 139-141)
+    - Frames with missing RGB file:        skipped (line 157-158)
+    - Frames with missing depth file:      skipped (line 159-160)
+
+  Impact on evaluation:
+    - Only frames with ALL of (GT H5 + RGB + depth) are included
+    - Missing scenes/cameras/frames reduce evaluation set size
+    - No error is raised; reduction is silent

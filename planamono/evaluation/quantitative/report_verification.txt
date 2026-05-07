@@ -1,0 +1,104 @@
+========================================================================
+ DATASET VERIFICATION REPORT
+ Generated: 2026-02-12 12:32:49
+ Datasets:  scannetpp, hypersim
+========================================================================
+
+[SCANNETPP] ==========================================================
+
+  PATHS
+  ----------------------------------------
+  [OK]       rgb_root: /cluster/project/cvg/Shared_datasets/scannet++/data
+  [OK]       gt_root: /cluster/scratch/aoezkan/planeseg/dataset/scannetpp
+  [OK]       mesh_root: /cluster/scratch/aoezkan/planeseg/dataset_mesh/scannetpp/
+  [OK]       split_dir: /cluster/home/aoezkan/planeseg/PixelwisePlanarity/planamono/evaluation/quantitative/../../splits/scannetpp
+
+  SPLIT FILES
+  ----------------------------------------
+  nvs_sem_train_with_planes.txt: 702 scenes
+  nvs_sem_val_with_planes.txt: 42 scenes
+  nvs_sem_test_with_planes.txt: [MISSING]
+  nvs_sem_train_missing_planes.txt: 154 scenes
+  nvs_sem_val_missing_planes.txt: 8 scenes
+  train.txt: 666 scenes
+  val.txt: 36 scenes
+  test.txt: 42 scenes
+  all_scenes.txt: 1006 scenes
+  Train/val/test overlap: NONE (OK)
+
+  SPLIT: VAL (5 scenes)
+  ----------------------------------------
+
+  Scene Summary:
+    Scenes total:               5
+    Scenes with GT plane H5:       5  (100.0%)
+    Scenes with RGB dir:           5  (100.0%)
+    Scenes with depth H5:          5  (100.0%)
+    Scenes with sem H5:            5  (100.0%)
+    Scenes with pose JSON:         5  (100.0%)
+
+  Frame Summary:
+    Total GT frames:              1431
+    Frames with RGB on disk:      1431  (100.0%)
+    Frames with pose entry:       1431  (100.0%)
+    Frames missing RGB:              0
+    Frames missing pose:             0
+
+
+
+[HYPERSIM] ===========================================================
+
+  PATHS
+  ----------------------------------------
+  [OK]       hypersim_root: /cluster/scratch/aoezkan/planeseg/dataset/hypersim
+  [OK]       plane_label_root: /cluster/scratch/aoezkan/planeseg/dataset/hypersim
+  [OK]       params_root: /cluster/scratch/ayavuz/dataset/HP_all/Hypersim_params
+  [OK]       metadata_csv: /cluster/home/aoezkan/planeseg/PixelwisePlanarity/planamono/evaluation/quantitative/../../shared/datasets/metadata_camera_parameters.csv
+  [OK]       split_dir: /cluster/home/aoezkan/planeseg/PixelwisePlanarity/planamono/evaluation/quantitative/../../splits/hypersim
+
+  SPLIT FILES
+  ----------------------------------------
+  train.txt: 319 scenes
+  val.txt: 68 scenes
+  test.txt: 70 scenes
+  Train/val/test overlap: NONE (OK)
+
+  SPLIT: VAL (5 scenes)
+  ----------------------------------------
+
+  Scene Summary:
+    Scenes total:               5
+    Scenes with Hypersim data:     5
+    Scenes with GT labels:         5
+    Scenes with params dir:        5
+
+  Camera Summary:
+    Total cameras (from GT H5): 10
+    Intrinsics from CSV:        10
+    Intrinsics from default:    0
+
+  Frame Summary:
+    Total GT frames:              1000
+    Frames with RGB:               982  (98.2%)
+    Frames with depth:             982  (98.2%)
+    Frames missing RGB:             18
+    Frames missing depth:           18
+    Frames missing both:            18
+
+
+
+========================================================================
+ GRAND SUMMARY
+========================================================================
+
+  SCANNETPP: 5 val scenes
+    1,431 total GT frames
+    0 issues, 0 warnings
+    No split overlap detected
+
+  HYPERSIM: 5 val scenes
+    1,000 total GT frames
+    0 issues, 0 warnings
+    No split overlap detected
+
+========================================================================
