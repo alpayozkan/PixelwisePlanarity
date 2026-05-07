@@ -48,7 +48,7 @@ from planamono.shared.utils.label_utils import remap_labels
 from planamono.shared.utils.visualization import visualize_top_components_v2
 from planamono.evaluation.quantitative.eval_utils import evaluate_single_frame
 from planamono.inference.planarity.moge_inference_v1 import MoGePlanarityInference
-from planamono.paths import repo_path, scannetpp_rend_plane_path
+from planamono.paths import repo_path, scannetpp_path, scannetpp_rend_plane_path
 
 %matplotlib inline
 plt.rcParams["figure.dpi"] = 120
@@ -58,8 +58,8 @@ plt.rcParams["figure.max_open_warning"] = 50"""))
 cells.append(nbformat.v4.new_code_cell("""\
 # ── Paths ──
 H5_ROOT = Path("/cluster/scratch/aoezkan/planeseg/scannetpp/inference")
-DATASET_DIR = "/cluster/scratch/aoezkan/planeseg/dataset/scannetpp"
-RGB_ROOT = "/cluster/project/cvg/Shared_datasets/scannet++/data"
+DATASET_DIR = scannetpp_rend_plane_path
+RGB_ROOT = os.path.join(scannetpp_path, "data")
 MODEL_PATH = "/cluster/scratch/ayavuz/moge_mixed_output_476644_fixed_cosLR_singlePhase_mixed_HiRes/model_epoch3.pt"
 NUM_TOKENS = 1600
 H5_ZEROPLANE = "zeroplane_mixed_h5_dust3r_75k_h5"

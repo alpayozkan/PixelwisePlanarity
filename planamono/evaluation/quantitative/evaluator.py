@@ -359,7 +359,7 @@ def evaluate_planarity(
     """
     # Get paths from environment if not provided
     if rgb_root is None:
-        rgb_root = os.environ.get("SCANNETPP_RGB_ROOT", "/cluster/project/cvg/Shared_datasets/scannet++/data")
+        rgb_root = os.environ.get("SCANNETPP_RGB_ROOT", os.path.join(scannetpp_path, "data"))
     if baseline_root is None:
         baseline_root = os.environ.get("BASELINE_ROOT", "/cluster/scratch/ohatipoglu/dataset/scannetpp")
 

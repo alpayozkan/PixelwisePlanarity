@@ -50,7 +50,7 @@ from planamono.inference.planarity.moge_inference_neck_head import (
     MoGePlanarityNeckHeadInference,
     MoGePlanarityProjNeckHeadInference,
 )
-from planamono.paths import repo_path, scannetpp_rend_plane_path
+from planamono.paths import repo_path, scannetpp_path, scannetpp_rend_plane_path
 
 ARCH_CLASSES = {
     "4head": MoGePlanarityInference,
@@ -121,8 +121,8 @@ class Timer:
 DEFAULT_CONFIG = {
     "model_path": "/cluster/scratch/aoezkan/moge_runs/scannetpp/moge_scannetpp_4heads_v3/final_planarity_4heads_model.pt",
     "output_root": "/cluster/scratch/aoezkan/planeseg/scannetpp/inference/moge_ours_v3_h5",
-    "dataset_dir": "/cluster/scratch/aoezkan/planeseg/dataset/scannetpp",
-    "rgb_root": "/cluster/project/cvg/Shared_datasets/scannet++/data",
+    "dataset_dir": scannetpp_rend_plane_path,
+    "rgb_root": os.path.join(scannetpp_path, "data"),
 
     # Inference parameters
     "num_tokens": 1024,

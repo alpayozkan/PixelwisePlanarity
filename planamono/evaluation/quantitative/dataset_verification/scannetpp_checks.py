@@ -17,12 +17,14 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
+from planamono.paths import scannetpp_path, scannetpp_rend_plane_path
+
 # ============================================================
 # Default paths (same as evaluate_all_baselines.py)
 # ============================================================
 DEFAULT_PATHS = {
-    "rgb_root": "/cluster/project/cvg/Shared_datasets/scannet++/data",
-    "gt_root": "/cluster/scratch/aoezkan/planeseg/dataset/scannetpp",
+    "rgb_root": os.path.join(scannetpp_path, "data"),
+    "gt_root": scannetpp_rend_plane_path,
     "mesh_root": "/cluster/scratch/aoezkan/planeseg/dataset_mesh/scannetpp/",
     "split_dir": os.path.join(
         os.path.dirname(os.path.dirname(__file__)), "../../splits/scannetpp"

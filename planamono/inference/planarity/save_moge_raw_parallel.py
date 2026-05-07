@@ -44,7 +44,7 @@ from planamono.inference.planarity.moge_inference_neck_head import (
     MoGePlanarityNeckHeadInference,
     MoGePlanarityProjNeckHeadInference,
 )
-from planamono.paths import repo_path, scannetpp_rend_plane_path
+from planamono.paths import repo_path, scannetpp_path, scannetpp_rend_plane_path
 
 ARCH_CLASSES = {
     "4head": MoGePlanarityInference,
@@ -299,9 +299,9 @@ def main():
     parser.add_argument("--model_path", type=str, required=True)
     parser.add_argument("--output_root", type=str, required=True)
     parser.add_argument("--dataset_dir", type=str,
-                        default="/cluster/scratch/aoezkan/planeseg/dataset/scannetpp")
+                        default=scannetpp_rend_plane_path)
     parser.add_argument("--rgb_root", type=str,
-                        default="/cluster/project/cvg/Shared_datasets/scannet++/data")
+                        default=os.path.join(scannetpp_path, "data"))
     parser.add_argument("--num_tokens", type=int, default=1600)
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--split", type=str, default="test",

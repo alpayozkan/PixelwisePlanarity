@@ -53,11 +53,13 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
+from planamono.paths import scannetpp_path, scannetpp_rend_plane_path
+
 # ============================================================
 # PATHS (same as evaluate_all_baselines.py)
 # ============================================================
-RGB_ROOT = "/cluster/project/cvg/Shared_datasets/scannet++/data"
-GT_ROOT = "/cluster/scratch/aoezkan/planeseg/dataset/scannetpp"  # plane + depth H5s
+RGB_ROOT = os.path.join(scannetpp_path, "data")
+GT_ROOT = scannetpp_rend_plane_path  # plane + depth H5s
 SPLIT_DIR = os.path.join(os.path.dirname(__file__), "../../splits/scannetpp")
 
 # Prediction H5 roots (for --check-predictions)

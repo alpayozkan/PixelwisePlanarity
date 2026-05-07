@@ -25,15 +25,15 @@ from collections import OrderedDict
 
 sys.path.insert(0, os.path.join(os.path.expanduser("~"), "planeseg", "PixelwisePlanarity"))
 from planamono.shared.datasets.scannetpp import ScanNetPPPlaneDataset
-from planamono.paths import repo_path, scannetpp_rend_plane_path
+from planamono.paths import repo_path, scannetpp_path, scannetpp_rend_plane_path
 
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
 H5_ROOT = "/cluster/scratch/aoezkan/planeseg/scannetpp/inference"
 EVAL_ROOT = "/cluster/scratch/aoezkan/planeseg/scannetpp/eval"
-DATASET_DIR = "/cluster/scratch/aoezkan/planeseg/dataset/scannetpp"
-RGB_ROOT = "/cluster/project/cvg/Shared_datasets/scannet++/data"
+DATASET_DIR = scannetpp_rend_plane_path
+RGB_ROOT = os.path.join(scannetpp_path, "data")
 
 METHODS = OrderedDict([
     ("moge_ep6_v5seg", {

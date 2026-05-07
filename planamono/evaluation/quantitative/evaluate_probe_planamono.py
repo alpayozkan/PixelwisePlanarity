@@ -36,7 +36,7 @@ from typing import Optional, Tuple
 from joblib import Parallel, delayed
 
 from planamono.shared.datasets.scannetpp import ScanNetPPPlaneDataset
-from planamono.paths import repo_path, scannetpp_rend_plane_path
+from planamono.paths import repo_path, scannetpp_path, scannetpp_rend_plane_path
 
 from eval_utils import (
     Timer,
@@ -62,7 +62,7 @@ csv_out_dir = Path("/cluster/scratch/aoezkan/planeseg/scannetpp/eval") / exp_nam
 h5_root = "/cluster/scratch/ayavuz/dataset/probe_planamono_scannetpp"
 h5_filename = "rendered_v2.h5"
 
-dataset_dir = "/cluster/scratch/aoezkan/planeseg/dataset/scannetpp"
+dataset_dir = scannetpp_rend_plane_path
 
 
 # ============================================================
@@ -198,7 +198,7 @@ if __name__ == "__main__":
     # Load dataset for GT
     print("\n==> Loading dataset")
     val_dataset = ScanNetPPPlaneDataset(
-        rgb_root="/cluster/project/cvg/Shared_datasets/scannet++/data",
+        rgb_root=os.path.join(scannetpp_path, "data"),
         plane_label_root=scannetpp_rend_plane_path,
         sem_label_root=os.path.join(dataset_dir, ""),
         depth_label_root=scannetpp_rend_plane_path,

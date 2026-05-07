@@ -17,7 +17,7 @@ from planamono.shared.datasets.scannetpp import ScanNetPPPlaneDataset
 from planamono.shared.segmentation import compute_vectorized_planar_segments_v4
 from planamono.shared.utils.label_utils import remap_labels
 from planamono.inference.planarity.moge_inference import MoGePlanarityInference
-from planamono.paths import repo_path, scannetpp_rend_plane_path
+from planamono.paths import repo_path, scannetpp_path, scannetpp_rend_plane_path
 
 
 # ============================================================
@@ -25,7 +25,7 @@ from planamono.paths import repo_path, scannetpp_rend_plane_path
 # ============================================================
 
 model_path = "/cluster/scratch/aoezkan/moge_runs/scannetpp/moge_scannetpp_4heads_v3/final_planarity_4heads_model.pt"
-dataset_dir = "/cluster/scratch/aoezkan/planeseg/dataset/scannetpp"
+dataset_dir = scannetpp_rend_plane_path
 num_workers = 4
 
 max_scenes_val = 1  # Only 1 scene for profiling
@@ -173,7 +173,7 @@ if __name__ == "__main__":
     timer = DetailedTimer()
 
     val_dataset = ScanNetPPPlaneDataset(
-        rgb_root="/cluster/project/cvg/Shared_datasets/scannet++/data",
+        rgb_root=os.path.join(scannetpp_path, "data"),
         plane_label_root=scannetpp_rend_plane_path,
         sem_label_root=os.path.join(dataset_dir, ""),
         depth_label_root=scannetpp_rend_plane_path,

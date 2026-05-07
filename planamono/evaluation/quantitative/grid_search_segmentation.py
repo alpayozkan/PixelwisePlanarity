@@ -35,7 +35,7 @@ from PIL import Image
 from planamono.shared.datasets.scannetpp import ScanNetPPPlaneDataset
 from planamono.shared.segmentation import compute_vectorized_planar_segments_v5
 from planamono.shared.utils.label_utils import remap_labels
-from planamono.paths import repo_path, scannetpp_rend_plane_path
+from planamono.paths import repo_path, scannetpp_path, scannetpp_rend_plane_path
 
 from eval_utils import (
     Timer,
@@ -118,9 +118,9 @@ def run_cache(cfg: dict):
         yaml.dump(cfg, f, default_flow_style=False)
 
     # Load dataset
-    dataset_dir = "/cluster/scratch/aoezkan/planeseg/dataset/scannetpp"
+    dataset_dir = scannetpp_rend_plane_path
     dataset = ScanNetPPPlaneDataset(
-        rgb_root="/cluster/project/cvg/Shared_datasets/scannet++/data",
+        rgb_root=os.path.join(scannetpp_path, "data"),
         plane_label_root=scannetpp_rend_plane_path,
         sem_label_root=dataset_dir,
         depth_label_root=scannetpp_rend_plane_path,

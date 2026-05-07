@@ -43,7 +43,7 @@ from PIL import Image
 
 from planamono.shared.utils.label_utils import remap_labels
 from planamono.inference.planarity.moge_inference_v1 import MoGePlanarityInference
-from planamono.paths import repo_path, scannetpp_rend_plane_path
+from planamono.paths import repo_path, scannetpp_path, scannetpp_rend_plane_path
 
 import cc3d
 
@@ -56,8 +56,8 @@ MODEL_PATH = "/cluster/scratch/ayavuz/moge_mixed_output_bce_476644_fixed/model_e
 NUM_TOKENS = 1024
 
 # ScanNet++ paths
-SCANNETPP_DATASET_DIR = "/cluster/scratch/aoezkan/planeseg/dataset/scannetpp"
-SCANNETPP_RGB_ROOT = "/cluster/project/cvg/Shared_datasets/scannet++/data"
+SCANNETPP_DATASET_DIR = scannetpp_rend_plane_path
+SCANNETPP_RGB_ROOT = os.path.join(scannetpp_path, "data")
 
 # Hypersim paths (unified dataset from paths.py)
 HYPERSIM_ROOT = "/cluster/scratch/aoezkan/planeseg/dataset/hypersim"

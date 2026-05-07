@@ -21,7 +21,12 @@ class ScanNetPPPlaneDataset(Dataset):
                  split='train',
                  image_height=512,
                  image_width=768,
-                 max_scenes=None):
+                 max_scenes=None,
+                 require_gt=True):
+        # require_gt=False: skip the rendered plane/sem/depth H5 existence checks and
+        # read frame IDs from the pose JSON instead of from rendered.h5. Use this for
+        # inference-only runs where ground truth is not available. __getitem__ already
+        # handles missing GT via try/except and zero-fill.
         self.rgb_root = rgb_root
         self.plane_label_root = plane_label_root
         self.sem_label_root = sem_label_root
@@ -29,6 +34,7 @@ class ScanNetPPPlaneDataset(Dataset):
         self.image_height = image_height
         self.image_width = image_width
         self.split = split
+        self.require_gt = require_gt
 
         # Load split
         # split_file = os.path.join(split_txt_dir, f"nvs_sem_{split}_with_planes.txt")
@@ -53,23 +59,35 @@ class ScanNetPPPlaneDataset(Dataset):
             depth_h5 = os.path.join(depth_label_root, scene_id, "rendered_depth.h5")
             pose_file = os.path.join(rgb_root, scene_id, "iphone", "pose_intrinsic_imu.json")
 
-            # Skip scenes if anything missing
-            if not (os.path.isdir(rgb_dir) and os.path.exists(plane_h5)
-                    and os.path.exists(sem_h5) and os.path.exists(depth_h5)
-                    and os.path.exists(pose_file)):
-                print(f"[SKIP] Missing one or more required files for scene: {scene_id}")
+            # RGB dir + pose JSON are always required
+            if not (os.path.isdir(rgb_dir) and os.path.exists(pose_file)):
+                print(f"[SKIP] Missing RGB or pose file for scene: {scene_id}")
+                continue
+            # Rendered GT files are required only when require_gt=True
+            if require_gt and not (os.path.exists(plane_h5)
+                                   and os.path.exists(sem_h5)
+                                   and os.path.exists(depth_h5)):
+                print(f"[SKIP] Missing rendered GT files for scene: {scene_id}")
                 continue
 
             # Load per-frame intrinsics from JSON
             with open(pose_file, "r") as f:
                 pose_data = json.load(f)
 
-            try:
-                with h5py.File(plane_h5, "r") as f:
-                    frame_ids = [fid.decode("utf-8") for fid in f["frame_ids"][:]]
-            except Exception as e:
-                print(f"[SKIP] Error reading frame_ids from {plane_h5}: {e}")
-                continue
+            # Frame IDs: prefer rendered.h5 ordering; fall back to pose JSON keys
+            frame_ids = None
+            if os.path.exists(plane_h5):
+                try:
+                    with h5py.File(plane_h5, "r") as f:
+                        frame_ids = [fid.decode("utf-8") for fid in f["frame_ids"][:]]
+                except Exception as e:
+                    print(f"[WARN] Error reading frame_ids from {plane_h5}: {e}")
+            if frame_ids is None:
+                if require_gt:
+                    print(f"[SKIP] Could not read frame_ids and require_gt=True for {scene_id}")
+                    continue
+                frame_ids = natsorted(pose_data.keys())
+                print(f"[INFO] Using {len(frame_ids)} frame_ids from pose JSON for {scene_id}")
 
             scene_frame_count = 0
             for idx, fid in enumerate(frame_ids):
@@ -100,37 +118,44 @@ class ScanNetPPPlaneDataset(Dataset):
     def __getitem__(self, idx):
         rgb_path, plane_h5, sem_h5, depth_h5, frame_idx, K, c2w = self.valid_pairs[idx]
 
-        # --- Plane label ---
-        try:
-            with h5py.File(plane_h5, "r") as f:
-                # plane = f["rendered_planes"][frame_idx]
-                plane = f["planes"][frame_idx]
-            plane[plane < 0] = 0
-            plane = torch.from_numpy(plane.astype(np.int32)).unsqueeze(0)  # [1, H, W]
-            H, W = plane.shape[1:]
-        except Exception as e:
-            print(f"[WARN] Failed plane label from {plane_h5} [{frame_idx}]: {e}")
+        if not self.require_gt:
+            # Inference-only: skip GT reads entirely (avoids per-frame [WARN] spam and h5py overhead).
             H, W = self.image_height, self.image_width
             plane = torch.zeros((1, H, W), dtype=torch.float32)
-
-        # --- Semantic label ---
-        try:
-            with h5py.File(sem_h5, "r") as f:
-                # sem = f["rendered_sem"][frame_idx]
-                sem = f["sem"][frame_idx]
-            sem = torch.from_numpy(sem.astype(np.int64)).unsqueeze(0)  # [1, H, W]
-        except Exception as e:
-            print(f"[WARN] Failed semantic label from {sem_h5} [{frame_idx}]: {e}")
             sem = torch.zeros((1, H, W), dtype=torch.int64)
-
-        # --- Depth ---
-        try:
-            with h5py.File(depth_h5, "r") as f:
-                depth = f["depth"][frame_idx].astype(np.float32) / 1000.0
-            depth = torch.from_numpy(depth).unsqueeze(0)  # [1, H, W]
-        except Exception as e:
-            print(f"[WARN] Failed depth from {depth_h5} [{frame_idx}]: {e}")
             depth = torch.zeros((1, H, W), dtype=torch.float32)
+        else:
+            # --- Plane label ---
+            try:
+                with h5py.File(plane_h5, "r") as f:
+                    # plane = f["rendered_planes"][frame_idx]
+                    plane = f["planes"][frame_idx]
+                plane[plane < 0] = 0
+                plane = torch.from_numpy(plane.astype(np.int32)).unsqueeze(0)  # [1, H, W]
+                H, W = plane.shape[1:]
+            except Exception as e:
+                print(f"[WARN] Failed plane label from {plane_h5} [{frame_idx}]: {e}")
+                H, W = self.image_height, self.image_width
+                plane = torch.zeros((1, H, W), dtype=torch.float32)
+
+            # --- Semantic label ---
+            try:
+                with h5py.File(sem_h5, "r") as f:
+                    # sem = f["rendered_sem"][frame_idx]
+                    sem = f["sem"][frame_idx]
+                sem = torch.from_numpy(sem.astype(np.int64)).unsqueeze(0)  # [1, H, W]
+            except Exception as e:
+                print(f"[WARN] Failed semantic label from {sem_h5} [{frame_idx}]: {e}")
+                sem = torch.zeros((1, H, W), dtype=torch.int64)
+
+            # --- Depth ---
+            try:
+                with h5py.File(depth_h5, "r") as f:
+                    depth = f["depth"][frame_idx].astype(np.float32) / 1000.0
+                depth = torch.from_numpy(depth).unsqueeze(0)  # [1, H, W]
+            except Exception as e:
+                print(f"[WARN] Failed depth from {depth_h5} [{frame_idx}]: {e}")
+                depth = torch.zeros((1, H, W), dtype=torch.float32)
 
         # --- RGB ---
         image = cv2.imread(rgb_path)

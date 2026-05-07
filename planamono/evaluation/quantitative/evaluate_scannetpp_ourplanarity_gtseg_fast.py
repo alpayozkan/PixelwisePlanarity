@@ -26,7 +26,7 @@ from joblib import Parallel, delayed
 from planamono.shared.datasets.scannetpp import ScanNetPPPlaneDataset
 from planamono.shared.utils.label_utils import remap_labels
 from planamono.inference.planarity.moge_inference import MoGePlanarityInference
-from planamono.paths import repo_path, scannetpp_rend_plane_path
+from planamono.paths import repo_path, scannetpp_path, scannetpp_rend_plane_path
 
 from eval_utils import (
     Timer,
@@ -60,7 +60,7 @@ h5_root = f"/cluster/scratch/aoezkan/planeseg/scannetpp/inference/{exp_name}_h5"
 model_path = os.environ.get("MODEL_PATH",
     "/cluster/scratch/ayavuz/moge_mixed_output_bce_476644_fixed/model_epoch6.pt"
 )
-dataset_dir = "/cluster/scratch/aoezkan/planeseg/dataset/scannetpp"
+dataset_dir = scannetpp_rend_plane_path
 num_workers = 4
 
 max_scenes_val = None  # Use all scenes
@@ -145,7 +145,7 @@ if __name__ == "__main__":
     timer = Timer()
 
     val_dataset = ScanNetPPPlaneDataset(
-        rgb_root="/cluster/project/cvg/Shared_datasets/scannet++/data",
+        rgb_root=os.path.join(scannetpp_path, "data"),
         plane_label_root=scannetpp_rend_plane_path,
         sem_label_root=os.path.join(dataset_dir, ""),
         depth_label_root=scannetpp_rend_plane_path,

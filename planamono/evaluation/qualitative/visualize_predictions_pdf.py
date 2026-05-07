@@ -42,10 +42,12 @@ from matplotlib.backends.backend_pdf import PdfPages
 from tqdm import tqdm
 from PIL import Image
 
+from planamono.paths import scannetpp_path, scannetpp_rend_plane_path
+
 # Adjust these paths based on your setup
 PRED_ROOT = Path("/cluster/scratch/aoezkan/planeseg/scannetpp/inference/moge_mixed_bce_h5")
-GT_ROOT = Path("/cluster/scratch/aoezkan/planeseg/dataset/scannetpp")
-RGB_ROOT = Path("/cluster/project/cvg/Shared_datasets/scannet++/data")
+GT_ROOT = Path(scannetpp_rend_plane_path)
+RGB_ROOT = Path(os.path.join(scannetpp_path, "data"))
 OUTPUT_DIR = Path("/cluster/scratch/aoezkan/planeseg/scannetpp/visualizations")
 
 

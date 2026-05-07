@@ -48,7 +48,7 @@ from planamono.evaluation.quantitative.eval_utils import (
     save_results_csv,
     save_runtime,
 )
-from planamono.paths import repo_path
+from planamono.paths import repo_path, scannetpp_path, scannetpp_rend_plane_path
 
 
 # ============================================================
@@ -151,10 +151,10 @@ def _get_dataset_configs(planrectr_root: str) -> Dict:
             "planrectr_root": os.path.join(planrectr_root, "scannetpp"),
             "dataset_class": "ScanNetPPPlaneDataset",
             "dataset_kwargs": {
-                "rgb_root": "/cluster/project/cvg/Shared_datasets/scannet++/data",
-                "plane_label_root": "/cluster/scratch/aoezkan/planeseg/dataset/scannetpp",
-                "sem_label_root": "/cluster/scratch/aoezkan/planeseg/dataset/scannetpp",
-                "depth_label_root": "/cluster/scratch/aoezkan/planeseg/dataset/scannetpp",
+                "rgb_root": os.path.join(scannetpp_path, "data"),
+                "plane_label_root": scannetpp_rend_plane_path,
+                "sem_label_root": scannetpp_rend_plane_path,
+                "depth_label_root": scannetpp_rend_plane_path,
                 "split_txt_dir": os.path.join(splits_root, "scannetpp"),
                 "split": "test",
                 "image_height": 480,

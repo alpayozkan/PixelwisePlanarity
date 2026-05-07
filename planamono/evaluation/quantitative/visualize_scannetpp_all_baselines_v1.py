@@ -34,7 +34,7 @@ from tqdm import tqdm
 import torch
 from torch.utils.data import DataLoader
 
-from planamono.paths import repo_path, scannetpp_rend_plane_path
+from planamono.paths import repo_path, scannetpp_path, scannetpp_rend_plane_path
 from planamono.shared.datasets.scannetpp import ScanNetPPPlaneDataset
 from planamono.shared.plane_fitting import (
     backproject_v1 as backproject,
@@ -59,8 +59,8 @@ INLIER_RATIO_THRESHOLD = INLIER_RATIO_GATE  # Use same threshold as evaluation
 # Output paths
 VIS_ROOT = Path("/cluster/scratch/aoezkan/planeseg/scannetpp/visualizations/inliers")
 H5_ROOT = Path("/cluster/scratch/aoezkan/planeseg/scannetpp/inference")
-GT_ROOT = Path("/cluster/scratch/aoezkan/planeseg/dataset/scannetpp")
-DATASET_DIR = "/cluster/scratch/aoezkan/planeseg/dataset/scannetpp"
+GT_ROOT = Path(scannetpp_rend_plane_path)
+DATASET_DIR = scannetpp_rend_plane_path
 
 # Build METHODS from evaluate_all_baselines.py, adding visualization-specific keys
 # "uses_rendered_h5" indicates whether to use rendered.h5 (GT) or planes.h5 (predictions)
@@ -587,7 +587,7 @@ def main():
     # Load dataset
     print("\n==> Loading dataset")
     val_dataset = ScanNetPPPlaneDataset(
-        rgb_root="/cluster/project/cvg/Shared_datasets/scannet++/data",
+        rgb_root=os.path.join(scannetpp_path, "data"),
         plane_label_root=scannetpp_rend_plane_path,
         sem_label_root=os.path.join(DATASET_DIR, ""),
         depth_label_root=scannetpp_rend_plane_path,

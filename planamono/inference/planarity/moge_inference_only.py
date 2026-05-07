@@ -52,8 +52,8 @@ MODEL_PATH = "/cluster/scratch/aoezkan/moge_runs/scannetpp/moge_scannetpp_4heads
 
 H5_ROOT = "/cluster/scratch/aoezkan/planeseg/scannetpp/inference/moge_ours_h5_only"
 
-DATASET_DIR = "/cluster/scratch/aoezkan/planeseg/dataset/scannetpp"
-RGB_ROOT = "/cluster/project/cvg/Shared_datasets/scannet++/data"
+DATASET_DIR = scannetpp_rend_plane_path
+RGB_ROOT = os.path.join(scannetpp_path, "data")
 
 NUM_TOKENS = 1024
 MAX_SCENES_VAL = None   # set to int for debugging

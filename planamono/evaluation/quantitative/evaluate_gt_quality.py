@@ -38,6 +38,7 @@ from tqdm import tqdm
 from planamono.shared.plane_fitting import backproject_v1 as backproject
 from planamono.paths import (
     repo_path,
+    scannetpp_path,
     scannetpp_rend_plane_path,
 )
 
@@ -87,7 +88,7 @@ METHODS = {
 }
 
 # ScanNet++ shared paths (used for depth/sem/rgb regardless of GT source)
-SCANNETPP_RGB_ROOT = "/cluster/project/cvg/Shared_datasets/scannet++/data"
+SCANNETPP_RGB_ROOT = os.path.join(scannetpp_path, "data")
 SCANNETPP_SEM_ROOT = scannetpp_rend_plane_path
 SCANNETPP_DEPTH_ROOT = scannetpp_rend_plane_path
 SCANNETPP_SPLIT_DIR = os.path.join(repo_path, "splits", "scannetpp")

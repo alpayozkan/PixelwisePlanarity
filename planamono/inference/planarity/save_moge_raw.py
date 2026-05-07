@@ -41,7 +41,7 @@ from planamono.inference.planarity.moge_inference_neck_head import (
     MoGePlanarityNeckHeadInference,
     MoGePlanarityProjNeckHeadInference,
 )
-from planamono.paths import repo_path, scannetpp_rend_plane_path
+from planamono.paths import repo_path, scannetpp_path, scannetpp_rend_plane_path
 
 ARCH_CLASSES = {
     "4head": MoGePlanarityInference,
@@ -112,8 +112,8 @@ class Timer:
 DEFAULT_CONFIG = {
     "model_path": "/cluster/scratch/ayavuz/moge_mixed_output_476644_fixed_cosLR_singlePhase_mixed_HiRes/model_epoch3.pt",
     "output_root": "/cluster/scratch/aoezkan/planeseg/scannetpp/inference_raw/moge_hires_ep3_raw",
-    "dataset_dir": "/cluster/scratch/aoezkan/planeseg/dataset/scannetpp",
-    "rgb_root": "/cluster/project/cvg/Shared_datasets/scannet++/data",
+    "dataset_dir": scannetpp_rend_plane_path,
+    "rgb_root": os.path.join(scannetpp_path, "data"),
     "num_tokens": 1600,
     "batch_size": 16,
     "split": "test",

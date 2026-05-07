@@ -56,6 +56,7 @@ from planamono.evaluation.quantitative.eval_utils import (
     save_results_csv,
     save_runtime,
 )
+from planamono.paths import scannetpp_rend_plane_path
 
 
 # ============================================================
@@ -67,7 +68,7 @@ METRIC3D_HYPERSIM = "/cluster/scratch/ayavuz/dataset/metric3d_hypersim"
 
 # GT depth root for ScanNet++ — same path used by evaluate_planercnn.py.
 # rendered_depth.h5 stores depth in mm (uint16); divide by 1000 for meters.
-GT_DEPTH_ROOT_SCANNETPP = "/cluster/scratch/aoezkan/planeseg/dataset/scannetpp"
+GT_DEPTH_ROOT_SCANNETPP = scannetpp_rend_plane_path
 
 EVAL_ROOT_SCANNETPP = Path("/cluster/scratch/aoezkan/planeseg/scannetpp/eval")
 EVAL_ROOT_HYPERSIM = Path("/cluster/scratch/aoezkan/planeseg/hypersim/eval")

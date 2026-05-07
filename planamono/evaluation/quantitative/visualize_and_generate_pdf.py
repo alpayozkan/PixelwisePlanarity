@@ -29,7 +29,7 @@ from typing import Dict, List, Optional, Tuple
 from tqdm import tqdm
 import torch
 
-from planamono.paths import repo_path, scannetpp_rend_plane_path
+from planamono.paths import repo_path, scannetpp_path, scannetpp_rend_plane_path
 from planamono.shared.plane_fitting import (
     backproject_v1 as backproject,
     fit_planes_per_label_v1,
@@ -83,8 +83,8 @@ def get_dataset_config(dataset_name: str) -> Dict:
             "thresholds": SCANNETPP_THRESHOLDS,
             "vis_root": Path("/cluster/scratch/aoezkan/planeseg/scannetpp/visualizations/inliers"),
             "h5_root": Path("/cluster/scratch/aoezkan/planeseg/scannetpp/inference"),
-            "gt_root": Path("/cluster/scratch/aoezkan/planeseg/dataset/scannetpp"),
-            "dataset_dir": "/cluster/scratch/aoezkan/planeseg/dataset/scannetpp",
+            "gt_root": Path(scannetpp_rend_plane_path),
+            "dataset_dir": scannetpp_rend_plane_path,
             "ransac_iterations": SCANNETPP_RANSAC_ITERATIONS,
             "inlier_ratio_gate": SCANNETPP_INLIER_RATIO_GATE,
             "exp_ver": SCANNETPP_EXP_VER,
@@ -145,7 +145,7 @@ def load_dataset(config: Dict, split: str = "test", max_scenes: int = None):
     if config["name"] == "scannetpp":
         from planamono.shared.datasets.scannetpp import ScanNetPPPlaneDataset
         return ScanNetPPPlaneDataset(
-            rgb_root="/cluster/project/cvg/Shared_datasets/scannet++/data",
+            rgb_root=os.path.join(scannetpp_path, "data"),
             plane_label_root=scannetpp_rend_plane_path,
             sem_label_root=os.path.join(config["dataset_dir"], ""),
             depth_label_root=scannetpp_rend_plane_path,

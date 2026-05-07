@@ -26,7 +26,8 @@ hypersim_params_path = '/cluster/scratch/ayavuz/dataset/HP_all/Hypersim_params'
 # hypersim_rendered_path = '/cluster/scratch/ayavuz/dataset/Hypersim_rendered'
 
 # ============ ScanNet++ rendered data ============
-scannetpp_rend_plane_path = '/cluster/scratch/aoezkan/planeseg/dataset/scannetpp'
+# scannetpp_rend_plane_path = '/cluster/scratch/aoezkan/planeseg/dataset/scannetpp'  # missing on this fs
+scannetpp_rend_plane_path = '/cluster/scratch/ayavuz/dataset/scannetpp'
 
 # Legacy paths (for backward compatibility)
 hypersim_rend_plane_path = '/cluster/scratch/aoezkan/planeseg/dataset/Hypersim'

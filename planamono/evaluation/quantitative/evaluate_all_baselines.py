@@ -29,7 +29,7 @@ from typing import Dict, Optional, Tuple
 from joblib import Parallel, delayed
 
 from planamono.shared.datasets.scannetpp import ScanNetPPPlaneDataset
-from planamono.paths import repo_path, scannetpp_rend_plane_path
+from planamono.paths import repo_path, scannetpp_path, scannetpp_rend_plane_path
 
 from planamono.evaluation.quantitative.eval_utils import (
     Timer,
@@ -55,7 +55,7 @@ N_JOBS = min(16, os.cpu_count())
 # Paths
 EVAL_ROOT = Path("/cluster/scratch/aoezkan/planeseg/scannetpp/eval")
 H5_ROOT = Path("/cluster/scratch/aoezkan/planeseg/scannetpp/inference")
-DATASET_DIR = "/cluster/scratch/aoezkan/planeseg/dataset/scannetpp"
+DATASET_DIR = scannetpp_rend_plane_path
 
 # Experiment version (used in exp_name for all methods)
 # EXP_VER = "v5"  # Unified version with proper non-planar label handling
@@ -1057,7 +1057,7 @@ def main():
         # Load dataset once
         print("\n==> Loading dataset")
         val_dataset = ScanNetPPPlaneDataset(
-            rgb_root="/cluster/project/cvg/Shared_datasets/scannet++/data",
+            rgb_root=os.path.join(scannetpp_path, "data"),
             plane_label_root=scannetpp_rend_plane_path,
             sem_label_root=os.path.join(DATASET_DIR, ""),
             depth_label_root=scannetpp_rend_plane_path,

@@ -26,7 +26,7 @@ from tqdm import tqdm
 from joblib import Parallel, delayed
 
 from planamono.shared.datasets.scannetpp import ScanNetPPPlaneDataset
-from planamono.paths import repo_path, scannetpp_rend_plane_path
+from planamono.paths import repo_path, scannetpp_path, scannetpp_rend_plane_path
 
 from eval_utils import (
     Timer,
@@ -55,7 +55,7 @@ csv_out_dir = f"/cluster/scratch/aoezkan/planeseg/scannetpp/eval/{exp_name}"
 # ZeroPlane predictions H5 root
 zeroplane_h5_root = "/cluster/scratch/aoezkan/planeseg/scannetpp/inference/zeroplane_h5"
 
-dataset_dir = "/cluster/scratch/aoezkan/planeseg/dataset/scannetpp"
+dataset_dir = scannetpp_rend_plane_path
 num_workers = 4
 
 max_scenes_val = None  # Use all scenes
@@ -161,7 +161,7 @@ if __name__ == "__main__":
     timer = Timer()
 
     val_dataset = ScanNetPPPlaneDataset(
-        rgb_root="/cluster/project/cvg/Shared_datasets/scannet++/data",
+        rgb_root=os.path.join(scannetpp_path, "data"),
         plane_label_root=scannetpp_rend_plane_path,
         sem_label_root=os.path.join(dataset_dir, ""),
         depth_label_root=scannetpp_rend_plane_path,

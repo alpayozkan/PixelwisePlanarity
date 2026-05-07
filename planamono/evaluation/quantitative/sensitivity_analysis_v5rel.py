@@ -45,7 +45,7 @@ from planamono.evaluation.quantitative.eval_utils import (
     save_results_csv,
 )
 from planamono.shared.datasets.scannetpp import ScanNetPPPlaneDataset
-from planamono.paths import repo_path, scannetpp_rend_plane_path
+from planamono.paths import repo_path, scannetpp_path, scannetpp_rend_plane_path
 
 
 # ============================================================
@@ -56,8 +56,8 @@ THRESHOLDS = (0.001, 0.005, 0.01)  # 1mm, 5mm, 10mm
 RANSAC_ITERATIONS = 200
 INLIER_RATIO_GATE = 0.9
 
-DATASET_DIR = "/cluster/scratch/aoezkan/planeseg/dataset/scannetpp"
-RGB_ROOT = "/cluster/project/cvg/Shared_datasets/scannet++/data"
+DATASET_DIR = scannetpp_rend_plane_path
+RGB_ROOT = os.path.join(scannetpp_path, "data")
 SPLIT_DIR = os.path.join(repo_path, "splits", "scannetpp")
 
 # Baseline: MoGe 4ds ep2 v5_rel
