@@ -4,17 +4,17 @@
 repo_path = '/cluster/home/ayavuz/PixelwisePlanarity/planamono/'
 
 # dataset dirs
-hypersim_path = '/cluster/project/cvg/Shared_datasets/Hypersim'
+hypersim_path = '/cluster/scratch/ayavuz/dataset/HP_all/Hypersim'
 scannetpp_path = '/cluster/project/cvg/Shared_datasets/scannet++'
 scannetppv2_path = '/cluster/project/cvg/Shared_datasets/scannetpp_v2'
 
 # our plane gt dataset dirs
-hypersim_plane_path = '/cluster/scratch/ayavuz/dataset/Hypersim_ours'
-scannetpp_plane_path = '/cluster/scratch/aoezkan/planeseg/dataset/scannetpp'
+hypersim_plane_path = '/cluster/scratch/ayavuz/dataset/HP_all/Hypersim'
+scannetpp_plane_path = '/cluster/scratch/ayavuz/dataset/scannetpp'
 
 # rendered data
-hypersim_rend_plane_path = '/cluster/scratch/aoezkan/planeseg/dataset/Hypersim'
-scannetpp_rend_plane_path = '/cluster/scratch/aoezkan/planeseg/dataset/scannetpp'
+hypersim_rend_plane_path = '/cluster/scratch/ayavuz/dataset/HP_all/Hypersim'
+scannetpp_rend_plane_path = '/cluster/scratch/ayavuz/dataset/scannetpp'
 
 # VKITTI2 dataset dirs
 vkitti2_data_path = '/cluster/scratch/ayavuz/dataset/vkitti2'
