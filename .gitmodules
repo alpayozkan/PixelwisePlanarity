@@ -1,3 +1,7 @@
 [submodule "planamono/moge"]
 	path = planamono/moge
 	url = git@github.com:Ahmetcanyvz/MoGe-private.git
+[submodule "planamono/metric3d"]
+	path = planamono/metric3d
+	url = https://github.com/Ahmetcanyvz/metric3d_private.git
+	branch = cluster_update_planamono_metric3d
