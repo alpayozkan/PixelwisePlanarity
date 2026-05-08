@@ -34,6 +34,17 @@ Conventions
   predictions don't carry scores, so we use **plane area (pixel count) as
   proxy** — predictions sorted descending. This is documented in
   ``compute_benchmark_metrics``.
+
+Densification details
+---------------------
+``_densify_labels`` produces a per-frame **dynamic non-planar sentinel**:
+the dense seg uses labels 0..N-1 for planes and N for non-planar, where N
+is the number of distinct planes in that frame. Each metric kernel takes
+``pred_plane_num`` / ``gt_plane_num`` explicitly so its inner ``range(N)``
+loops scale to the actual plane count. This avoids the
+``NONPLANAR_IDX=20`` over-cap that silently dropped MoGe predictions
+(MoGe routinely produces 50+ planes per frame; ZeroPlane is bounded by its
+20-query budget by construction).
 """
 
 from __future__ import annotations
@@ -50,7 +61,11 @@ import torch
 # Constants
 # ---------------------------------------------------------------------------
 
-NONPLANAR_IDX = 20      # ZeroPlane convention; matches num_queries=20
+# ZeroPlane uses 20 (= num_queries) as the non-planar sentinel in its own H5
+# output. The driver's `_load_zeroplane_scene` remaps to planamono's 0=non-
+# planar convention before any metric is computed. Inside this module the
+# non-planar sentinel is **dynamic per frame** — see `_densify_labels`.
+ZP_NONPLANAR_IDX = 20
 
 # ZeroPlane indoor depth recall: 13 thresholds @ 5 cm stride, 0..0.6 m
 INDOOR_DEPTH_THRESHOLDS = np.arange(13) * 0.05               # m
@@ -71,17 +86,23 @@ AP_DEPTH_THRESHOLDS = (0.2, 0.3, 0.6, 0.9)
 def _densify_labels(
     seg: np.ndarray,
     plane_params: Optional[Dict[int, np.ndarray]] = None,
-    nonplanar_idx: int = NONPLANAR_IDX,
-) -> Tuple[np.ndarray, Optional[np.ndarray], Dict[int, int]]:
-    """Remap an arbitrary-int label map (0 = non-planar) to dense 0..N-1
-    with non-planar set to ``nonplanar_idx``.
+) -> Tuple[np.ndarray, Optional[np.ndarray], Dict[int, int], int]:
+    """Remap an arbitrary-int label map (0 = non-planar) to dense 0..N-1.
 
-    Returns (dense_seg, params_array, original_to_dense). ``params_array``
-    is shape ``(N, 3)`` in n/d form (a*x+b*y+c*z=1) ordered to match the
-    dense plane indices, or ``None`` if no params were provided.
+    The non-planar sentinel is **N itself** (one above the max plane index),
+    so every kernel that iterates ``range(N)`` builds masks for real planes
+    only. Callers receive ``n_planes`` directly and pass it to each kernel
+    that needs an upper bound.
+
+    Returns ``(dense_seg, params_array, original_to_dense, n_planes)``.
+    ``params_array`` is shape ``(N, 3)`` in n/d form (a*x+b*y+c*z=1)
+    ordered to match the dense plane indices, or ``None`` if no params were
+    provided.
     """
     seg = np.asarray(seg)
     plane_ids = sorted(int(p) for p in np.unique(seg) if int(p) != 0)
+    n_planes = len(plane_ids)
+    nonplanar_idx = n_planes  # sentinel = N, dense plane labels are 0..N-1
 
     out = np.full_like(seg, fill_value=nonplanar_idx, dtype=np.int32)
     mapping: Dict[int, int] = {}
@@ -114,7 +135,7 @@ def _densify_labels(
                 raise ValueError(f"plane_params[{orig_id}] has unexpected shape {p.shape}")
         params_arr = np.stack(rows, axis=0) if rows else np.zeros((0, 3), dtype=np.float64)
 
-    return out, params_arr, mapping
+    return out, params_arr, mapping, n_planes
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +237,8 @@ def evaluate_depths(
     gt_depth: np.ndarray,
     pred_seg_dense: np.ndarray,
     gt_seg_dense: np.ndarray,
-    nonplanar_idx: int = NONPLANAR_IDX,
+    pred_nonplanar_idx: int,
+    gt_nonplanar_idx: int,
     max_depth: float = 10.0,
     prefix: str = "DE",
 ) -> Dict[str, float]:
@@ -226,13 +248,16 @@ def evaluate_depths(
     Returns 8 metrics keyed ``<prefix>_rel/_rel_sqr/_log10/_rmse/_rmse_log
     /_accuracy_{1,2,3}``. ``prefix='DE'`` reproduces ZP's plane-depth eval;
     ``prefix='pixel_DE'`` reproduces ZP's per-pixel-depth eval.
+
+    The two ``*_nonplanar_idx`` arguments are the dynamic non-planar sentinels
+    of the densified pred / gt seg maps (= number of planes in each).
     """
     pred = pred_depth.astype(np.float64).copy()
     gt = gt_depth.astype(np.float64).copy()
 
-    # ZP uses < 20 (i.e. < non_plane_idx) as the planar mask.
-    pred_planar = pred_seg_dense < nonplanar_idx
-    gt_planar = gt_seg_dense < nonplanar_idx
+    # Planar pixels are anything below the (per-side) sentinel.
+    pred_planar = pred_seg_dense < pred_nonplanar_idx
+    gt_planar = gt_seg_dense < gt_nonplanar_idx
 
     valid_gt = (gt > 1e-4) & (gt < max_depth)
     valid = valid_gt & pred_planar & gt_planar
@@ -282,18 +307,16 @@ def eval_plane_recall_depth(
     pred_depth: np.ndarray,
     gt_depth: np.ndarray,
     pred_plane_num: int,
+    gt_plane_num: int,
     threshold: float = 0.5,
     eval_indoor: bool = True,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Faithful port. Returns (pixelRecalls[13], planeStatistics[13, 3]).
 
     planeStatistics columns: (n_recalled, gt_plane_num, pred_plane_num).
+    Both plane counts are passed in explicitly (dynamic per-frame sentinel
+    convention; see ``_densify_labels``).
     """
-    if NONPLANAR_IDX in np.unique(gt_seg_dense):
-        gt_plane_num = len(np.unique(gt_seg_dense)) - 1
-    else:
-        gt_plane_num = len(np.unique(gt_seg_dense))
-
     if gt_plane_num == 0:
         out_stats = np.zeros((13, 3))
         return np.zeros(13), out_stats
@@ -503,7 +526,7 @@ def evaluate_planes_ap(
     pred_depth: np.ndarray,
     gt_depth: np.ndarray,
     pred_plane_num: int,
-    nonplanar_idx: int = NONPLANAR_IDX,
+    gt_plane_num: int,
     iou_threshold: float = 0.5,
     diff_thresholds: Tuple[float, ...] = AP_DEPTH_THRESHOLDS,
     scores: Optional[np.ndarray] = None,
@@ -516,12 +539,10 @@ def evaluate_planes_ap(
 
     Predictions are ranked by ``scores`` (high → low). If ``scores`` is
     ``None`` we use **plane area as proxy** (largest plane first).
-    """
-    if NONPLANAR_IDX in np.unique(gt_seg_dense):
-        gt_plane_num = len(np.unique(gt_seg_dense)) - 1
-    else:
-        gt_plane_num = len(np.unique(gt_seg_dense))
 
+    Both plane counts are passed in explicitly (dynamic per-frame sentinel
+    convention; see ``_densify_labels``).
+    """
     keys = [f"AP@{int(round(t * 100))}cm" for t in diff_thresholds]
     if gt_plane_num == 0 or pred_plane_num == 0:
         return {k: float("nan") for k in keys}
@@ -562,14 +583,15 @@ def evaluate_planes_ap(
             (depths_diff < thr).astype(np.float32),
             (plane_IOUs > iou_threshold).astype(np.float32),
         )                                                          # (G, P_ranked)
-        match = np.zeros(correct.shape[1], dtype=bool)             # which pred ranks were used
+        # Per PlaneRCNN: accumulate "any rank ≤ r matched this GT plane" — match
+        # is per-GT, not per-prediction.
+        match = np.zeros(correct.shape[0], dtype=bool)
         recalls: List[float] = []
         precisions: List[float] = []
         num_targets = int((plane_areas > 0).sum())
         if num_targets == 0:
             out[key] = float("nan")
             continue
-        # Iterate ranks in order (1..P).
         for rank in range(correct.shape[1]):
             match = np.maximum(match, correct[:, rank].astype(bool))
             num_matches = int(match.sum())
@@ -597,7 +619,7 @@ def evaluate_plane_depth_param_l2(
     pred_depth: np.ndarray,
     gt_depth: np.ndarray,
     K: np.ndarray,
-    nonplanar_idx: int = NONPLANAR_IDX,
+    gt_plane_num: int,
 ) -> Dict[str, float]:
     """Faithful port of PlaneRCNN ``evaluatePlaneDepth``.
 
@@ -617,11 +639,6 @@ def evaluate_plane_depth_param_l2(
     rx = (us.astype(np.float64) - cx) / fx
     ry = (vs.astype(np.float64) - cy) / fy
     rays = np.stack([rx, ry, np.ones_like(rx)], axis=-1)              # (H, W, 3)
-
-    if NONPLANAR_IDX in np.unique(gt_seg_dense):
-        gt_plane_num = len(np.unique(gt_seg_dense)) - 1
-    else:
-        gt_plane_num = len(np.unique(gt_seg_dense))
 
     if gt_plane_num == 0:
         return {
@@ -726,26 +743,27 @@ def compute_benchmark_metrics(
 
     Returns a flat dict with all reported metric columns.
     """
-    pred_dense, pred_params_arr, _ = _densify_labels(pred_seg, pred_plane_params)
-    gt_dense, gt_params_arr, _ = _densify_labels(gt_seg, gt_plane_params)
-
-    pred_plane_num = pred_dense.max() + 1 if (pred_dense != NONPLANAR_IDX).any() else 0
-    pred_plane_num = int(pred_plane_num) if pred_plane_num != NONPLANAR_IDX else 0
-    if pred_plane_num >= NONPLANAR_IDX:
-        pred_plane_num = NONPLANAR_IDX
+    pred_dense, pred_params_arr, _, n_pred_planes = _densify_labels(
+        pred_seg, pred_plane_params
+    )
+    gt_dense, gt_params_arr, _, n_gt_planes = _densify_labels(
+        gt_seg, gt_plane_params
+    )
 
     out: Dict[str, float] = {}
 
     # 1. RI / VI / SC
     out.update(evaluate_masks(
         pred_dense, gt_dense,
-        pred_non_plane_idx=NONPLANAR_IDX,
-        gt_non_plane_idx=NONPLANAR_IDX,
+        pred_non_plane_idx=n_pred_planes,
+        gt_non_plane_idx=n_gt_planes,
     ))
 
     # 2. Depth quality (plane-rendered depth)
     out.update(evaluate_depths(
         pred_depth, gt_depth, pred_dense, gt_dense,
+        pred_nonplanar_idx=n_pred_planes,
+        gt_nonplanar_idx=n_gt_planes,
         max_depth=max_depth, prefix="DE",
     ))
 
@@ -753,13 +771,16 @@ def compute_benchmark_metrics(
     if pixel_depth_pred is not None:
         out.update(evaluate_depths(
             pixel_depth_pred, gt_depth, pred_dense, gt_dense,
+            pred_nonplanar_idx=n_pred_planes,
+            gt_nonplanar_idx=n_gt_planes,
             max_depth=max_depth, prefix="pixel_DE",
         ))
 
     # 3. Plane recall by depth diff
     pix_d, pln_d = eval_plane_recall_depth(
         pred_dense, gt_dense, pred_depth, gt_depth,
-        pred_plane_num=NONPLANAR_IDX,
+        pred_plane_num=n_pred_planes,
+        gt_plane_num=n_gt_planes,
         eval_indoor=eval_indoor,
     )
     if eval_indoor:
@@ -813,13 +834,15 @@ def compute_benchmark_metrics(
     # 7. AP @ τ (PlaneRCNN)
     out.update(evaluate_planes_ap(
         pred_dense, gt_dense, pred_depth, gt_depth,
-        pred_plane_num=NONPLANAR_IDX,
+        pred_plane_num=n_pred_planes,
+        gt_plane_num=n_gt_planes,
         scores=scores,
     ))
 
     # 8. PlaneRCNN plane-parameter L2 from depth
     out.update(evaluate_plane_depth_param_l2(
         gt_dense, pred_depth, gt_depth, K,
+        gt_plane_num=n_gt_planes,
     ))
 
     return out

@@ -596,6 +596,24 @@ def _evaluate_method_dataset(
         if skipped:
             tqdm.write(f"  [filter] {dataset_name}: {len(scene_ids)}/{before} scenes (skipped {skipped})")
 
+    # Sharding: split scene_ids into num_shards equal-ish chunks; remainder
+    # distributed to the first (n % num_shards) shards.
+    if args.shard_id is not None and args.num_shards is not None and args.num_shards > 1:
+        n = len(scene_ids)
+        if n == 0:
+            tqdm.write(f"  [shard] {dataset_name}: empty after filter, nothing to do")
+            return [], [], 0.0
+        base = n // args.num_shards
+        rem = n % args.num_shards
+        start = args.shard_id * base + min(args.shard_id, rem)
+        end = start + base + (1 if args.shard_id < rem else 0)
+        before = n
+        scene_ids = scene_ids[start:end]
+        tqdm.write(
+            f"  [shard] {dataset_name}: {len(scene_ids)}/{before} scenes "
+            f"(shard {args.shard_id}/{args.num_shards}, slice [{start}:{end}])"
+        )
+
     all_frame_rows: List[Dict] = []
     scene_summaries: List[Dict] = []
     t0 = time.perf_counter()
@@ -714,6 +732,10 @@ def main():
 
     ap.add_argument("--scene_ids", default=None,
                     help="Comma-separated list or path to a .txt with one scene per line.")
+    ap.add_argument("--shard_id", type=int, default=None,
+                    help="Shard index in [0, --num_shards). Used by parallel SLURM submission.")
+    ap.add_argument("--num_shards", type=int, default=None,
+                    help="Total number of shards. Each shard processes 1/num_shards of the scenes.")
     ap.add_argument("--skip_dataset_aggregates", action="store_true")
     ap.add_argument("--aggregate_only", action="store_true")
 
