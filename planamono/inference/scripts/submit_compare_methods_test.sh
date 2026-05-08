@@ -141,10 +141,10 @@ set -euo pipefail
 source /cluster/scratch/aoezkan/miniconda3/etc/profile.d/conda.sh
 conda activate planeseg
 
-python ${PROJECT_ROOT}/inference/planarity/aggregate_compare_methods.py \\
-    --output_root ${OUTPUT_ROOT} \\
-    --methods ${METHODS} \\
-    --scenes ${SPLIT_FILE}
+AGG_SCRIPT="${PROJECT_ROOT}/inference/planarity/aggregate_compare_methods.py"
+set -x
+python "\$AGG_SCRIPT" --output_root "${OUTPUT_ROOT}" --scenes "${SPLIT_FILE}" --methods ${METHODS}
+set +x
 EOF
 )
 

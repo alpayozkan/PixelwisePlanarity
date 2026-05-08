@@ -2,11 +2,16 @@
 Run **4-head MoGe-2** inference (with planarity head) and dump the signals
 relevant to plane segmentation as one H5 per scene.
 
-Mirrors ``save_moge_signals.py`` but loads a custom .pt checkpoint via
-``MoGePlanarityInference`` (which registers the extra ``planarity_head``)
-and saves the planarity probability in addition to the standard signals.
+Supports three datasets via ``--dataset``:
 
-Output layout per scene:
+    scannetpp     ScanNet++ iPhone JPGs (per-scene folders).
+                  RGB lives at  <data_root>/<scene>/iphone/rgb/<frame>.jpg
+    nyuv2         NYU-v2 ZeroPlane "_d2" NPZ files.
+                  Single virtual scene "nyuv2".
+    sevenscenes   7-Scenes ZeroPlane "_d2" NPZ files.
+                  One H5 per logical scene (chess, fire, ...).
+
+Output layout per scene (identical schema across datasets):
 
     <output_root>/<scene_id>/moge_signals.h5
         frame_ids       (N,)        S<bytes>      e.g. b'frame_000000'
@@ -18,6 +23,8 @@ Output layout per scene:
         metric_scale    (N,)          float32     per-image scalar
 
     attrs:
+        dataset              "scannetpp" / "nyuv2" / "sevenscenes"
+        split                only for NPZ datasets (e.g. "test" / "val")
         resolution           "HxW"
         num_tokens           int
         source_model         "MoGePlanarityInference (4-head)"
@@ -26,23 +33,45 @@ Output layout per scene:
         metric_depth_applied True
         has_planarity        True
 
+For NPZ-based datasets, frame_ids are zero-padded NPZ-sample indices
+("frame_000123") so they sort lexicographically and match the order in the
+corresponding ``<dataset>PlaneDataset.valid_pairs``.
+
 The depth pipeline replicates ``MoGeModel.infer()`` manually (forward → recover
 focal & shift → apply metric_scale) to bypass the cluster's older
 ``utils3d 0.1.1`` which is missing ``utils3d.torch.intrinsics_from_focal_center``.
 
-Example
--------
-python save_moge_signals_planarity.py \\
-    --scenes planamono/splits/scannetpp/test.txt \\
-    --model_path /cluster/scratch/ayavuz/trained_checkpoints/checkpoints_last/checkpoints/moge_HIRES_4datasets/model_epoch1.pt \\
-    --output_root /cluster/scratch/aoezkan/planeseg/inference/moge_signals_4ds_ep1 \\
-    --frame_step 25 --batch_size 8 --num_tokens 1600
+Examples
+--------
+ScanNet++ test split:
+    python save_moge_signals_planarity.py \\
+        --dataset scannetpp \\
+        --scenes planamono/splits/scannetpp/test.txt \\
+        --model_path .../moge_HIRES_4datasets/model_epoch1.pt \\
+        --output_root /scratch/.../moge_signals_4ds_ep1/scannetpp \\
+        --frame_step 25 --batch_size 8 --num_tokens 1600
+
+NYU-v2 (auto-discovers samples):
+    python save_moge_signals_planarity.py \\
+        --dataset nyuv2 \\
+        --model_path .../moge_HIRES_4datasets/model_epoch1.pt \\
+        --output_root /scratch/.../moge_signals_4ds_ep1/nyuv2 \\
+        --batch_size 16 --num_tokens 1600
+
+7-Scenes (one H5 per scene; --scenes optional comma filter):
+    python save_moge_signals_planarity.py \\
+        --dataset sevenscenes \\
+        --model_path .../moge_HIRES_4datasets/model_epoch1.pt \\
+        --output_root /scratch/.../moge_signals_4ds_ep1/sevenscenes \\
+        --batch_size 16 --num_tokens 1600
 """
 import argparse
 import os
 import sys
+from collections import defaultdict
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import cv2
 import h5py
@@ -58,7 +87,7 @@ os.environ.setdefault("HF_HOME", "/cluster/scratch/aoezkan/cache/huggingface")
 
 from planamono.moge.moge.utils.geometry_torch import recover_focal_shift  # noqa: E402
 from planamono.inference.planarity.moge_inference_v1 import MoGePlanarityInference  # noqa: E402
-from planamono.paths import scannetpp_path  # noqa: E402
+from planamono.paths import scannetpp_path, nyuv2_path, sevenscenes_path  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -148,34 +177,179 @@ def moge_forward_signals_planarity(
 
 
 # ---------------------------------------------------------------------------
-# RGB IO + frame enumeration  (identical to save_moge_signals.py)
+# Dataset adapters
 # ---------------------------------------------------------------------------
 
-def _load_rgb_batch(rgb_paths: List[str], target_hw: Tuple[int, int]) -> torch.Tensor:
+@dataclass
+class FrameSpec:
+    """Adapter-specific info needed to load one frame's RGB."""
+    frame_id: str                            # written to H5 frame_ids
+    jpg_path: Optional[str] = None           # for scannetpp
+    npz_path: Optional[str] = None           # for nyuv2 / sevenscenes
+
+
+def _resize_rgb(rgb: np.ndarray, target_hw: Tuple[int, int]) -> np.ndarray:
+    """Resize RGB to target HW with INTER_LINEAR if needed; returns H×W×3 float32 in [0,1]."""
     H, W = target_hw
-    imgs = np.empty((len(rgb_paths), H, W, 3), dtype=np.float32)
-    for i, p in enumerate(rgb_paths):
-        bgr = cv2.imread(p)
-        if bgr is None:
-            raise FileNotFoundError(p)
-        rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-        if rgb.shape[:2] != (H, W):
-            rgb = cv2.resize(rgb, (W, H), interpolation=cv2.INTER_LINEAR)
-        imgs[i] = rgb.astype(np.float32) / 255.0
-    return torch.from_numpy(imgs).permute(0, 3, 1, 2).contiguous()  # (B,3,H,W)
+    if rgb.shape[:2] != (H, W):
+        rgb = cv2.resize(rgb, (W, H), interpolation=cv2.INTER_LINEAR)
+    return rgb.astype(np.float32) / 255.0
 
 
-def _list_scene_frames(rgb_root: str, scene_id: str, frame_step: int) -> List[str]:
-    rgb_dir = os.path.join(rgb_root, scene_id, "iphone", "rgb")
-    if not os.path.isdir(rgb_dir):
-        return []
-    files = sorted([f for f in os.listdir(rgb_dir) if f.endswith(".jpg")])
-    return files[::frame_step]
+class _Adapter:
+    """Base interface — subclasses provide list_scenes / list_frames / load_rgb_batch."""
+    name: str = ""
+    split: Optional[str] = None              # written to H5 attrs for NPZ datasets
 
+    def list_scenes(self) -> List[str]:
+        raise NotImplementedError
+
+    def list_frames(self, scene_id: str, frame_step: int) -> List[FrameSpec]:
+        raise NotImplementedError
+
+    def load_rgb_batch(self, frames: List[FrameSpec], target_hw: Tuple[int, int]) -> torch.Tensor:
+        raise NotImplementedError
+
+
+class _ScanNetppAdapter(_Adapter):
+    """Per-scene JPG folder loader matching the legacy save_moge_signals.py layout."""
+    name = "scannetpp"
+
+    def __init__(self, rgb_root: str, scene_list: List[str]):
+        self._rgb_root = rgb_root
+        self._scene_list = scene_list
+
+    def list_scenes(self) -> List[str]:
+        return list(self._scene_list)
+
+    def list_frames(self, scene_id: str, frame_step: int) -> List[FrameSpec]:
+        rgb_dir = os.path.join(self._rgb_root, scene_id, "iphone", "rgb")
+        if not os.path.isdir(rgb_dir):
+            return []
+        files = sorted(f for f in os.listdir(rgb_dir) if f.endswith(".jpg"))
+        files = files[::max(1, frame_step)]
+        return [
+            FrameSpec(
+                frame_id=os.path.splitext(fn)[0],     # 'frame_000000'
+                jpg_path=os.path.join(rgb_dir, fn),
+            )
+            for fn in files
+        ]
+
+    def load_rgb_batch(self, frames: List[FrameSpec], target_hw: Tuple[int, int]) -> torch.Tensor:
+        H, W = target_hw
+        imgs = np.empty((len(frames), H, W, 3), dtype=np.float32)
+        for i, fs in enumerate(frames):
+            bgr = cv2.imread(fs.jpg_path)
+            if bgr is None:
+                raise FileNotFoundError(fs.jpg_path)
+            rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+            imgs[i] = _resize_rgb(rgb, target_hw)
+        return torch.from_numpy(imgs).permute(0, 3, 1, 2).contiguous()
+
+
+class _NPZAdapter(_Adapter):
+    """Common RGB loader for ZeroPlane '_d2.npz' datasets (nyuv2, sevenscenes)."""
+
+    def load_rgb_batch(self, frames: List[FrameSpec], target_hw: Tuple[int, int]) -> torch.Tensor:
+        H, W = target_hw
+        imgs = np.empty((len(frames), H, W, 3), dtype=np.float32)
+        for i, fs in enumerate(frames):
+            d = np.load(fs.npz_path, allow_pickle=True)
+            # raw_image is the high-res 480x640 BGR array.
+            bgr = d["raw_image"]
+            rgb = bgr[..., ::-1]   # BGR -> RGB
+            imgs[i] = _resize_rgb(rgb, target_hw)
+        return torch.from_numpy(imgs).permute(0, 3, 1, 2).contiguous()
+
+
+class _NYUv2Adapter(_NPZAdapter):
+    name = "nyuv2"
+
+    def __init__(self, data_root: str, split: str):
+        from planamono.shared.datasets.nyuv2_plane_dataset import NYUv2PlaneDataset
+        self.split = split
+        ds = NYUv2PlaneDataset(data_root, split=split)
+        # NYUv2 is a single virtual scene. valid_pairs = [(npz_path, sample_idx), ...].
+        self._frames: List[FrameSpec] = [
+            FrameSpec(
+                frame_id=f"frame_{int(sample_idx):06d}",
+                npz_path=npz_path,
+            )
+            for npz_path, sample_idx in ds.valid_pairs
+        ]
+
+    def list_scenes(self) -> List[str]:
+        return ["nyuv2"]
+
+    def list_frames(self, scene_id: str, frame_step: int) -> List[FrameSpec]:
+        if scene_id != "nyuv2":
+            return []
+        return self._frames[::max(1, frame_step)]
+
+
+class _SevenScenesAdapter(_NPZAdapter):
+    name = "sevenscenes"
+
+    def __init__(self, data_root: str, split: str, scene_filter: Optional[List[str]] = None):
+        from planamono.shared.datasets.sevenscenes_plane_dataset import SevenScenesPlaneDataset
+        self.split = split
+        ds = SevenScenesPlaneDataset(data_root, split=split)
+        # valid_pairs = [(npz_path, sample_idx, scene_id, origin), ...]
+        by_scene: Dict[str, List[FrameSpec]] = defaultdict(list)
+        for npz_path, sample_idx, scene_id, _origin in ds.valid_pairs:
+            by_scene[scene_id].append(FrameSpec(
+                frame_id=f"frame_{int(sample_idx):06d}",
+                npz_path=npz_path,
+            ))
+        self._by_scene = dict(by_scene)
+        self._scene_ids = sorted(by_scene.keys())
+        if scene_filter:
+            wanted = {s.strip() for s in scene_filter if s.strip()}
+            self._scene_ids = [s for s in self._scene_ids if s in wanted]
+
+    def list_scenes(self) -> List[str]:
+        return list(self._scene_ids)
+
+    def list_frames(self, scene_id: str, frame_step: int) -> List[FrameSpec]:
+        return self._by_scene.get(scene_id, [])[::max(1, frame_step)]
+
+
+def _build_adapter(args, target_hw: Tuple[int, int]) -> _Adapter:
+    if args.dataset == "scannetpp":
+        if not args.scenes:
+            raise SystemExit("--scenes is required for --dataset scannetpp "
+                             "(path to a txt with one scene per line).")
+        scene_list = _read_scenes(args.scenes)
+        if not scene_list:
+            raise SystemExit(f"No scenes parsed from --scenes={args.scenes}")
+        rgb_root = args.data_root or os.path.join(scannetpp_path, "data")
+        return _ScanNetppAdapter(rgb_root=rgb_root, scene_list=scene_list)
+
+    if args.dataset == "nyuv2":
+        return _NYUv2Adapter(
+            data_root=args.data_root or nyuv2_path,
+            split=args.split or "test",
+        )
+
+    if args.dataset == "sevenscenes":
+        scene_filter = _read_scenes(args.scenes) if args.scenes else None
+        return _SevenScenesAdapter(
+            data_root=args.data_root or sevenscenes_path,
+            split=args.split or "val",
+            scene_filter=scene_filter,
+        )
+
+    raise SystemExit(f"Unknown --dataset: {args.dataset}")
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 def _read_scenes(scenes_arg: str) -> List[str]:
     """Accept either a path to a txt file (one scene per line) or comma-separated list."""
-    if os.path.isfile(scenes_arg):
+    if scenes_arg and os.path.isfile(scenes_arg):
         with open(scenes_arg) as f:
             return [ln.strip() for ln in f if ln.strip() and not ln.startswith("#")]
     return [s.strip() for s in scenes_arg.split(",") if s.strip()]
@@ -187,13 +361,13 @@ def _read_scenes(scenes_arg: str) -> List[str]:
 
 def process_scene(
     model: torch.nn.Module,
+    adapter: _Adapter,
     scene_id: str,
-    rgb_root: str,
+    frames: List[FrameSpec],
     output_root: str,
     target_hw: Tuple[int, int],
     num_tokens: int,
     batch_size: int,
-    frame_step: int,
     overwrite: bool,
     source_model: str,
     base_model: str,
@@ -204,7 +378,6 @@ def process_scene(
     if os.path.isfile(out_h5) and not overwrite:
         return -1   # signal: skipped
 
-    frames = _list_scene_frames(rgb_root, scene_id, frame_step)
     if not frames:
         return 0
 
@@ -214,6 +387,9 @@ def process_scene(
 
     # Pre-allocate datasets in the H5 (chunked + gzip) so memory stays bounded.
     with h5py.File(out_h5, "w") as f:
+        f.attrs["dataset"] = adapter.name
+        if adapter.split is not None:
+            f.attrs["split"] = adapter.split
         f.attrs["resolution"] = f"{H}x{W}"
         f.attrs["num_tokens"] = int(num_tokens)
         f.attrs["source_model"] = source_model
@@ -239,11 +415,11 @@ def process_scene(
         d_fids = f.create_dataset("frame_ids",      (N,),
                                   dtype=h5py.string_dtype(encoding="utf-8"))
 
+        device = next(model.parameters()).device
         for i in tqdm(range(0, N, batch_size),
                       desc=f"  {scene_id}", leave=False, unit="batch"):
             chunk = frames[i:i + batch_size]
-            paths = [os.path.join(rgb_root, scene_id, "iphone", "rgb", fn) for fn in chunk]
-            imgs = _load_rgb_batch(paths, target_hw=target_hw).to(next(model.parameters()).device)
+            imgs = adapter.load_rgb_batch(chunk, target_hw=target_hw).to(device)
 
             sig = moge_forward_signals_planarity(model, imgs, num_tokens=num_tokens)
 
@@ -254,8 +430,8 @@ def process_scene(
             d_mask[sl] = sig["mask"]
             d_K[sl] = sig["intrinsics"]
             d_scale[sl] = sig["metric_scale"]
-            for j, fn in enumerate(chunk):
-                d_fids[i + j] = os.path.splitext(fn)[0]   # 'frame_000000'
+            for j, fs in enumerate(chunk):
+                d_fids[i + j] = fs.frame_id
 
     return N
 
@@ -273,11 +449,22 @@ DEFAULT_MODEL_PATH = (
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--scenes", type=str, required=True,
-                    help="Path to scenes txt (one scene per line) OR comma-separated scene list.")
-    ap.add_argument("--rgb_root", type=str,
-                    default=os.path.join(scannetpp_path, "data"),
-                    help="ScanNet++ data root (frames at <root>/<scene>/iphone/rgb/<frame>.jpg).")
+    ap.add_argument("--dataset", required=True,
+                    choices=["scannetpp", "nyuv2", "sevenscenes"],
+                    help="Which dataset adapter to use.")
+    ap.add_argument("--data_root", type=str, default=None,
+                    help="Override dataset root. "
+                         "scannetpp default: <scannetpp_path>/data; "
+                         "nyuv2 default: paths.nyuv2_path; "
+                         "sevenscenes default: paths.sevenscenes_path.")
+    ap.add_argument("--rgb_root", dest="data_root_legacy", default=None,
+                    help="Deprecated alias for --data_root (legacy scannetpp callers).")
+    ap.add_argument("--scenes", type=str, default=None,
+                    help="scannetpp: REQUIRED — txt path or comma-separated scene list. "
+                         "sevenscenes: OPTIONAL — comma-separated scene-name filter "
+                         "(default = all 7 scenes). nyuv2: ignored.")
+    ap.add_argument("--split", type=str, default=None,
+                    help="Split for NPZ datasets (nyuv2 default 'test', sevenscenes default 'val').")
     ap.add_argument("--output_root", type=str, required=True)
     ap.add_argument("--model_path", type=str, default=DEFAULT_MODEL_PATH,
                     help="Path to a 4-head MoGe checkpoint (.pt). Must include planarity_head.")
@@ -288,25 +475,31 @@ def main():
                     help="HxW for MoGe input. Default 480x640 to match the legacy inference.h5.")
     ap.add_argument("--num_tokens", type=int, default=1600)
     ap.add_argument("--batch_size", type=int, default=8)
-    ap.add_argument("--frame_step", type=int, default=25,
-                    help="Take every Nth frame from each scene's iPhone RGB folder (default 25).")
+    ap.add_argument("--frame_step", type=int, default=1,
+                    help="Take every Nth frame from each scene (default 1 = every frame). "
+                         "Set 25 for the legacy scannetpp subsampling.")
     ap.add_argument("--overwrite", action="store_true",
                     help="If set, re-process scenes whose moge_signals.h5 already exists.")
     args = ap.parse_args()
 
-    H, W = (int(x) for x in args.resolution.lower().split("x"))
+    # Reconcile --data_root / --rgb_root
+    if args.data_root is None and args.data_root_legacy is not None:
+        args.data_root = args.data_root_legacy
 
-    scenes = _read_scenes(args.scenes)
-    if not scenes:
-        ap.error("No scenes parsed from --scenes")
+    H, W = (int(x) for x in args.resolution.lower().split("x"))
 
     if not os.path.isfile(args.model_path):
         ap.error(f"--model_path does not exist: {args.model_path}")
 
+    # Build adapter (errors out on missing args).
+    adapter = _build_adapter(args, target_hw=(H, W))
+    scenes = adapter.list_scenes()
+    if not scenes:
+        ap.error("Adapter returned no scenes — nothing to do.")
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Loading 4-head checkpoint {args.model_path} ...")
     inference = MoGePlanarityInference(args.model_path, device=device.type)
-    # Match save_moge_signals.py optimizations
     inference.model.encoder.use_memory_efficient_attention = False
     torch.set_grad_enabled(False)
     inference.model.eval()
@@ -316,6 +509,8 @@ def main():
     print(f"  base_model         = {args.base_model}")
 
     os.makedirs(args.output_root, exist_ok=True)
+    print(f"Dataset: {adapter.name}"
+          + (f" (split={adapter.split})" if adapter.split else ""))
     print(f"Processing {len(scenes)} scene(s) → {args.output_root}")
     print(f"  resolution {H}x{W}, num_tokens {args.num_tokens}, "
           f"batch {args.batch_size}, step {args.frame_step}")
@@ -328,15 +523,16 @@ def main():
     for sid in pbar:
         pbar.set_postfix_str(sid)
         try:
+            frames = adapter.list_frames(sid, frame_step=args.frame_step)
             n = process_scene(
                 model=model,
+                adapter=adapter,
                 scene_id=sid,
-                rgb_root=args.rgb_root,
+                frames=frames,
                 output_root=args.output_root,
                 target_hw=(H, W),
                 num_tokens=args.num_tokens,
                 batch_size=args.batch_size,
-                frame_step=args.frame_step,
                 overwrite=args.overwrite,
                 source_model=source_model,
                 base_model=args.base_model,
@@ -349,7 +545,7 @@ def main():
             skipped += 1
             tqdm.write(f"[skip] {sid}: moge_signals.h5 exists (use --overwrite)")
         elif n == 0:
-            tqdm.write(f"[skip] {sid}: no RGB frames found at {args.rgb_root}/{sid}/iphone/rgb/")
+            tqdm.write(f"[skip] {sid}: no frames found")
         else:
             total_frames += n
 

@@ -47,7 +47,7 @@ from planamono.shared.plane_fitting.visualize_planes import (
 )
 
 # Defaults match compare_plane_param_methods.py
-DEFAULT_SIGNALS_ROOT = "/cluster/scratch/aoezkan/planeseg/inference/moge_signals_4ds_ep1"
+DEFAULT_SIGNALS_ROOT = "/cluster/scratch/aoezkan/planeseg/inference/moge_signals_4ds_ep1/scannetpp"
 DEFAULT_PARAMS_ROOT  = "/cluster/scratch/aoezkan/planeseg/inference/moge_signals_4ds_ep1_methods"
 DEFAULT_OUTPUT_ROOT  = "/cluster/scratch/aoezkan/planeseg/inference/moge_signals_4ds_ep1_methods_vis"
 DEFAULT_GT_ROOT      = scannetpp_rend_plane_path
@@ -122,6 +122,11 @@ def _load_gt_frame(rendered_h5: str, rendered_depth_h5: str, frame_id: str
 # --------------------------------------------------------------------------- #
 
 def _shared_bounds(geoms):
+    """Per-axis (pmin, pmax) across all panels' geometry, with a small pad.
+
+    Cube bounds (max-extent on every axis) leave indoor scenes drowning in
+    empty Z-space; per-axis bounds keep the geometry tight to the panel.
+    """
     pts_list = []
     for g in geoms:
         try:
@@ -137,23 +142,60 @@ def _shared_bounds(geoms):
     P = np.concatenate(pts_list, axis=0)
     if P.size == 0:
         return None
-    center = (P.min(0) + P.max(0)) / 2
-    half = float((P.max(0) - P.min(0)).max() / 2) * 1.05
-    return center, half
+    pmin = P.min(0)
+    pmax = P.max(0)
+    pad = (pmax - pmin) * 0.025
+    return pmin - pad, pmax + pad
+
+
+# elev / azim presets for each named "view_init"-style view.
+# `camera_proj` is special: it bypasses view_init entirely and uses the
+# camera intrinsics K for a true pinhole projection (matches the RGB).
+VIEW_CONFIGS = {
+    "oblique":     {"elev": -25.0, "azim": -75.0},
+    "camera":      {"elev": -90.0, "azim": -90.0},
+    "top":         {"elev":  90.0, "azim": -90.0},
+    "side":        {"elev":   0.0, "azim":   0.0},
+    "camera_proj": None,
+}
+ALL_VIEWS = list(VIEW_CONFIGS.keys())
 
 
 def _render_3d_grid(
     geoms_by_method,
     methods,
     out_path,
-    elev=-25.0,
-    azim=-75.0,
-    max_tris=30000,
-    max_pts=30000,
+    view_name,
+    max_tris=200000,
+    max_pts=500000,
     title=None,
     bg_color=(0.08, 0.08, 0.08),
 ):
-    """Render an N-method grid of meshes-or-pcds via matplotlib 3D."""
+    """Render an N-method grid via matplotlib `view_init` rotations of the scene.
+
+    Note: `camera_proj` is *not* handled here — it has its own pixel-dense
+    rasterizer (`_render_camera_proj_dense`) that uses the per-pixel rendered
+    depth + labels rather than projecting the geometry, since random-subsampled
+    polygon/scatter projections produced speckle.
+    """
+    if view_name not in VIEW_CONFIGS or view_name == "camera_proj":
+        raise ValueError(
+            f"_render_3d_grid does not handle view {view_name!r}; "
+            f"available: {[v for v in ALL_VIEWS if v != 'camera_proj']}")
+    cfg = VIEW_CONFIGS[view_name]
+    _render_3d_grid_view_init(
+        geoms_by_method, methods, out_path,
+        elev=cfg["elev"], azim=cfg["azim"],
+        max_tris=max_tris, max_pts=max_pts,
+        title=title, bg_color=bg_color,
+    )
+
+
+def _render_3d_grid_view_init(
+    geoms_by_method, methods, out_path,
+    elev, azim, max_tris, max_pts, title, bg_color,
+):
+    """3D view via matplotlib `view_init` — oblique / orthographic-ish. Fast."""
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d.art3d import Poly3DCollection
     import open3d as o3d
@@ -169,8 +211,6 @@ def _render_3d_grid(
     for i, m in enumerate(methods):
         ax = fig.add_subplot(n_rows, n_cols, i + 1, projection="3d", facecolor=bg_color)
         ax.set_title(m, color="white", fontsize=11)
-        for spine in ax.spines.values():
-            spine.set_visible(False)
 
         geom = geoms_by_method.get(m)
         if geom is None:
@@ -220,13 +260,15 @@ def _render_3d_grid(
             continue
 
         if bounds is not None:
-            center, half = bounds
-            ax.set_xlim(center[0] - half, center[0] + half)
-            ax.set_ylim(center[1] - half, center[1] + half)
-            ax.set_zlim(center[2] - half, center[2] + half)
+            pmin, pmax = bounds
+            ax.set_xlim(pmin[0], pmax[0])
+            ax.set_ylim(pmin[1], pmax[1])
+            ax.set_zlim(pmin[2], pmax[2])
+            ext = pmax - pmin
+            ax.set_box_aspect(tuple(ext / max(ext.max(), 1e-9)))
 
         ax.view_init(elev=elev, azim=azim)
-        ax.invert_yaxis()  # camera image-Y is down
+        ax.invert_yaxis()
         ax.set_xlabel("X", color="lightgray", fontsize=8)
         ax.set_ylabel("Y", color="lightgray", fontsize=8)
         ax.set_zlabel("Z (depth)", color="lightgray", fontsize=8)
@@ -238,6 +280,65 @@ def _render_3d_grid(
 
     if title:
         fig.suptitle(title, color="white", fontsize=12)
+    fig.savefig(out_path, dpi=120, facecolor=bg_color, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _render_camera_proj_dense(
+    method_renders,
+    labels_pred,
+    methods,
+    out_path,
+    title=None,
+    bg_color=(0.08, 0.08, 0.08),
+):
+    """Pixel-dense `camera_proj` panel using the per-pixel `(depth_m, _)` we
+    already get from `render_planes_to_depth` + the shared `labels_pred` map.
+
+    We bypass scatter/PolyCollection projections entirely because the previous
+    implementation random-subsampled millions of mesh tris / pcd points down
+    to 30 K, which after K-projection produced speckle (~5 % triangle / 2 %
+    point coverage). Painting `labels_pred` directly gives full H×W coverage
+    with the correct per-id colors and per-method valid-mask.
+    """
+    import matplotlib.pyplot as plt
+
+    n = len(methods)
+    n_cols = 3 if n >= 3 else n
+    n_rows = (n + n_cols - 1) // n_cols
+
+    H, W = labels_pred.shape
+    rng = np.random.default_rng(0)
+    palette = rng.uniform(0.2, 1.0, size=(2048, 3))
+    palette[0] = bg_color
+
+    lbl_idx = labels_pred.astype(np.int64) % len(palette)
+
+    fig, axes = plt.subplots(n_rows, n_cols,
+                             figsize=(5.0 * n_cols, 5.0 * n_rows * (H / W)),
+                             facecolor=bg_color, squeeze=False)
+    for i, m in enumerate(methods):
+        r, c = divmod(i, n_cols)
+        ax = axes[r][c]
+        ax.set_facecolor(bg_color)
+        ax.set_title(m, color="white", fontsize=11)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+
+        depth_m, _ = method_renders[m]
+        valid = depth_m > 0
+        rgb = palette[np.where(valid, lbl_idx, 0)]
+        ax.imshow(rgb, interpolation="nearest")
+
+    for j in range(n, n_rows * n_cols):
+        r, c = divmod(j, n_cols)
+        axes[r][c].axis("off")
+
+    if title:
+        fig.suptitle(title, color="white", fontsize=12)
+    fig.tight_layout()
     fig.savefig(out_path, dpi=120, facecolor=bg_color, bbox_inches="tight")
     plt.close(fig)
 
@@ -375,15 +476,17 @@ def main():
                    help="Skip planes smaller than this for point-cloud building.")
     p.add_argument("--render_3d_png", action="store_true",
                    help="Render the 3D meshes / pointclouds to a PNG grid via matplotlib "
-                        "(headless; no GL needed). Output: renders/{meshes,pointclouds}/<frame_id>.png")
-    p.add_argument("--render_elev", type=float, default=-25.0,
-                   help="Matplotlib elev angle for the 3D render (default -25).")
-    p.add_argument("--render_azim", type=float, default=-75.0,
-                   help="Matplotlib azim angle for the 3D render (default -75).")
-    p.add_argument("--render_max_tris", type=int, default=30000,
-                   help="Subsample triangles per panel before rendering.")
-    p.add_argument("--render_max_pts", type=int, default=30000,
-                   help="Subsample points per panel before rendering.")
+                        "(headless; no GL needed). Output: renders/<view>/<{meshes,pointclouds}>/<frame_id>.png")
+    p.add_argument("--render_views", nargs="+", default=ALL_VIEWS,
+                   metavar="VIEW",
+                   help=f"Which views to render. Available: {ALL_VIEWS}. "
+                        "Default: all five.")
+    p.add_argument("--render_max_tris", type=int, default=200000,
+                   help="Subsample triangles per panel before rendering "
+                        "(applies to 3D view_init views; camera_proj is dense).")
+    p.add_argument("--render_max_pts", type=int, default=500000,
+                   help="Subsample points per panel before rendering "
+                        "(applies to 3D view_init views; camera_proj is dense).")
     p.add_argument("--no_panels", action="store_true",
                    help="Skip the per-frame PNG (e.g. when you only want meshes).")
     p.add_argument("--residual_max_m", type=float, default=0.2,
@@ -445,10 +548,18 @@ def main():
         # rendering both types in-memory (without writing PLYs).
         render_meshes_too = args.save_meshes or not args.save_pointclouds
         render_pcds_too = args.save_pointclouds or not args.save_meshes
-        if render_meshes_too:
-            os.makedirs(os.path.join(out_dir, "renders", "meshes"), exist_ok=True)
-        if render_pcds_too:
-            os.makedirs(os.path.join(out_dir, "renders", "pointclouds"), exist_ok=True)
+        for v in args.render_views:
+            if v not in VIEW_CONFIGS:
+                raise ValueError(f"Unknown view {v!r}; available: {ALL_VIEWS}")
+            if v == "camera_proj":
+                # Dense raster — single image per frame, no mesh/pcd split.
+                os.makedirs(os.path.join(out_dir, "renders", "camera_proj"),
+                            exist_ok=True)
+                continue
+            if render_meshes_too:
+                os.makedirs(os.path.join(out_dir, "renders", v, "meshes"), exist_ok=True)
+            if render_pcds_too:
+                os.makedirs(os.path.join(out_dir, "renders", v, "pointclouds"), exist_ok=True)
     else:
         render_meshes_too = render_pcds_too = False
 
@@ -459,9 +570,8 @@ def main():
         print(f"[INFO] pointcloud stride={args.pointcloud_pixel_stride}, "
               f"min_pixels={args.pointcloud_min_pixels}")
     if args.render_3d_png:
-        print(f"[INFO] 3D render via matplotlib, view (elev={args.render_elev}, "
-              f"azim={args.render_azim}), max_tris={args.render_max_tris}, "
-              f"max_pts={args.render_max_pts}")
+        print(f"[INFO] 3D render via matplotlib, views={args.render_views}, "
+              f"max_tris={args.render_max_tris}, max_pts={args.render_max_pts}")
 
     n_panels = 0
     n_meshes = 0
@@ -512,24 +622,33 @@ def main():
                 pcds_by_method[m] = pcd
 
         if args.render_3d_png:
-            if render_meshes_too and meshes_by_method:
-                _render_3d_grid(
-                    meshes_by_method, methods,
-                    os.path.join(out_dir, "renders", "meshes", f"{fid}.png"),
-                    elev=args.render_elev, azim=args.render_azim,
-                    max_tris=args.render_max_tris, max_pts=args.render_max_pts,
-                    title=f"meshes — {fid}",
-                )
-                n_renders += 1
-            if render_pcds_too and pcds_by_method:
-                _render_3d_grid(
-                    pcds_by_method, methods,
-                    os.path.join(out_dir, "renders", "pointclouds", f"{fid}.png"),
-                    elev=args.render_elev, azim=args.render_azim,
-                    max_tris=args.render_max_tris, max_pts=args.render_max_pts,
-                    title=f"pointclouds — {fid}",
-                )
-                n_renders += 1
+            for view_name in args.render_views:
+                if view_name == "camera_proj":
+                    _render_camera_proj_dense(
+                        method_renders, labels_pred, methods,
+                        os.path.join(out_dir, "renders", "camera_proj", f"{fid}.png"),
+                        title=f"camera_proj — {fid}",
+                    )
+                    n_renders += 1
+                    continue
+                if render_meshes_too and meshes_by_method:
+                    _render_3d_grid(
+                        meshes_by_method, methods,
+                        os.path.join(out_dir, "renders", view_name, "meshes", f"{fid}.png"),
+                        view_name=view_name,
+                        max_tris=args.render_max_tris, max_pts=args.render_max_pts,
+                        title=f"{view_name} · meshes — {fid}",
+                    )
+                    n_renders += 1
+                if render_pcds_too and pcds_by_method:
+                    _render_3d_grid(
+                        pcds_by_method, methods,
+                        os.path.join(out_dir, "renders", view_name, "pointclouds", f"{fid}.png"),
+                        view_name=view_name,
+                        max_tris=args.render_max_tris, max_pts=args.render_max_pts,
+                        title=f"{view_name} · pointclouds — {fid}",
+                    )
+                    n_renders += 1
 
         if not args.no_panels:
             depth_gt, labels_gt = _load_gt_frame(rendered_h5, rendered_depth_h5, fid)

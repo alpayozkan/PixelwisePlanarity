@@ -7,7 +7,7 @@ __pycache__/
 *.pyd
 *.csv
 *.xlsx
-*.md
+CLAUDE.md
 *.png
 *.pdf
 **/.ipynb_checkpoints/
