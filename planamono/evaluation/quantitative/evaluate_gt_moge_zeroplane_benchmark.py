@@ -60,6 +60,8 @@ from planamono.shared.datasets.scannetpp import ScanNetPPPlaneDataset           
 from planamono.shared.segmentation.plan2seg import compute_vectorized_planar_segments_v5_relative  # noqa: E402
 from planamono.shared.segmentation.compute_plane_params import compute_plane_params           # noqa: E402
 from planamono.shared.plane_fitting.metrics_planes import compute_gt_normals_from_depth_labels  # noqa: E402
+from planamono.shared.plane_fitting import backproject_v1                                    # noqa: E402
+from planamono.evaluation.quantitative.eval_utils import compute_plane_metrics                # noqa: E402
 from planamono.evaluation.quantitative.metrics_benchmark import compute_benchmark_metrics    # noqa: E402
 
 
@@ -74,6 +76,15 @@ SEG_NEIGHBOR_MATCH_COUNT = 8
 
 ZP_NONPLANAR_LABEL = 20
 MOGE_FIT_METHOD = "svd"
+
+# RANSAC prec/rec@<τ>cm — borrowed from evaluate_gt_moge_zeroplane.py.
+# These are NOT part of the ZP/PlaneRCNN/PlaneRecTR benchmark suite; they're
+# planamono's own 3D-plane prec/rec at multiple distance thresholds. Run via
+# eval_utils.compute_plane_metrics on (backprojected GT-depth points,
+# pred labels). Adds 6 columns: prec@{0.1,0.5,1.0}cm + rec@{0.1,0.5,1.0}cm.
+RANSAC_THRESHOLDS = (0.001, 0.005, 0.01)            # meters
+RANSAC_ITERATIONS = 200
+INLIER_RATIO_GATE = 0.9
 
 # Indoor max-depth defaults (ZP convention: scannet=10, nyu=10, sevenscenes=10).
 DATASET_MAX_DEPTH = {
@@ -223,12 +234,16 @@ def _eval_one_frame_benchmark(
     depth_gt: np.ndarray,
     labels_gt: np.ndarray,
     K: np.ndarray,
+    c2w: np.ndarray,
     labels_pred: np.ndarray,
     depth_pred: np.ndarray,
     pred_plane_params: Dict[int, np.ndarray],
     gt_plane_params: Dict[int, np.ndarray],
     eval_indoor: bool,
     max_depth: float,
+    ransac_thresholds: Tuple[float, ...],
+    ransac_iterations: int,
+    inlier_ratio_gate: float,
 ) -> Dict[str, float]:
     metrics = compute_benchmark_metrics(
         pred_seg=labels_pred,
@@ -241,7 +256,24 @@ def _eval_one_frame_benchmark(
         eval_indoor=eval_indoor,
         max_depth=max_depth,
     )
-    return {"scene_id": scene_id, "frame_idx": frame_id, **metrics}
+
+    # planamono RANSAC prec/rec at multiple thresholds, computed on
+    # (backprojected GT depth, pred labels). Same recipe as
+    # evaluate_gt_moge_zeroplane.py's evaluate_single_frame.
+    pts_world, pt_labels, _ = backproject_v1(depth_gt, K, c2w, labels_pred)
+    if pts_world.shape[0] == 0:
+        ransac_block = {
+            **{f"prec@{t*100:.1f}cm": 0.0 for t in ransac_thresholds},
+            **{f"rec@{t*100:.1f}cm": 0.0 for t in ransac_thresholds},
+        }
+    else:
+        ransac_block = compute_plane_metrics(
+            pts_world, pt_labels, ransac_thresholds,
+            num_iterations=ransac_iterations,
+            inlier_ratio_gate=inlier_ratio_gate,
+        )
+
+    return {"scene_id": scene_id, "frame_idx": frame_id, **metrics, **ransac_block}
 
 
 # ---------------------------------------------------------------------------
@@ -354,9 +386,17 @@ def _load_moge_scene(scene_dir: str) -> Optional[Dict[str, Dict[str, np.ndarray]
 
 
 def _load_zeroplane_scene(scene_dir: str) -> Optional[Dict[str, Dict[str, np.ndarray]]]:
+    # Path resolution: ZeroPlane stores per-scene predictions for ScanNet++ and
+    # 7-Scenes at <scene_dir>/planes.h5 (nested), but NYU-v2 as a single flat
+    # <dataset_dir>/planes.h5 (no per-scene subdir, since NYU is one virtual
+    # scene with 654 samples). Try nested first, then fall back to the parent.
     h5_path = os.path.join(scene_dir, "planes.h5")
     if not os.path.isfile(h5_path):
-        return None
+        flat = os.path.join(os.path.dirname(scene_dir), "planes.h5")
+        if os.path.isfile(flat):
+            h5_path = flat
+        else:
+            return None
     out: Dict[str, Dict[str, np.ndarray]] = {}
     with h5py.File(h5_path, "r") as f:
         frame_ids = _decode_frame_ids(f["frame_ids"][:])
@@ -674,6 +714,7 @@ def _evaluate_method_dataset(
                 "depth_gt": gt["depth"],
                 "labels_gt": gt["labels"],
                 "K": K_render,
+                "c2w": gt["c2w"],
                 "labels_pred": labels_pred,
                 "depth_pred": depth_pred,
                 "pred_plane_params": pred_plane_params,
@@ -688,10 +729,13 @@ def _evaluate_method_dataset(
         outputs = Parallel(n_jobs=args.n_jobs, backend="loky")(
             delayed(_eval_one_frame_benchmark)(
                 t["scene_id"], t["frame_id"],
-                t["depth_gt"], t["labels_gt"], t["K"],
+                t["depth_gt"], t["labels_gt"], t["K"], t["c2w"],
                 t["labels_pred"], t["depth_pred"],
                 t["pred_plane_params"], t["gt_plane_params"],
                 eval_indoor, max_depth,
+                args.ransac_thresholds,
+                args.ransac_iterations,
+                args.inlier_ratio_gate,
             )
             for t in tasks
         )
@@ -739,7 +783,16 @@ def main():
     ap.add_argument("--skip_dataset_aggregates", action="store_true")
     ap.add_argument("--aggregate_only", action="store_true")
 
+    # planamono RANSAC prec/rec block (added on top of the benchmark suite).
+    ap.add_argument("--ransac_thresholds", nargs="+", type=float,
+                    default=list(RANSAC_THRESHOLDS),
+                    help="Distance thresholds (m) for prec/rec@<τ>cm "
+                         "(default: 0.001 0.005 0.01).")
+    ap.add_argument("--ransac_iterations", type=int, default=RANSAC_ITERATIONS)
+    ap.add_argument("--inlier_ratio_gate", type=float, default=INLIER_RATIO_GATE)
+
     args = ap.parse_args()
+    args.ransac_thresholds = tuple(args.ransac_thresholds)
 
     scene_filter: Optional[set] = None
     if args.scene_ids:

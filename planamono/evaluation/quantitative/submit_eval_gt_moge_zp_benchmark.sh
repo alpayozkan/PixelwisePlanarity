@@ -67,7 +67,11 @@ SCANNETPP_SPLIT="${SCANNETPP_SPLIT:-/cluster/home/aoezkan/planeseg/PixelwisePlan
 
 PART_TIME="${PART_TIME:-4:00:00}"
 PART_CPUS="${PART_CPUS:-8}"
-PART_MEM="${PART_MEM:-4G}"
+# 8G/cpu (was 4G) — the metric kernels are now bincount-bounded (O(H·W + G·P))
+# but joblib spawns 8 worker processes that each hold pred/gt segs + plane
+# params + a few intermediate arrays. 8G × 8 cpus = 64G total leaves
+# headroom for high-plane-count frames.
+PART_MEM="${PART_MEM:-8G}"
 AGG_TIME="${AGG_TIME:-0:30:00}"
 
 # ── Parse CLI flags (override env defaults) ─────────────────────────────────

@@ -28,7 +28,9 @@ addresses.
 
 ## Metric coverage
 
-`compute_benchmark_metrics()` returns ~40 columns per frame, organised as:
+`compute_benchmark_metrics()` returns ~37 columns per frame from the merged
+ZP/PlaneRCNN/PlaneRecTR suite, plus the driver adds 6 RANSAC prec/rec
+columns on top — **43 total per frame**.
 
 | Family | Source | Output columns |
 |---|---|---|
@@ -40,11 +42,23 @@ addresses.
 | Best-match (Hungarian) param errors | ZeroPlane `eval_plane_bestmatch_normal_offset` (offset half re-enabled, which ZP discards) | `mean_normal_error_deg`, `median_normal_error_deg`, `mean_offset_error_m`, `median_offset_error_m` |
 | Average Precision | PlaneRCNN `evaluatePlanesTensor` (predictions ranked by **plane area as proxy** for confidence — planamono predictions don't carry scores) | `AP@{20, 30, 60, 90}cm` |
 | Plane-parameter L2 from depth | PlaneRCNN `evaluatePlaneDepth` | `plane_param_L2_{mean, area_weighted}` |
+| **RANSAC plane prec/rec @ τ** (planamono) | `eval_utils.compute_plane_metrics` — backprojects GT depth with pred labels, RANSAC-fits a plane per pred segment at threshold τ, reports inlier prec/rec | `prec@{0.1, 0.5, 1.0}cm`, `rec@{0.1, 0.5, 1.0}cm` |
 
-Key difference vs `evaluate_gt_moge_zeroplane.py`: this pipeline does **not**
-compute planamono's `prec@<τ>cm` (RANSAC), `bp_*` (binary planarity),
-`plane_recall_d/n_*` (largest-overlap matched recall), or
-`normal_err_deg_*` / `offset_err_m_*` (per-plane error stats).
+The RANSAC block is **driver-only** — `metrics_benchmark.py` doesn't know
+about it. The driver calls `backproject_v1` + `compute_plane_metrics` from
+the planamono codebase (same recipe as `evaluate_gt_moge_zeroplane.py`'s
+`evaluate_single_frame`) and merges the result into the per-frame row.
+
+CLI flags controlling it:
+- `--ransac_thresholds 0.001 0.005 0.01` (m, default)
+- `--ransac_iterations 200`
+- `--inlier_ratio_gate 0.9`
+
+This is the only piece of the original planamono metric set that the
+benchmark pipeline carries — `bp_*`, `plane_recall_d/n_*`, and
+`normal_err_deg_*` / `offset_err_m_*` are still excluded by design (their
+matching/aggregation conventions don't line up with the published
+ZP/PlaneRCNN/PlaneRecTR numbers).
 
 ## Internal adapters
 
@@ -158,6 +172,9 @@ results understated MoGe by ~10% on most metrics due to the 20-plane cap).
 | mean_offset_error_m | 0.000 | 0.351 | 0.325 |
 | AP@20 / 30 / 60 / 90 cm | 0.77 / 0.79 / 0.83 / 0.87 | 0.39 / 0.41 / 0.42 / 0.42 | 0.06 / 0.14 / 0.26 / 0.27 |
 | plane_param_L2_mean | 0.256 | 0.420 | 0.556 |
+| **prec / rec @ 0.1cm** | 0.28 / 0.24 | 0.22 / 0.12 | 0.03 / 0.03 |
+| **prec / rec @ 0.5cm** | 0.97 / 0.75 | 0.77 / 0.50 | 0.45 / 0.45 |
+| **prec / rec @ 1.0cm** | 0.97 / 0.76 | 0.78 / 0.51 | 0.46 / 0.46 |
 
 ### Sanity-check observations
 

@@ -155,54 +155,51 @@ def evaluate_masks(
     ``evaluateMasksTensor``). Both inputs must be **dense** label maps with
     non-planar at ``*_non_plane_idx``.
 
-    The reduction is masked to GT-planar pixels (``valid_mask``), so
-    non-planar background does not contribute to the numerator.
+    The reduction is masked to GT-planar pixels, so non-planar background
+    does not contribute to the numerator.
+
+    Implementation: bincount-based ``(G+1, P+1)`` matrix instead of the
+    reference ``(G+1, P+1, H, W)`` torch stack. Memory O(H·W + G·P).
+    Mathematically equivalent for RI/VI/SC (extra zero rows/cols from
+    densification contribute zero to every sum and zero to every max).
     """
-    pred = torch.from_numpy(pred_seg_dense.astype(np.int64)).to(device)
-    gt = torch.from_numpy(gt_seg_dense.astype(np.int64)).to(device)
+    G = int(gt_non_plane_idx) + 1
+    P = int(pred_non_plane_idx) + 1
 
-    # Build per-plane mask stacks (drop empty masks, as ZP does).
-    pred_masks = []
-    for i in range(pred_non_plane_idx):
-        m = (pred == i).float()
-        if m.sum() > 0:
-            pred_masks.append(m)
-    if not pred_masks:
+    # Restrict to GT-planar pixels (matches ZP's `valid_mask = gt_masks.max(0)`).
+    valid = gt_seg_dense < gt_non_plane_idx
+    if not valid.any():
         return {"RI": float("nan"), "VI": float("nan"), "SC": float("nan")}
-    pred_masks = torch.stack(pred_masks, dim=0)
 
-    gt_masks = []
-    for i in range(gt_non_plane_idx):
-        m = (gt == i).float()
-        if m.sum() > 0:
-            gt_masks.append(m)
-    if not gt_masks:
-        return {"RI": float("nan"), "VI": float("nan"), "SC": float("nan")}
-    gt_masks = torch.stack(gt_masks, dim=0)
+    # Cap any out-of-range labels to the non-planar bin (defensive — should
+    # be a no-op for inputs from `_densify_labels`).
+    gt = np.minimum(gt_seg_dense, gt_non_plane_idx).astype(np.int64)
+    pred = np.minimum(pred_seg_dense, pred_non_plane_idx).astype(np.int64)
 
-    valid_mask = gt_masks.max(0)[0].unsqueeze(0)
+    g_flat = gt[valid]
+    p_flat = pred[valid]
+    lin = g_flat * P + p_flat
+    intersection_np = np.bincount(lin, minlength=G * P).reshape(G, P).astype(np.float64)
 
-    # Append non-planar pseudo-mask so rows/cols sum to full image.
-    gt_masks = torch.cat(
-        [gt_masks, torch.clamp(1 - gt_masks.sum(0, keepdim=True), min=0)], dim=0
-    )
-    pred_masks = torch.cat(
-        [pred_masks, torch.clamp(1 - pred_masks.sum(0, keepdim=True), min=0)], dim=0
-    )
+    # |gt_g| over valid pixels; |pred_p| over valid pixels (both equal the
+    # rows/columns of `intersection_np` summed).
+    gt_areas = intersection_np.sum(axis=1)                          # (G+1,)
+    pred_areas = intersection_np.sum(axis=0)                        # (P+1,)
 
-    intersection = (gt_masks.unsqueeze(1) * pred_masks * valid_mask).sum(-1).sum(-1)
-    union = (torch.max(gt_masks.unsqueeze(1), pred_masks) * valid_mask).sum(-1).sum(-1)
+    intersection_t = torch.from_numpy(intersection_np).to(device)
+    gt_areas_t = torch.from_numpy(gt_areas).to(device)
+    pred_areas_t = torch.from_numpy(pred_areas).to(device)
 
-    N = intersection.sum()
+    N = intersection_t.sum()
     if N <= 1:
         return {"RI": float("nan"), "VI": float("nan"), "SC": float("nan")}
 
     RI = 1 - (
-        (intersection.sum(0).pow(2).sum() + intersection.sum(1).pow(2).sum()) / 2
-        - intersection.pow(2).sum()
+        (gt_areas_t.pow(2).sum() + pred_areas_t.pow(2).sum()) / 2
+        - intersection_t.pow(2).sum()
     ) / (N * (N - 1) / 2)
 
-    joint = intersection / N
+    joint = intersection_t / N
     marg2 = joint.sum(0)
     marg1 = joint.sum(1)
     H_1 = (-marg1 * torch.log2(marg1 + (marg1 == 0).float())).sum()
@@ -214,15 +211,10 @@ def evaluate_masks(
     MI = (joint * log2q).sum()
     voi = H_1 + H_2 - 2 * MI
 
-    IOU = intersection / torch.clamp(union, min=1)
-    sc_a = (
-        IOU.max(-1)[0]
-        * torch.clamp((gt_masks * valid_mask).sum(-1).sum(-1), min=1e-4)
-    ).sum() / N
-    sc_b = (
-        IOU.max(0)[0]
-        * torch.clamp((pred_masks * valid_mask).sum(-1).sum(-1), min=1e-4)
-    ).sum() / N
+    union = gt_areas_t.unsqueeze(1) + pred_areas_t.unsqueeze(0) - intersection_t
+    IOU = intersection_t / torch.clamp(union, min=1)
+    sc_a = (IOU.max(-1)[0] * torch.clamp(gt_areas_t, min=1e-4)).sum() / N
+    sc_b = (IOU.max(0)[0] * torch.clamp(pred_areas_t, min=1e-4)).sum() / N
     SC = (sc_a + sc_b) / 2
 
     return {"RI": float(RI), "VI": float(voi), "SC": float(SC)}
@@ -321,22 +313,41 @@ def eval_plane_recall_depth(
         out_stats = np.zeros((13, 3))
         return np.zeros(13), out_stats
 
-    H, W = gt_seg_dense.shape
-    gt_oh = (gt_seg_dense[..., None] == np.arange(gt_plane_num)).astype(np.float32)
-    pred_oh = (pred_seg_dense[..., None] == np.arange(pred_plane_num)).astype(np.float32)
+    # Bincount-based (G, P) contraction. Memory O(H·W + G·P) instead of
+    # O(H·W·G·P) — critical for MoGe predictions with 50+ planes per frame.
+    valid = (gt_seg_dense < gt_plane_num) & (pred_seg_dense < pred_plane_num)
+    g_flat = gt_seg_dense[valid].astype(np.int64)
+    p_flat = pred_seg_dense[valid].astype(np.int64)
+    diff_flat = np.abs(gt_depth - pred_depth)[valid].astype(np.float64)
 
-    plane_areas = gt_oh.sum(axis=(0, 1))
-    intersection_mask = (gt_oh[..., None] * pred_oh[:, :, None, :]) > 0.5
-    depth_diff = np.abs(gt_depth - pred_depth)[..., None, None]
+    n_bins = gt_plane_num * pred_plane_num
+    if g_flat.size == 0:
+        intersection = np.zeros((gt_plane_num, pred_plane_num), dtype=np.float64)
+        sum_diff = np.zeros((gt_plane_num, pred_plane_num), dtype=np.float64)
+    else:
+        lin = g_flat * pred_plane_num + p_flat
+        intersection = np.bincount(lin, minlength=n_bins).reshape(
+            gt_plane_num, pred_plane_num
+        ).astype(np.float64)
+        sum_diff = np.bincount(lin, weights=diff_flat, minlength=n_bins).reshape(
+            gt_plane_num, pred_plane_num
+        )
 
-    intersection = intersection_mask.astype(np.float32).sum(axis=(0, 1))
-    plane_diffs = (depth_diff * intersection_mask).sum(axis=(0, 1)) / np.maximum(intersection, 1e-4)
-    plane_diffs[intersection < 1e-4] = 1.0
+    plane_diffs = np.where(
+        intersection >= 1e-4, sum_diff / np.maximum(intersection, 1e-4), 1.0
+    )
 
-    union = ((gt_oh[..., None] + pred_oh[:, :, None, :]) > 0.5).astype(np.float32).sum(axis=(0, 1))
+    # Areas over the full image (matches the original reduction).
+    plane_areas = np.bincount(
+        gt_seg_dense.flatten(), minlength=gt_plane_num + 1
+    )[:gt_plane_num].astype(np.float64)
+    pred_areas = np.bincount(
+        pred_seg_dense.flatten(), minlength=pred_plane_num + 1
+    )[:pred_plane_num].astype(np.float64)
+    union = plane_areas[:, None] + pred_areas[None, :] - intersection
     plane_IOUs = intersection / np.maximum(union, 1e-4)
 
-    num_predictions = int(pred_oh.max(axis=(0, 1)).sum())
+    num_predictions = int((pred_areas > 0).sum())
     num_pixels = float(plane_areas.sum())
 
     iou_mask = (plane_IOUs > threshold).astype(np.float32)
@@ -547,35 +558,47 @@ def evaluate_planes_ap(
     if gt_plane_num == 0 or pred_plane_num == 0:
         return {k: float("nan") for k in keys}
 
-    H, W = gt_seg_dense.shape
-    gt_masks = (gt_seg_dense[..., None] == np.arange(gt_plane_num)).astype(np.float32)
-    pred_masks = (pred_seg_dense[..., None] == np.arange(pred_plane_num)).astype(np.float32)
+    # Bincount-based (G, P) contraction. Memory O(H·W + G·P) instead of
+    # O(H·W·G·P).
+    plane_areas = np.bincount(
+        gt_seg_dense.flatten(), minlength=gt_plane_num + 1
+    )[:gt_plane_num].astype(np.float64)
+    pred_areas = np.bincount(
+        pred_seg_dense.flatten(), minlength=pred_plane_num + 1
+    )[:pred_plane_num].astype(np.float64)
 
-    plane_areas = gt_masks.sum(axis=(0, 1))                       # (G,)
-    pred_areas = pred_masks.sum(axis=(0, 1))                      # (P,)
+    valid = (gt_seg_dense < gt_plane_num) & (pred_seg_dense < pred_plane_num)
+    g_flat = gt_seg_dense[valid].astype(np.int64)
+    p_flat = pred_seg_dense[valid].astype(np.int64)
+    diff = np.abs(gt_depth - pred_depth)
+    diff = np.where(gt_depth < 1e-4, 0.0, diff)
+    diff_flat = diff[valid].astype(np.float64)
+
+    n_bins = gt_plane_num * pred_plane_num
+    if g_flat.size == 0:
+        intersection = np.zeros((gt_plane_num, pred_plane_num), dtype=np.float64)
+        sum_diff = np.zeros((gt_plane_num, pred_plane_num), dtype=np.float64)
+    else:
+        lin = g_flat * pred_plane_num + p_flat
+        intersection = np.bincount(lin, minlength=n_bins).reshape(
+            gt_plane_num, pred_plane_num
+        ).astype(np.float64)
+        sum_diff = np.bincount(lin, weights=diff_flat, minlength=n_bins).reshape(
+            gt_plane_num, pred_plane_num
+        )
+
+    union = plane_areas[:, None] + pred_areas[None, :] - intersection
+    plane_IOUs = intersection / np.maximum(union, 1e-4)
+    depths_diff = np.where(
+        intersection >= 1e-4, sum_diff / np.maximum(intersection, 1e-4), 1e6
+    )
 
     # Score-rank predictions (descending). plane area as proxy if no scores.
     if scores is None:
         scores = pred_areas.copy()
     rank_order = np.argsort(-np.asarray(scores))                  # (P,)
-    pred_masks_ranked = pred_masks[..., rank_order]
-
-    # (G, P) overlaps via einsum
-    intersection = np.einsum("hwg,hwp->gp", gt_masks, pred_masks_ranked)
-    union = (
-        gt_masks.sum(axis=(0, 1))[:, None]
-        + pred_masks_ranked.sum(axis=(0, 1))[None, :]
-        - intersection
-    )
-    plane_IOUs = intersection / np.maximum(union, 1e-4)
-
-    depth_diff = np.abs(gt_depth - pred_depth)
-    depth_diff = np.where(gt_depth < 1e-4, 0.0, depth_diff)
-    intersection_mask = (gt_masks[..., None] * pred_masks_ranked[:, :, None, :]) > 0.5
-    depths_diff = (depth_diff[..., None, None] * intersection_mask).sum(axis=(0, 1)) / np.maximum(
-        intersection, 1e-4
-    )
-    depths_diff = np.where(intersection < 1e-4, 1e6, depths_diff)
+    plane_IOUs = plane_IOUs[:, rank_order]
+    depths_diff = depths_diff[:, rank_order]
 
     out: Dict[str, float] = {}
     for thr, key in zip(diff_thresholds, keys):
