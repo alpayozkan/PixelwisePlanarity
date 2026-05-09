@@ -750,6 +750,7 @@ def compute_benchmark_metrics(
     eval_indoor: bool = True,
     max_depth: float = 10.0,
     scores: Optional[np.ndarray] = None,
+    rivoisc_ver: str = "new",
 ) -> Dict[str, float]:
     """Run all benchmark metrics on a single frame.
 
@@ -775,12 +776,36 @@ def compute_benchmark_metrics(
 
     out: Dict[str, float] = {}
 
-    # 1. RI / VI / SC
-    out.update(evaluate_masks(
-        pred_dense, gt_dense,
-        pred_non_plane_idx=n_pred_planes,
-        gt_non_plane_idx=n_gt_planes,
-    ))
+    # 1. RI / VI / SC — dispatch by `rivoisc_ver`.
+    #
+    # "new" (default) → ZeroPlane's `evaluateMasks` ported to bincount.
+    #   Reduction is masked to GT-planar pixels (non-planar background does
+    #   not enter the numerator). Operates on the densified segs.
+    #
+    # "old" → planamono's `compute_clustering_metrics` (used by
+    #   evaluate_all_baselines.py). Treats label 0 (non-planar) as just
+    #   another cluster — non-planar pixels DO contribute. Uses the raw
+    #   (non-densified) planamono labels and is implemented via
+    #   sklearn.rand_score / skimage.variation_of_information /
+    #   segmentation_covering_fast.
+    if rivoisc_ver == "new":
+        out.update(evaluate_masks(
+            pred_dense, gt_dense,
+            pred_non_plane_idx=n_pred_planes,
+            gt_non_plane_idx=n_gt_planes,
+        ))
+    elif rivoisc_ver == "old":
+        from planamono.evaluation.quantitative.eval_utils import (  # noqa: E402
+            compute_clustering_metrics,
+        )
+        old = compute_clustering_metrics(gt_seg, pred_seg)
+        out["RI"] = float(old["rand_index"])
+        out["VI"] = float(old["voi"])
+        out["SC"] = float(old["sc"])
+    else:
+        raise ValueError(
+            f"Unknown rivoisc_ver: {rivoisc_ver!r}. Use 'old' or 'new'."
+        )
 
     # 2. Depth quality (plane-rendered depth)
     out.update(evaluate_depths(

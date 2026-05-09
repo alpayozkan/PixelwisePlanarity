@@ -234,6 +234,7 @@ def _eval_one_frame_benchmark(
     depth_gt: np.ndarray,
     labels_gt: np.ndarray,
     K: np.ndarray,
+    K_ransac: np.ndarray,
     c2w: np.ndarray,
     labels_pred: np.ndarray,
     depth_pred: np.ndarray,
@@ -244,6 +245,7 @@ def _eval_one_frame_benchmark(
     ransac_thresholds: Tuple[float, ...],
     ransac_iterations: int,
     inlier_ratio_gate: float,
+    rivoisc_ver: str,
 ) -> Dict[str, float]:
     metrics = compute_benchmark_metrics(
         pred_seg=labels_pred,
@@ -255,12 +257,17 @@ def _eval_one_frame_benchmark(
         K=K,
         eval_indoor=eval_indoor,
         max_depth=max_depth,
+        rivoisc_ver=rivoisc_ver,
     )
 
     # planamono RANSAC prec/rec at multiple thresholds, computed on
     # (backprojected GT depth, pred labels). Same recipe as
     # evaluate_gt_moge_zeroplane.py's evaluate_single_frame.
-    pts_world, pt_labels, _ = backproject_v1(depth_gt, K, c2w, labels_pred)
+    #
+    # K_ransac controls whether scaled (correct, default) or unscaled (v0
+    # convention, has the K-scale bug) intrinsics are used for backprojection.
+    # See --kscaled flag.
+    pts_world, pt_labels, _ = backproject_v1(depth_gt, K_ransac, c2w, labels_pred)
     if pts_world.shape[0] == 0:
         ransac_block = {
             **{f"prec@{t*100:.1f}cm": 0.0 for t in ransac_thresholds},
@@ -434,6 +441,69 @@ def _summarize_rows(df: pd.DataFrame) -> Dict[str, float]:
         out[f"{c}_mean"] = float(df[c].mean())
         out[f"{c}_std"] = float(df[c].std())
     return out
+
+
+def _save_moge_pred_h5(
+    pred_h5_data: List[Dict],
+    scene_dir: str,
+) -> None:
+    """Write per-scene plane_labels.h5 and plane_params.h5 for MoGe predictions.
+
+    Layout:
+        plane_labels.h5
+            frame_ids:   (N_frames,) variable-length utf-8
+            plane_labels: (N_frames, H, W) int32  (planamono convention,
+                          0 = non-planar, positive ints = planes)
+
+        plane_params.h5
+            frame_ids:    (N_frames,) variable-length utf-8
+            label_ids/<frame_id>:    (N_planes,) int32   — the planamono
+                                     label each row of `params` belongs to
+            plane_params/<frame_id>: (N_planes, 4) float64 — Hessian normal
+                                     form (a, b, c, d) where ‖(a,b,c)‖ = 1
+                                     and the plane is a·X + b·Y + c·Z + d = 0
+    """
+    if not pred_h5_data:
+        return
+    os.makedirs(scene_dir, exist_ok=True)
+
+    frame_ids = [str(d["frame_id"]) for d in pred_h5_data]
+    str_dtype = h5py.string_dtype(encoding="utf-8")
+
+    # plane_labels.h5 — stacked (N, H, W). All frames in a scene share
+    # gt_hw (because labels_pred was already resized to gt_hw upstream).
+    labels_arr = np.stack(
+        [d["labels_pred"].astype(np.int32) for d in pred_h5_data], axis=0
+    )
+    with h5py.File(os.path.join(scene_dir, "plane_labels.h5"), "w") as f:
+        f.create_dataset("frame_ids", data=np.array(frame_ids, dtype=object),
+                         dtype=str_dtype)
+        f.create_dataset("plane_labels", data=labels_arr,
+                         compression="gzip", compression_opts=4)
+
+    # plane_params.h5 — variable-length per frame, group-keyed by frame id.
+    with h5py.File(os.path.join(scene_dir, "plane_params.h5"), "w") as f:
+        f.create_dataset("frame_ids", data=np.array(frame_ids, dtype=object),
+                         dtype=str_dtype)
+        params_grp = f.create_group("plane_params")
+        ids_grp = f.create_group("label_ids")
+        for d in pred_h5_data:
+            fid = str(d["frame_id"])
+            params_dict = d["pred_plane_params"] or {}
+            if params_dict:
+                sorted_lids = sorted(int(k) for k in params_dict.keys())
+                params_arr = np.stack(
+                    [np.asarray(params_dict[lid], dtype=np.float64)
+                     for lid in sorted_lids],
+                    axis=0,
+                )
+                params_grp.create_dataset(fid, data=params_arr)
+                ids_grp.create_dataset(
+                    fid, data=np.asarray(sorted_lids, dtype=np.int32)
+                )
+            else:
+                params_grp.create_dataset(fid, data=np.zeros((0, 4), dtype=np.float64))
+                ids_grp.create_dataset(fid, data=np.zeros(0, dtype=np.int32))
 
 
 def _save_scene_csvs(scene_id: str, frame_rows: List[Dict], scene_dir: str) -> Dict[str, float]:
@@ -680,6 +750,10 @@ def _evaluate_method_dataset(
             continue
 
         tasks = []
+        # Collect MoGe pred data for the per-scene H5 dump (only used when
+        # method=="moge" and --save_moge_h5 is on). One entry per evaluated
+        # frame; appended in lockstep with `tasks`.
+        moge_h5_data: List[Dict] = []
         for ds_idx, raw_fid in frame_list:
             nfid = _norm_fid(raw_fid)
             if method != "gt" and nfid not in pred_scene:
@@ -708,18 +782,30 @@ def _evaluate_method_dataset(
                     method, pred, gt, gt_hw,
                 )
 
+            # K for the RANSAC prec/rec block. Default: K_render (scaled, correct).
+            # If --no-kscaled, use the unscaled GT K to match v0's convention.
+            K_ransac = K_render if args.kscaled else gt["K"]
+
             tasks.append({
                 "scene_id": sid,
                 "frame_id": gt["frame_idx"],
                 "depth_gt": gt["depth"],
                 "labels_gt": gt["labels"],
                 "K": K_render,
+                "K_ransac": K_ransac,
                 "c2w": gt["c2w"],
                 "labels_pred": labels_pred,
                 "depth_pred": depth_pred,
                 "pred_plane_params": pred_plane_params,
                 "gt_plane_params": gt_plane_params,
             })
+
+            if method == "moge" and args.save_moge_h5:
+                moge_h5_data.append({
+                    "frame_id": gt["frame_idx"],
+                    "labels_pred": labels_pred,
+                    "pred_plane_params": pred_plane_params,
+                })
 
         pred_scene = None
 
@@ -729,13 +815,14 @@ def _evaluate_method_dataset(
         outputs = Parallel(n_jobs=args.n_jobs, backend="loky")(
             delayed(_eval_one_frame_benchmark)(
                 t["scene_id"], t["frame_id"],
-                t["depth_gt"], t["labels_gt"], t["K"], t["c2w"],
+                t["depth_gt"], t["labels_gt"], t["K"], t["K_ransac"], t["c2w"],
                 t["labels_pred"], t["depth_pred"],
                 t["pred_plane_params"], t["gt_plane_params"],
                 eval_indoor, max_depth,
                 args.ransac_thresholds,
                 args.ransac_iterations,
                 args.inlier_ratio_gate,
+                args.rivoisc_ver,
             )
             for t in tasks
         )
@@ -745,8 +832,13 @@ def _evaluate_method_dataset(
         scene_summaries.append(scene_summary)
         all_frame_rows.extend(outputs)
 
+        # MoGe-only: dump per-scene plane_labels.h5 + plane_params.h5.
+        if method == "moge" and args.save_moge_h5 and moge_h5_data:
+            _save_moge_pred_h5(moge_h5_data, scene_dir)
+
         del tasks
         del outputs
+        del moge_h5_data
 
     wall = time.perf_counter() - t0
     return all_frame_rows, scene_summaries, wall
@@ -791,6 +883,38 @@ def main():
     ap.add_argument("--ransac_iterations", type=int, default=RANSAC_ITERATIONS)
     ap.add_argument("--inlier_ratio_gate", type=float, default=INLIER_RATIO_GATE)
 
+    # Whether to use K scaled to depth/label resolution for the RANSAC
+    # prec/rec block. Default True (correct: 3D points in true meters).
+    # --no-kscaled reproduces v0's convention (unscaled iPhone-native K), which
+    # has the K-scale bug — useful only for direct comparison with v0 numbers.
+    ap.add_argument("--kscaled", action=argparse.BooleanOptionalAction,
+                    default=True,
+                    help="Scale K to depth/label resolution for RANSAC "
+                         "backprojection (default: True). --no-kscaled uses "
+                         "unscaled GT K (matches v0's prec/rec, has the "
+                         "pre-existing K-scale bug).")
+
+    # Which RI/VI/SC implementation to use.
+    # 'new' (default) = ZeroPlane's evaluateMasks (port of PlaneRCNN /
+    #   PlaneRecTR). Reduction masked to GT-planar pixels.
+    # 'old'           = planamono's compute_clustering_metrics (used by
+    #   evaluate_all_baselines.py). sklearn/skimage-based, treats label 0 as
+    #   just another cluster (non-planar pixels DO contribute).
+    ap.add_argument("--rivoisc_ver", choices=["old", "new"], default="new",
+                    help="RI/VI/SC implementation: 'new' (default, ZP's "
+                         "evaluateMasks) or 'old' (planamono's "
+                         "compute_clustering_metrics, used by "
+                         "evaluate_all_baselines.py).")
+
+    # Whether to dump MoGe's per-scene predicted labels + plane params as
+    # H5 alongside the CSVs. Useful for downstream visualisation /
+    # re-analysis without re-running inference. No-op for gt / zeroplane.
+    ap.add_argument("--save_moge_h5", action=argparse.BooleanOptionalAction,
+                    default=True,
+                    help="Save plane_labels.h5 and plane_params.h5 per scene "
+                         "for MoGe predictions (default: True). Use "
+                         "--no-save_moge_h5 to disable.")
+
     args = ap.parse_args()
     args.ransac_thresholds = tuple(args.ransac_thresholds)
 
@@ -833,6 +957,9 @@ def main():
     print(f"  output root:    {out_root}")
     print(f"  metric source:  metrics_benchmark.py "
           "(ZeroPlane + PlaneRCNN + PlaneRecTR)")
+    print(f"  RANSAC K conv.: {'scaled (correct)' if args.kscaled else 'unscaled (v0 convention)'}")
+    print(f"  RI/VI/SC ver.:  {args.rivoisc_ver} "
+          f"({'ZP evaluateMasks' if args.rivoisc_ver == 'new' else 'planamono compute_clustering_metrics'})")
     print(f"  n_jobs:         {args.n_jobs}    max_scenes: {args.max_scenes}")
     if scene_filter is not None:
         print(f"  scene_ids:      {sorted(scene_filter)} ({len(scene_filter)} scenes)")

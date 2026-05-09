@@ -30,8 +30,14 @@ from typing import Dict, List, Optional
 import pandas as pd
 
 
-DEFAULT_INPUT = "/cluster/scratch/aoezkan/planeseg/eval/gt_moge_zp_benchmark/summary.csv"
-DEFAULT_OUTPUT = "/cluster/scratch/aoezkan/planeseg/eval/gt_moge_zp_benchmark/summary_pretty.xlsx"
+DEFAULT_INPUT = "/cluster/scratch/aoezkan/planeseg/eval/gt_moge_zp_benchmark_kunscaled_old/summary.csv"
+DEFAULT_OUTPUT = "/cluster/scratch/aoezkan/planeseg/eval/gt_moge_zp_benchmark_kunscaled_old/summary_pretty.xlsx"
+
+# DEFAULT_INPUT = "/cluster/scratch/aoezkan/planeseg/eval/gt_moge_zp_benchmark_kunscaled/summary.csv"
+# DEFAULT_OUTPUT = "/cluster/scratch/aoezkan/planeseg/eval/gt_moge_zp_benchmark_kunscaled/summary_pretty.xlsx"
+
+# DEFAULT_INPUT = "/cluster/scratch/aoezkan/planeseg/eval/gt_moge_zp_benchmark/summary.csv"
+# DEFAULT_OUTPUT = "/cluster/scratch/aoezkan/planeseg/eval/gt_moge_zp_benchmark/summary_pretty.xlsx"
 
 
 # ---------------------------------------------------------------------------

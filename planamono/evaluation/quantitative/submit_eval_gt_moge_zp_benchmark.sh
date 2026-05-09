@@ -39,6 +39,19 @@
 #                           NYU-v2 / 7-Scenes are always 1 part — they're small
 #                           enough that splitting them is wasteful.
 #   --eval-root PATH        Output root (default: /cluster/scratch/.../eval).
+#   --kscaled true|false    Whether to scale K to depth/label resolution for
+#                           the RANSAC prec/rec block. Default: true (correct
+#                           3D scaling). false matches v0's convention with
+#                           the K-scale bug. The exp name is auto-suffixed
+#                           with _kscaled or _kunscaled.
+#   --rivoisc-ver old|new   Which RI/VI/SC implementation to use. Default:
+#                           new (ZP's evaluateMasks port — masked to GT-
+#                           planar pixels). old = planamono's
+#                           compute_clustering_metrics (sklearn/skimage,
+#                           treats label 0 as a regular cluster — used by
+#                           evaluate_all_baselines.py). The exp name is
+#                           auto-suffixed _old or _new on top of the
+#                           kscaled suffix.
 #
 # Layout produced:
 #   <EVAL_ROOT>/<EXP>/<method>/<dataset>/<scene>/{results,summary}.csv     (workers)
@@ -51,6 +64,18 @@ set -euo pipefail
 EXP="${EXP:-gt_moge_zp_benchmark}"
 METHODS="${METHODS:-gt moge zeroplane}"
 DATASETS="${DATASETS:-scannetpp nyuv2 sevenscenes}"
+
+# Which K to use for the RANSAC prec/rec block. true (default) = scaled to
+# depth/label resolution (correct, 3D points in true meters). false = use the
+# unscaled GT K (matches v0's convention; has the pre-existing K-scale bug).
+# The exp name is auto-suffixed with _kscaled or _kunscaled to keep runs
+# from clobbering each other.
+KSCALED="${KSCALED:-true}"
+
+# Which RI/VI/SC implementation to use. 'new' (default) = ZP's evaluateMasks
+# port. 'old' = planamono's compute_clustering_metrics (used by
+# evaluate_all_baselines.py). Exp name is suffixed with the value too.
+RIVOISC="${RIVOISC:-new}"
 
 PARTS_SCANNETPP="${PARTS_SCANNETPP:-20}"
 PARTS_NYUV2="${PARTS_NYUV2:-1}"
@@ -86,6 +111,8 @@ while [[ $# -gt 0 ]]; do
         --eval-root|--eval_root) EVAL_ROOT="$2"; shift 2 ;;
         --moge-root)         MOGE_SIGNALS_ROOT="$2"; shift 2 ;;
         --zp-root)           ZEROPLANE_H5_ROOT="$2"; shift 2 ;;
+        --kscaled)           KSCALED="$2"; shift 2 ;;
+        --rivoisc-ver|--rivoisc_ver) RIVOISC="$2"; shift 2 ;;
         -h|--help)
             sed -n '1,/^set -euo pipefail/p' "$0" | head -n -2 | sed 's/^# \?//'
             exit 0
@@ -96,6 +123,37 @@ done
 
 PROJECT_ROOT="/cluster/home/aoezkan/planeseg/PixelwisePlanarity/planamono"
 PY_SCRIPT="$PROJECT_ROOT/evaluation/quantitative/evaluate_gt_moge_zeroplane_benchmark.py"
+
+# Auto-suffix exp with K convention so kscaled and kunscaled runs don't
+# clobber each other. Resolve the user's input first.
+case "${KSCALED,,}" in
+    true|1|yes|on)
+        KSCALED_PY_FLAG="--kscaled"
+        KSCALED_SUFFIX="kscaled"
+        ;;
+    false|0|no|off)
+        KSCALED_PY_FLAG="--no-kscaled"
+        KSCALED_SUFFIX="kunscaled"
+        ;;
+    *)
+        echo "ERROR: --kscaled must be true or false (got: $KSCALED)" >&2
+        exit 2
+        ;;
+esac
+
+# Validate RI/VI/SC selector. Suffix follows kscaled in the exp name.
+case "${RIVOISC,,}" in
+    old|new)
+        RIVOISC_SUFFIX="${RIVOISC,,}"
+        ;;
+    *)
+        echo "ERROR: --rivoisc-ver must be 'old' or 'new' (got: $RIVOISC)" >&2
+        exit 2
+        ;;
+esac
+
+EXP="${EXP}_${KSCALED_SUFFIX}_${RIVOISC_SUFFIX}"
+
 LOG_DIR="/cluster/scratch/aoezkan/planeseg/logs/eval_gt_moge_zp_benchmark/$EXP"
 mkdir -p "$LOG_DIR"
 
@@ -134,6 +192,8 @@ echo " DATASETS:          $DATASETS"
 echo " parts/dataset:     scannetpp=$PARTS_SCANNETPP  nyuv2=$PARTS_NYUV2  sevenscenes=$PARTS_SEVENSCENES"
 echo " --scenes (max):    ${MAX_SCENES:-all}"
 echo " --frames (per):    ${MAX_FRAMES:-all}"
+echo " RANSAC K conv.:    $KSCALED  ($KSCALED_PY_FLAG → suffix '$KSCALED_SUFFIX')"
+echo " RI/VI/SC ver.:     $RIVOISC_SUFFIX  (--rivoisc_ver $RIVOISC_SUFFIX → suffix '$RIVOISC_SUFFIX')"
 echo " moge root:         $MOGE_SIGNALS_ROOT"
 echo " zeroplane root:    $ZEROPLANE_H5_ROOT"
 echo " eval root:         $EVAL_ROOT"
@@ -205,7 +265,7 @@ echo "scenes: $SCENE_CSV"
 echo ""
 
 set -x
-python ${PY_SCRIPT} --exp ${EXP} --methods ${METHOD} --datasets ${DS} --moge_signals_root ${MOGE_SIGNALS_ROOT} --zeroplane_h5_root ${ZEROPLANE_H5_ROOT} --eval_root ${EVAL_ROOT} --scene_ids ${SCENE_CSV} --skip_dataset_aggregates --n_jobs ${PART_CPUS} ${LIMIT_ARGS}
+python ${PY_SCRIPT} --exp ${EXP} --methods ${METHOD} --datasets ${DS} --moge_signals_root ${MOGE_SIGNALS_ROOT} --zeroplane_h5_root ${ZEROPLANE_H5_ROOT} --eval_root ${EVAL_ROOT} --scene_ids ${SCENE_CSV} --skip_dataset_aggregates --n_jobs ${PART_CPUS} ${KSCALED_PY_FLAG} --rivoisc_ver ${RIVOISC_SUFFIX} ${LIMIT_ARGS}
 set +x
 EOF
 )
@@ -239,7 +299,7 @@ source /cluster/scratch/aoezkan/miniconda3/etc/profile.d/conda.sh
 conda activate planeseg
 
 set -x
-python ${PY_SCRIPT} --exp ${EXP} --methods ${METHODS} --datasets ${DATASETS} --eval_root ${EVAL_ROOT} --aggregate_only
+python ${PY_SCRIPT} --exp ${EXP} --methods ${METHODS} --datasets ${DATASETS} --eval_root ${EVAL_ROOT} ${KSCALED_PY_FLAG} --rivoisc_ver ${RIVOISC_SUFFIX} --aggregate_only
 set +x
 EOF
 )
