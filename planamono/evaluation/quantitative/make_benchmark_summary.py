@@ -272,27 +272,35 @@ def build_table(
     for c in ("method", "dataset"):
         bold[c] = True
 
-    # Bold the winner between moge and zeroplane per (dataset, metric).
+    # Bold the winner(s) across {moge, zeroplane, metric3d} per (dataset,
+    # metric). gt is excluded as the upper bound. Ties bold every row that
+    # matches the optimal value.
+    BOLD_METHODS = {"moge", "zeroplane", "metric3d"}
     for dataset, group in rows_df.groupby("dataset"):
-        moge_idx = group.index[group["method"] == "moge"]
-        zp_idx = group.index[group["method"] == "zeroplane"]
-        if len(moge_idx) != 1 or len(zp_idx) != 1:
+        cand_rows = group[group["method"].isin(BOLD_METHODS)]
+        if len(cand_rows) < 2:
             continue
-        mi, zi = int(moge_idx[0]), int(zp_idx[0])
         for m in metrics:
             d = metric_direction(m)
             if d is None:
                 continue
-            mv = rows_df.at[mi, f"{m}_mean"] if f"{m}_mean" in rows_df.columns else float("nan")
-            zv = rows_df.at[zi, f"{m}_mean"] if f"{m}_mean" in rows_df.columns else float("nan")
-            try:
-                mv, zv = float(mv), float(zv)
-            except (TypeError, ValueError):
+            mean_col = f"{m}_mean"
+            if mean_col not in rows_df.columns:
                 continue
-            if math.isnan(mv) or math.isnan(zv) or mv == zv:
+            vals = {}
+            for ri in cand_rows.index:
+                try:
+                    v = float(rows_df.at[ri, mean_col])
+                except (TypeError, ValueError):
+                    continue
+                if not math.isnan(v):
+                    vals[int(ri)] = v
+            if len(vals) < 2:
                 continue
-            winner = mi if (mv > zv if d == "↑" else mv < zv) else zi
-            bold.at[winner, m] = True
+            best = max(vals.values()) if d == "↑" else min(vals.values())
+            for ri, v in vals.items():
+                if v == best:
+                    bold.at[ri, m] = True
 
     renames = {c: c for c in label_cols}
     for m in metrics:

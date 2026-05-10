@@ -145,23 +145,33 @@ def build_value_and_bold_frames(df: pd.DataFrame):
         if c in ("method", "dataset"):
             bold_mask[c] = True
 
-    for i, row in df.iterrows():
-        method = row["method"]
-        dataset = row["dataset"]
-        if method not in ("moge", "zeroplane"):
+    # Bold the winner(s) across {moge, zeroplane, metric3d} per (dataset,
+    # metric). gt is excluded as the upper bound. Ties bold every row that
+    # matches the optimal value.
+    BOLD_METHODS = {"moge", "zeroplane", "metric3d"}
+    for dataset, group in df.groupby("dataset"):
+        cand = group[group["method"].isin(BOLD_METHODS)]
+        if len(cand) < 2:
             continue
-        other = "zeroplane" if method == "moge" else "moge"
-        opp_rows = df[(df["dataset"] == dataset) & (df["method"] == other)]
-        if len(opp_rows) != 1:
-            continue
-        opp = opp_rows.iloc[0]
         for c in mean_cols:
             d = direction_for[c]
             if not d:
                 continue
-            winner = _better(row[c], opp[c], d)
-            if winner == "a":
-                bold_mask.at[i, c] = True
+            vals: Dict[int, float] = {}
+            for ri in cand.index:
+                v = cand.at[ri, c]
+                try:
+                    fv = float(v)
+                except (TypeError, ValueError):
+                    continue
+                if fv == fv:  # NaN check (NaN != NaN)
+                    vals[int(ri)] = fv
+            if len(vals) < 2:
+                continue
+            best = max(vals.values()) if d == "↑" else min(vals.values())
+            for ri, fv in vals.items():
+                if fv == best:
+                    bold_mask.at[ri, c] = True
 
     return values, bold_mask, rename_map
 
