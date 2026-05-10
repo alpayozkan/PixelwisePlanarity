@@ -13,13 +13,16 @@
 #
 # Defaults:
 #   EXP                 = "gt_moge_zp_benchmark"
-#   METHODS             = "gt moge zeroplane"
+#   METHODS             = "gt moge zeroplane"   (also supports moge_ep2, metric3d)
 #   DATASETS            = "scannetpp nyuv2 sevenscenes"
 #   PARTS_SCANNETPP     = 20    (42 scenes → 2-3 per part, round-robin)
 #   PARTS_NYUV2         = 1     (single virtual "nyuv2" scene)
 #   PARTS_SEVENSCENES   = 1     (7 small scenes)
 #   MAX_SCENES          = unset (= all scenes)
 #   MAX_FRAMES          = unset (= all frames per scene)
+#
+# Note: metric3d only has inference dumps for scannetpp. (metric3d, nyuv2)
+# and (metric3d, sevenscenes) cells are auto-skipped with a warning.
 #
 # Path defaults match the python script defaults.
 #
@@ -31,7 +34,8 @@
 #
 # CLI flags:
 #   --exp NAME              Experiment name (default: gt_moge_zp_benchmark).
-#   --methods "M1 M2 ..."   Subset of {gt,moge,zeroplane} (default: all 3).
+#   --methods "M1 M2 ..."   Subset of {gt,moge,moge_ep2,zeroplane,metric3d}
+#                           (default: gt moge zeroplane).
 #   --datasets "D1 D2 ..."  Subset of {scannetpp,nyuv2,sevenscenes} (default: all 3).
 #   --scenes N              Limit to first N scenes per dataset (default: all).
 #   --frames N              Limit to N evenly-spaced frames per scene (default: all).
@@ -86,7 +90,12 @@ MAX_FRAMES="${MAX_FRAMES:-}"   # empty = all
 
 EVAL_ROOT="${EVAL_ROOT:-/cluster/scratch/aoezkan/planeseg/eval}"
 MOGE_SIGNALS_ROOT="${MOGE_SIGNALS_ROOT:-/cluster/scratch/aoezkan/planeseg/inference/moge_signals_4ds_ep1}"
+MOGE_EP2_SIGNALS_ROOT="${MOGE_EP2_SIGNALS_ROOT:-/cluster/scratch/aoezkan/planeseg/inference/moge_signals_4ds_ep2}"
 ZEROPLANE_H5_ROOT="${ZEROPLANE_H5_ROOT:-/cluster/scratch/aoezkan/planeseg/inference/zeroplane_default_dust3r_released_h5}"
+METRIC3D_H5_ROOT="${METRIC3D_H5_ROOT:-/cluster/scratch/ayavuz/inference/metric3d_v2_epoch1}"
+# Empty = use the python script's default (~1.2833 = min(616/480, 1064/640)
+# for ScanNet++). Set to override.
+METRIC3D_DEPTH_SCALE="${METRIC3D_DEPTH_SCALE:-}"
 
 SCANNETPP_SPLIT="${SCANNETPP_SPLIT:-/cluster/home/aoezkan/planeseg/PixelwisePlanarity/planamono/splits/scannetpp/test.txt}"
 
@@ -110,7 +119,10 @@ while [[ $# -gt 0 ]]; do
         --n-jobs|--parts)    PARTS_SCANNETPP="$2"; shift 2 ;;
         --eval-root|--eval_root) EVAL_ROOT="$2"; shift 2 ;;
         --moge-root)         MOGE_SIGNALS_ROOT="$2"; shift 2 ;;
+        --moge-ep2-root)     MOGE_EP2_SIGNALS_ROOT="$2"; shift 2 ;;
         --zp-root)           ZEROPLANE_H5_ROOT="$2"; shift 2 ;;
+        --metric3d-root)     METRIC3D_H5_ROOT="$2"; shift 2 ;;
+        --metric3d-scale)    METRIC3D_DEPTH_SCALE="$2"; shift 2 ;;
         --kscaled)           KSCALED="$2"; shift 2 ;;
         --rivoisc-ver|--rivoisc_ver) RIVOISC="$2"; shift 2 ;;
         -h|--help)
@@ -123,6 +135,14 @@ done
 
 PROJECT_ROOT="/cluster/home/aoezkan/planeseg/PixelwisePlanarity/planamono"
 PY_SCRIPT="$PROJECT_ROOT/evaluation/quantitative/evaluate_gt_moge_zeroplane_benchmark.py"
+
+# Post-processing scripts run inside the aggregator job, in order:
+#   1. make_benchmark_summary.py    → summary_complete{,_picked}.xlsx
+#   2. prettify_benchmark_summary.py → summary_pretty.xlsx (from summary.csv)
+#   3. make_benchmark_latex.py      → latex/<dataset>.tex + all_combined{,_compact}.tex
+PY_SUMMARY="$PROJECT_ROOT/evaluation/quantitative/make_benchmark_summary.py"
+PY_PRETTIFY="$PROJECT_ROOT/evaluation/quantitative/prettify_benchmark_summary.py"
+PY_LATEX="$PROJECT_ROOT/evaluation/quantitative/make_benchmark_latex.py"
 
 # Auto-suffix exp with K convention so kscaled and kunscaled runs don't
 # clobber each other. Resolve the user's input first.
@@ -182,6 +202,7 @@ DATASET_PARTS[sevenscenes]="$PARTS_SEVENSCENES"
 # filter out everything → 0 scenes processed.
 LIMIT_ARGS=""
 if [ -n "$MAX_FRAMES" ]; then LIMIT_ARGS+=" --max_frames_per_scene ${MAX_FRAMES}"; fi
+if [ -n "$METRIC3D_DEPTH_SCALE" ]; then LIMIT_ARGS+=" --metric3d_depth_scale ${METRIC3D_DEPTH_SCALE}"; fi
 
 echo "================================================================"
 echo " evaluate_gt_moge_zeroplane_benchmark — multi-(method, dataset) submission"
@@ -195,7 +216,10 @@ echo " --frames (per):    ${MAX_FRAMES:-all}"
 echo " RANSAC K conv.:    $KSCALED  ($KSCALED_PY_FLAG → suffix '$KSCALED_SUFFIX')"
 echo " RI/VI/SC ver.:     $RIVOISC_SUFFIX  (--rivoisc_ver $RIVOISC_SUFFIX → suffix '$RIVOISC_SUFFIX')"
 echo " moge root:         $MOGE_SIGNALS_ROOT"
+echo " moge_ep2 root:     $MOGE_EP2_SIGNALS_ROOT"
 echo " zeroplane root:    $ZEROPLANE_H5_ROOT"
+echo " metric3d root:     $METRIC3D_H5_ROOT"
+echo " metric3d scale:    ${METRIC3D_DEPTH_SCALE:-default (~1.2833)}"
 echo " eval root:         $EVAL_ROOT"
 echo " resources/part:    ${PART_TIME}, ${PART_CPUS} cpu, ${PART_MEM}/cpu (CPU-only)"
 echo " log dir:           $LOG_DIR"
@@ -207,6 +231,14 @@ JOB_IDS=()
 
 for METHOD in $METHODS; do
     for DS in $DATASETS; do
+        # metric3d inference dumps only exist for scannetpp; auto-skip
+        # (metric3d, nyuv2|sevenscenes) cells so we don't waste slurm slots
+        # on jobs the python script will reject.
+        if [ "$METHOD" = "metric3d" ] && [ "$DS" != "scannetpp" ]; then
+            echo "  [skip] $METHOD/$DS: metric3d only supports scannetpp"
+            continue
+        fi
+
         SCENES_RAW="${DATASET_SCENES[$DS]:-}"
         N_PARTS_DS="${DATASET_PARTS[$DS]:-1}"
         if [ -z "$SCENES_RAW" ]; then
@@ -265,7 +297,7 @@ echo "scenes: $SCENE_CSV"
 echo ""
 
 set -x
-python ${PY_SCRIPT} --exp ${EXP} --methods ${METHOD} --datasets ${DS} --moge_signals_root ${MOGE_SIGNALS_ROOT} --zeroplane_h5_root ${ZEROPLANE_H5_ROOT} --eval_root ${EVAL_ROOT} --scene_ids ${SCENE_CSV} --skip_dataset_aggregates --n_jobs ${PART_CPUS} ${KSCALED_PY_FLAG} --rivoisc_ver ${RIVOISC_SUFFIX} ${LIMIT_ARGS}
+python ${PY_SCRIPT} --exp ${EXP} --methods ${METHOD} --datasets ${DS} --moge_signals_root ${MOGE_SIGNALS_ROOT} --moge_ep2_signals_root ${MOGE_EP2_SIGNALS_ROOT} --zeroplane_h5_root ${ZEROPLANE_H5_ROOT} --metric3d_h5_root ${METRIC3D_H5_ROOT} --eval_root ${EVAL_ROOT} --scene_ids ${SCENE_CSV} --skip_dataset_aggregates --n_jobs ${PART_CPUS} ${KSCALED_PY_FLAG} --rivoisc_ver ${RIVOISC_SUFFIX} ${LIMIT_ARGS}
 set +x
 EOF
 )
@@ -294,13 +326,38 @@ AGG_JOB=$(/cluster/apps/slurm/bin/sbatch --parsable \
     --error="$LOG_DIR/aggregate_%j.err" \
     <<EOF
 #!/bin/bash
-set -euo pipefail
+set -uo pipefail
 source /cluster/scratch/aoezkan/miniconda3/etc/profile.d/conda.sh
 conda activate planeseg
 
+EXP_DIR=${EVAL_ROOT}/${EXP}
+
+# 1. Rebuild dataset-level + top-level summary CSVs from per-scene CSVs.
+echo "==== [agg 1/4] aggregate_only ===="
 set -x
 python ${PY_SCRIPT} --exp ${EXP} --methods ${METHODS} --datasets ${DATASETS} --eval_root ${EVAL_ROOT} ${KSCALED_PY_FLAG} --rivoisc_ver ${RIVOISC_SUFFIX} --aggregate_only
 set +x
+
+# 2. Pooled-per-frame XLSX summaries (real std for NYU, F1 columns).
+echo "==== [agg 2/4] make_benchmark_summary.py ===="
+set -x
+python ${PY_SUMMARY} --exp_dir \${EXP_DIR}
+set +x
+
+# 3. Prettified version of the cross-(method, dataset) summary.csv.
+echo "==== [agg 3/4] prettify_benchmark_summary.py ===="
+set -x
+python ${PY_PRETTIFY} --input \${EXP_DIR}/summary.csv --output \${EXP_DIR}/summary_pretty.xlsx
+set +x
+
+# 4. LaTeX tables (per-dataset + combined + compact) from the picked XLSX.
+echo "==== [agg 4/4] make_benchmark_latex.py ===="
+set -x
+python ${PY_LATEX} --xlsx \${EXP_DIR}/summary_complete_picked.xlsx
+set +x
+
+echo ""
+echo "[done] post-processing for \${EXP_DIR}"
 EOF
 )
 
@@ -313,6 +370,11 @@ echo "Logs:    $LOG_DIR"
 echo "Output:  $EVAL_ROOT/$EXP/<method>/<dataset>/<scene>/{results,summary}.csv"
 echo "         $EVAL_ROOT/$EXP/<method>/<dataset>/aggregate_*.csv"
 echo "         $EVAL_ROOT/$EXP/summary.csv"
+echo "         (post-processing inside the aggregator job:)"
+echo "         $EVAL_ROOT/$EXP/summary_complete{,_picked}.xlsx"
+echo "         $EVAL_ROOT/$EXP/summary_pretty.xlsx"
+echo "         $EVAL_ROOT/$EXP/latex/<dataset>.tex + all_tables.tex"
+echo "         $EVAL_ROOT/$EXP/latex/all_combined{,_compact}.tex"
 echo ""
 echo "Cancel:  scancel ${JOB_IDS[*]} ${AGG_JOB}"
 echo "================================================================"

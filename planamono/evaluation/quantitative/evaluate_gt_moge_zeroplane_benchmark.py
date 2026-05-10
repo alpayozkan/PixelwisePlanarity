@@ -1,6 +1,10 @@
 """
-Benchmark evaluation: gt / moge / zeroplane on scannetpp / nyuv2 / sevenscenes
-using the merged ZeroPlane + PlaneRCNN + PlaneRecTR metric kernels.
+Benchmark evaluation: gt / moge / moge_ep2 / zeroplane / metric3d on
+scannetpp / nyuv2 / sevenscenes using the merged ZeroPlane + PlaneRCNN +
+PlaneRecTR metric kernels. metric3d is currently only available for ScanNet++
+(``<root>/<dataset>/<split>/<scene>/inference.h5``); its depth is scaled by
+``--metric3d_depth_scale`` (default 1.2833 ≈ min(616/480, 1064/640) for the
+ScanNet++ canonical-resize) before plane fitting.
 
 Same CLI / output layout as ``evaluate_gt_moge_zeroplane.py``. Only the
 per-frame metric block is replaced — instead of planamono-native metrics
@@ -99,8 +103,33 @@ DATASET_INDOOR = {
 }
 
 DEFAULT_MOGE_ROOT = "/cluster/scratch/aoezkan/planeseg/inference/moge_signals_4ds_ep1"
+DEFAULT_MOGE_EP2_ROOT = "/cluster/scratch/aoezkan/planeseg/inference/moge_signals_4ds_ep2"
 DEFAULT_ZP_ROOT = "/cluster/scratch/aoezkan/planeseg/inference/zeroplane_default_dust3r_released_h5"
+DEFAULT_METRIC3D_ROOT = "/cluster/scratch/ayavuz/inference/metric3d_v2_epoch1"
 DEFAULT_EVAL_ROOT = "/cluster/scratch/aoezkan/planeseg/eval"
+
+# Metric3D was inferred on a downscaled ScanNet++ image; multiply by this scale
+# to recover true metric depth at the H5 resolution.
+#   SCALE = min(616/480, 1064/640) = 1.28333...  (ScanNet++ specific)
+# Equivalent to the de-canonical step `pred_depth *= focal/1000` in
+# planamono/moge/baselines/metric3d_v2.py that the upstream H5 dump skipped.
+DEFAULT_METRIC3D_DEPTH_SCALE = min(616 / 480, 1064 / 640)
+
+# Datasets for which Metric3D inference H5s are available. The upstream
+# inference job only ran on ScanNet++; passing --methods metric3d together
+# with another dataset will be flagged as a config error.
+METRIC3D_DATASETS = {"scannetpp"}
+
+# Methods that share the MoGe signals.h5 loading + segmentation code path.
+# Each entry maps to the CLI arg name holding its signals root.
+_MOGE_METHODS: Dict[str, str] = {
+    "moge": "moge_signals_root",
+    "moge_ep2": "moge_ep2_signals_root",
+}
+
+
+def _moge_root_for_method(method: str, args) -> str:
+    return getattr(args, _MOGE_METHODS[method])
 
 
 # ---------------------------------------------------------------------------
@@ -431,6 +460,46 @@ def _load_zeroplane_scene(scene_dir: str) -> Optional[Dict[str, Dict[str, np.nda
     return out
 
 
+def _load_metric3d_scene(
+    scene_dir: str,
+    depth_scale: float = 1.0,
+) -> Optional[Dict[str, Dict[str, np.ndarray]]]:
+    """Read Metric3D inference.h5 and run our segmentation per frame.
+
+    Mirrors ``_load_moge_scene`` but reads from ``inference.h5`` (Metric3D
+    job format) and applies ``depth_scale`` to recover true metric units.
+    Field names: depth/normals/planarity (note plural ``normals``).
+    """
+    h5_path = os.path.join(scene_dir, "inference.h5")
+    if not os.path.isfile(h5_path):
+        return None
+    out: Dict[str, Dict[str, np.ndarray]] = {}
+    with h5py.File(h5_path, "r") as f:
+        frame_ids = _decode_frame_ids(f["frame_ids"][:])
+        for i, raw_fid in enumerate(frame_ids):
+            planarity = f["planarity"][i].astype(np.float32)
+            normal = f["normals"][i].astype(np.float32)
+            depth = f["depth"][i].astype(np.float32) * depth_scale
+            mask = planarity > SEG_THRESHOLD_PLANARITY
+            labels, _ = compute_vectorized_planar_segments_v5_relative(
+                planarity_mask=mask,
+                normal=normal,
+                depth=depth,
+                normal_threshold_rad=float(np.deg2rad(SEG_NORMAL_THRESHOLD_DEG)),
+                depth_threshold=SEG_DEPTH_THRESHOLD_REL,
+                neighbor_match_count_thresh=SEG_NEIGHBOR_MATCH_COUNT,
+                device="cpu",
+            )
+            if hasattr(labels, "cpu"):
+                labels = labels.cpu().numpy()
+            out[_norm_fid(raw_fid)] = {
+                "labels": labels.astype(np.int32),
+                "depth": depth,
+                "normals": normal,
+            }
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Output writers (cribbed from base script)
 # ---------------------------------------------------------------------------
@@ -629,7 +698,7 @@ def _build_pred_arrays(
     K_render = _scale_K_to_hw(gt["K"], gt_hw)
     labels_pred = pred["labels"]
 
-    if method == "moge":
+    if method in _MOGE_METHODS or method == "metric3d":
         plane_params = compute_plane_params(
             depth=pred["depth"],
             normal=pred["normals"],
@@ -691,8 +760,19 @@ def _evaluate_method_dataset(
     out_dataset_dir = os.path.join(args.eval_root, args.exp, method, dataset_name)
     os.makedirs(out_dataset_dir, exist_ok=True)
 
-    moge_dataset_root = os.path.join(args.moge_signals_root, dataset_name)
+    if method in _MOGE_METHODS:
+        moge_dataset_root = os.path.join(_moge_root_for_method(method, args), dataset_name)
+    else:
+        moge_dataset_root = None
     zp_dataset_root = os.path.join(args.zeroplane_h5_root, dataset_name)
+    # Metric3D dump layout adds the split as an extra subdir
+    # (<root>/<dataset>/<split>/<scene>/inference.h5).
+    if method == "metric3d":
+        metric3d_dataset_root = os.path.join(
+            args.metric3d_h5_root, dataset_name, args.split,
+        )
+    else:
+        metric3d_dataset_root = None
 
     eval_indoor = DATASET_INDOOR.get(dataset_name, True)
     max_depth = DATASET_MAX_DEPTH.get(dataset_name, 10.0)
@@ -738,10 +818,15 @@ def _evaluate_method_dataset(
 
         if method == "gt":
             pred_scene = None
-        elif method == "moge":
+        elif method in _MOGE_METHODS:
             pred_scene = _load_moge_scene(os.path.join(moge_dataset_root, sid))
         elif method == "zeroplane":
             pred_scene = _load_zeroplane_scene(os.path.join(zp_dataset_root, sid))
+        elif method == "metric3d":
+            pred_scene = _load_metric3d_scene(
+                os.path.join(metric3d_dataset_root, sid),
+                depth_scale=args.metric3d_depth_scale,
+            )
         else:
             raise ValueError(f"unknown method: {method}")
 
@@ -800,7 +885,7 @@ def _evaluate_method_dataset(
                 "gt_plane_params": gt_plane_params,
             })
 
-            if method == "moge" and args.save_moge_h5:
+            if method in _MOGE_METHODS and args.save_moge_h5:
                 moge_h5_data.append({
                     "frame_id": gt["frame_idx"],
                     "labels_pred": labels_pred,
@@ -833,7 +918,7 @@ def _evaluate_method_dataset(
         all_frame_rows.extend(outputs)
 
         # MoGe-only: dump per-scene plane_labels.h5 + plane_params.h5.
-        if method == "moge" and args.save_moge_h5 and moge_h5_data:
+        if method in _MOGE_METHODS and args.save_moge_h5 and moge_h5_data:
             _save_moge_pred_h5(moge_h5_data, scene_dir)
 
         del tasks
@@ -854,12 +939,25 @@ def main():
     ap.add_argument("--exp", required=True)
     ap.add_argument("--methods", nargs="+",
                     default=["gt", "moge", "zeroplane"],
-                    choices=["gt", "moge", "zeroplane"])
+                    choices=["gt", "moge", "moge_ep2", "zeroplane", "metric3d"])
     ap.add_argument("--datasets", nargs="+",
                     default=["scannetpp", "nyuv2", "sevenscenes"],
                     choices=["scannetpp", "nyuv2", "sevenscenes"])
     ap.add_argument("--moge_signals_root", default=DEFAULT_MOGE_ROOT)
+    ap.add_argument("--moge_ep2_signals_root", default=DEFAULT_MOGE_EP2_ROOT,
+                    help="Signals root for the moge_ep2 method "
+                         "(epoch-2 4-dataset MoGe checkpoint).")
     ap.add_argument("--zeroplane_h5_root", default=DEFAULT_ZP_ROOT)
+    ap.add_argument("--metric3d_h5_root", default=DEFAULT_METRIC3D_ROOT,
+                    help=("Root for Metric3D inference dumps. Layout: "
+                          "<root>/<dataset>/<split>/<scene>/inference.h5. "
+                          "Currently only ScanNet++ has dumps."))
+    ap.add_argument("--metric3d_depth_scale", type=float,
+                    default=DEFAULT_METRIC3D_DEPTH_SCALE,
+                    help=("Multiplicative scale applied to Metric3D depth to "
+                          "recover true metric units (default: "
+                          f"{DEFAULT_METRIC3D_DEPTH_SCALE:.6f} for ScanNet++; "
+                          "pass 1.0 to disable)."))
     ap.add_argument("--eval_root", default=DEFAULT_EVAL_ROOT)
     ap.add_argument("--split", default="test")
     ap.add_argument("--max_scenes", type=int, default=None)
@@ -930,14 +1028,25 @@ def main():
     if not args.aggregate_only:
         for ds in args.datasets:
             for m in args.methods:
-                if m == "moge":
-                    d = os.path.join(args.moge_signals_root, ds)
+                if m in _MOGE_METHODS:
+                    root = _moge_root_for_method(m, args)
+                    d = os.path.join(root, ds)
                     if not os.path.isdir(d):
-                        ap.error(f"--moge_signals_root/{ds} not found: {d}")
+                        ap.error(f"--{_MOGE_METHODS[m]}/{ds} not found: {d}")
                 if m == "zeroplane":
                     d = os.path.join(args.zeroplane_h5_root, ds)
                     if not os.path.isdir(d):
                         ap.error(f"--zeroplane_h5_root/{ds} not found: {d}")
+                if m == "metric3d":
+                    if ds not in METRIC3D_DATASETS:
+                        ap.error(
+                            f"metric3d inference dumps only exist for "
+                            f"{sorted(METRIC3D_DATASETS)}; got dataset={ds}. "
+                            f"Restrict --datasets accordingly."
+                        )
+                    d = os.path.join(args.metric3d_h5_root, ds, args.split)
+                    if not os.path.isdir(d):
+                        ap.error(f"--metric3d_h5_root/{ds}/{args.split} not found: {d}")
 
     os.environ.setdefault("OMP_NUM_THREADS", "1")
     os.environ.setdefault("MKL_NUM_THREADS", "1")
@@ -953,7 +1062,11 @@ def main():
     print(f"  methods:        {args.methods}")
     print(f"  datasets:       {args.datasets}")
     print(f"  moge root:      {args.moge_signals_root}")
+    print(f"  moge_ep2 root:  {args.moge_ep2_signals_root}")
     print(f"  zeroplane root: {args.zeroplane_h5_root}")
+    if "metric3d" in args.methods:
+        print(f"  metric3d root:  {args.metric3d_h5_root}")
+        print(f"  m3d depth scl:  {args.metric3d_depth_scale:.6f}")
     print(f"  output root:    {out_root}")
     print(f"  metric source:  metrics_benchmark.py "
           "(ZeroPlane + PlaneRCNN + PlaneRecTR)")

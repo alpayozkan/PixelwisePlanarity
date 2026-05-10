@@ -16,8 +16,8 @@
 set -euo pipefail
 
 # ── Configuration (override via env) ─────────────────────────────────────────
-MODEL_PATH="${MODEL_PATH:-/cluster/scratch/aoezkan/planeseg/checkpoints/moge_HIRES_4datasets/model_epoch1.pt}"
-OUTPUT_ROOT_BASE="${OUTPUT_ROOT_BASE:-/cluster/scratch/aoezkan/planeseg/inference/moge_signals_4ds_ep1}"
+MODEL_PATH="${MODEL_PATH:-/cluster/scratch/ayavuz/moge_all_output_bce_476644/model_epoch2.pt}"
+OUTPUT_ROOT_BASE="${OUTPUT_ROOT_BASE:-/cluster/scratch/aoezkan/planeseg/inference/moge_signals_4ds_ep2}"
 DATASETS="${DATASETS:-scannetpp nyuv2 sevenscenes}"
 
 # Per-dataset knobs (used only when that dataset is in $DATASETS)

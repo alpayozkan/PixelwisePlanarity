@@ -53,6 +53,31 @@ CLI flags controlling it:
 - `--ransac_thresholds 0.001 0.005 0.01` (m, default)
 - `--ransac_iterations 200`
 - `--inlier_ratio_gate 0.9`
+- `--kscaled` (default) / `--no-kscaled`
+
+### `--kscaled` flag — K convention for the RANSAC backprojection
+
+The benchmark's RANSAC prec/rec block calls `backproject_v1(depth_gt, K, c2w, labels_pred)`. The K passed in materially changes the numbers, so it's behind a flag.
+
+| Mode | What it does | When to use |
+|---|---|---|
+| `--kscaled` (default) | K is scaled to the depth/label resolution (`_scale_K_to_hw`) — 3D points come out in true meters. Plane-fit threshold τ in meters means meters. | New experiments where you want physically meaningful prec/rec at the stated thresholds. |
+| `--no-kscaled` | K is the unscaled GT intrinsics (iPhone native ~1920×1440 for ScanNet++). 3D points are at the wrong absolute scale (xy compressed ~3×). Threshold τ in meters acts much tighter than advertised, so prec/rec are inflated, especially at @0.1cm. | Reproducing v0's `evaluate_gt_moge_zeroplane.py` numbers for direct comparison. v0's `_scale_K_to_hw` docstring already calls this a "known pre-existing bug." |
+
+**The two are not equivalent at tight thresholds.** Smoke results, GT method, ScanNet++ scene `0d2ee665be`:
+
+| metric | `--kscaled` | `--no-kscaled` | Δ |
+|---|---|---|---|
+| prec@0.1cm | 0.281 | 0.751 | +0.47 |
+| rec@0.1cm  | 0.244 | 0.615 | +0.37 |
+| prec@0.5cm | 0.968 | 0.975 | +0.01 |
+| rec@0.5cm  | 0.754 | 0.758 | +0.00 |
+| prec@1.0cm | 0.973 | 0.992 | +0.02 |
+| rec@1.0cm  | 0.757 | 0.774 | +0.02 |
+
+Loose thresholds (0.5cm, 1.0cm) are mostly insensitive; the tightest (0.1cm) sees a huge gap. This matches the K-scale analysis: at 1mm tolerance the 3× xy compression dominates; at 1cm it's washed out.
+
+The submit script `submit_eval_gt_moge_zp_benchmark.sh` exposes this as `--kscaled true|false` and **auto-suffixes the experiment name** (`gt_moge_zp_benchmark_kscaled` vs `gt_moge_zp_benchmark_kunscaled`) so the two runs don't clobber each other on disk.
 
 This is the only piece of the original planamono metric set that the
 benchmark pipeline carries — `bp_*`, `plane_recall_d/n_*`, and

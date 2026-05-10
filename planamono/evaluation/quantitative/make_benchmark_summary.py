@@ -67,7 +67,8 @@ HIGHER_IS_BETTER_PATTERNS: List[re.Pattern] = [
     re.compile(r"^per_pixel_depth_.*$"), re.compile(r"^per_plane_depth_.*$"),
     re.compile(r"^per_pixel_normal_.*$"), re.compile(r"^per_plane_normal_.*$"),
     re.compile(r"^per_pixel_offset_.*$"), re.compile(r"^per_plane_offset_.*$"),
-    re.compile(r"^AP@\d+cm$"), re.compile(r"^prec@.*cm$"), re.compile(r"^rec@.*cm$"),
+    re.compile(r"^AP@\d+cm$"),
+    re.compile(r"^prec@.*cm$"), re.compile(r"^rec@.*cm$"), re.compile(r"^f1@.*cm$"),
 ]
 
 
@@ -91,9 +92,9 @@ PICKED_METRICS: List[str] = [
     "per_plane_normal_5", "per_plane_normal_10", "per_plane_normal_30",
     "mean_normal_error_deg",     # CRITICAL
     "mean_offset_error_m",       # CRITICAL
-    "prec@0.1cm", "rec@0.1cm",
-    "prec@0.5cm", "rec@0.5cm",
-    "prec@1.0cm", "rec@1.0cm",
+    "prec@0.1cm", "rec@0.1cm", "f1@0.1cm",
+    "prec@0.5cm", "rec@0.5cm", "f1@0.5cm",
+    "prec@1.0cm", "rec@1.0cm", "f1@1.0cm",
 ]
 
 # Columns that are not metrics — never aggregated, kept as-is in row labels.
@@ -105,11 +106,45 @@ LABEL_COLS = ("scene_id", "frame_idx")
 PCT_METRIC_PATTERNS: List[re.Pattern] = [
     re.compile(r"^prec@.*cm$"),
     re.compile(r"^rec@.*cm$"),
+    re.compile(r"^f1@.*cm$"),
 ]
 
 
 def _is_pct_metric(metric: str) -> bool:
     return any(p.match(metric) for p in PCT_METRIC_PATTERNS)
+
+
+# Map prec@<τ>cm → its matching rec@<τ>cm so we can synthesise f1@<τ>cm
+# per-frame. We do this BEFORE aggregating so std(F1) is computed across
+# frames, not derived (incorrectly) from std(P) and std(R).
+_PREC_REC_RE = re.compile(r"^prec@(.*)cm$")
+
+
+def _add_f1_columns(df) -> None:
+    """In-place: for each prec@<τ>cm with a matching rec@<τ>cm, add a
+    f1@<τ>cm column computed per-row as the harmonic mean.
+    """
+    import numpy as np
+    for c in list(df.columns):
+        m = _PREC_REC_RE.match(c)
+        if not m:
+            continue
+        tag = m.group(1)
+        rec_col = f"rec@{tag}cm"
+        if rec_col not in df.columns:
+            continue
+        f1_col = f"f1@{tag}cm"
+        if f1_col in df.columns:
+            continue   # already present, don't overwrite
+        p = df[c].astype(float)
+        r = df[rec_col].astype(float)
+        denom = p + r
+        # Avoid 0/0; F1 is 0 if both P and R are 0, NaN if either is NaN.
+        with np.errstate(invalid="ignore", divide="ignore"):
+            f1 = np.where(denom > 0, 2.0 * p * r / denom, 0.0)
+        # Propagate NaN where either input is NaN.
+        f1 = np.where(p.isna() | r.isna(), np.nan, f1)
+        df[f1_col] = f1
 
 
 # ---------------------------------------------------------------------------
@@ -161,6 +196,10 @@ def collect_pooled(exp_dir: str) -> Tuple[pd.DataFrame, List[str]]:
             df = _read_per_frame_rows(d_dir)
             if df is None or df.empty:
                 continue
+
+            # Synthesise f1@<τ>cm per-frame so std(F1) is the across-frame
+            # standard deviation (not a function of std(P), std(R)).
+            _add_f1_columns(df)
 
             row: Dict[str, float] = {
                 "method": method,
@@ -325,11 +364,14 @@ def write_xlsx(
 # CLI
 # ---------------------------------------------------------------------------
 
+DEFAULT_EXP_DIR = "/cluster/scratch/aoezkan/planeseg/eval/gt_moge_zp_benchmark_kunscaled_old"
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--exp_dir", required=True,
-                    help="Experiment dir (e.g. .../eval/gt_moge_zp_benchmark_kunscaled_old)")
+    ap.add_argument("--exp_dir", default=DEFAULT_EXP_DIR,
+                    help=f"Experiment dir (default: {DEFAULT_EXP_DIR}).")
     ap.add_argument("--complete_out", default=None,
                     help="Override path for summary_complete.xlsx "
                          "(default: <exp_dir>/summary_complete.xlsx).")
