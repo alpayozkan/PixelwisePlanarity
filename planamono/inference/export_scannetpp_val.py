@@ -58,6 +58,9 @@ def parse_args():
     parser.add_argument("--split", type=str, default="val",
                         choices=["train", "val", "test"],
                         help="Which split partition to export")
+    parser.add_argument("--overwrite", action="store_true",
+                        help="Re-process scenes even if inference.h5 already exists "
+                             "(default: skip existing, i.e. resume)")
     return parser.parse_args()
 
 
@@ -333,6 +336,11 @@ def main():
     # Process each scene
     success_count = 0
     for i, scene_id in enumerate(scenes):
+        out_h5_path = os.path.join(args.output_dir, scene_id, "inference.h5")
+        if not args.overwrite and os.path.exists(out_h5_path):
+            print(f"\n[{i+1}/{len(scenes)}] Skipping {scene_id} (already exists: {out_h5_path})")
+            success_count += 1
+            continue
         print(f"\n[{i+1}/{len(scenes)}] Processing {scene_id}")
         ok = process_scene(
             model, scene_id, args.rgb_root, args.gt_root, args.output_dir,
