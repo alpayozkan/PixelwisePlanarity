@@ -22,7 +22,7 @@ SPLIT="${1:-val}"
 CHECKPOINT="${2:?Usage: $0 <split> <checkpoint> <output_dir> [rgb_root] [gt_root] [split_dir]}"
 OUTPUT_DIR="${3:?Usage: $0 <split> <checkpoint> <output_dir> [rgb_root] [gt_root] [split_dir]}"
 RGB_ROOT="${4:-/cluster/project/cvg/Shared_datasets/scannet++/data}"
-GT_ROOT="${5:-/cluster/scratch/ayavuz/dataset/scannetpp}"
+GT_ROOT="${5:-/cluster/scratch/ayavuz/SCANNETPP_BACKUP}"
 SPLIT_DIR="${6:-$REPO_ROOT/planamono/splits/scannetpp}"
 
 mkdir -p "$OUTPUT_DIR"

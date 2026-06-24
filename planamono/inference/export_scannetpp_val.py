@@ -177,6 +177,7 @@ def process_scene(model, scene_id, rgb_root, gt_root, output_dir,
     print(f"  {scene_id}: {num_frames} frames")
 
     # Preallocate output arrays
+    rgbs = np.zeros((num_frames, out_h, out_w, 3), dtype=np.uint8)         # RGB at output res
     intrinsics_all = np.zeros((num_frames, 3, 3), dtype=np.float32)        # MoGe-recovered
     depths = np.zeros((num_frames, out_h, out_w), dtype=np.float32)
     normals = np.zeros((num_frames, out_h, out_w, 3), dtype=np.float32)
@@ -209,6 +210,9 @@ def process_scene(model, scene_id, rgb_root, gt_root, output_dir,
             tensor = preprocess_image(image_bgr, device)
             batch_tensors.append(tensor)
             batch_indices.append(idx)
+            # Store RGB at output resolution (convert BGR -> RGB)
+            rgb_out = cv2.resize(image_bgr, (out_w, out_h), interpolation=cv2.INTER_AREA)
+            rgbs[idx] = cv2.cvtColor(rgb_out, cv2.COLOR_BGR2RGB)
 
         if not batch_tensors:
             pbar.update(batch_end - batch_start)
@@ -285,6 +289,7 @@ def process_scene(model, scene_id, rgb_root, gt_root, output_dir,
         # Store frame_ids as variable-length strings
         dt = h5py.string_dtype()
         f.create_dataset("frame_ids", data=frame_ids, dtype=dt)
+        f.create_dataset("rgb", data=rgbs, dtype=np.uint8, compression="gzip", compression_opts=4)
         f.create_dataset("depth", data=depths, dtype=np.float32)
         f.create_dataset("normals", data=normals, dtype=np.float32)
         f.create_dataset("planarity", data=planarities, dtype=np.float32)
