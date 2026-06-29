@@ -102,11 +102,25 @@ LABEL_COLS = ("scene_id", "frame_idx")
 
 # Metric families displayed as percentages (×100). The underlying values are
 # already in [0, 1]; we multiply mean and std by 100 in the rendered cell and
-# tag the header with "(%)".
+# tag the header with "(%)". Kept in sync with prettify_benchmark_summary.py.
+#
+# Currently includes: RANSAC plane-fit P/R/F1, per-{pixel,plane} recall
+# (depth/normal/offset), δ<1.25^n depth-accuracy thresholds, and AP@<τ>cm.
+# All are bounded in [0, 1] by construction. Unbounded errors (VI, depth
+# RMSE, normal-error degrees, offset-error meters) stay in their native units.
 PCT_METRIC_PATTERNS: List[re.Pattern] = [
     re.compile(r"^prec@.*cm$"),
     re.compile(r"^rec@.*cm$"),
     re.compile(r"^f1@.*cm$"),
+    re.compile(r"^per_pixel_depth_.*$"),
+    re.compile(r"^per_plane_depth_.*$"),
+    re.compile(r"^per_pixel_normal_.*$"),
+    re.compile(r"^per_plane_normal_.*$"),
+    re.compile(r"^per_pixel_offset_.*$"),
+    re.compile(r"^per_plane_offset_.*$"),
+    re.compile(r"^DE_accuracy_[123]$"),
+    re.compile(r"^pixel_DE_accuracy_[123]$"),
+    re.compile(r"^AP@\d+cm$"),
 ]
 
 
@@ -241,6 +255,20 @@ def _fmt_mean_std(mean: float, std: float, ndigits: int = 2,
     return f"{m:.{ndigits}f} ± {s:.{ndigits}f}"
 
 
+def _display_round(v: float, is_pct: bool) -> float:
+    """Round a raw [0, 1] (or native-units) value to the precision the cell
+    will be rendered with. Used by the tie-detection in ``build_table`` so
+    two cells that print the same string both get bolded.
+
+    Pct metrics render as ``mean*100`` with 1 decimal → 0.1% absolute
+    resolution → equivalent to rounding the raw value to 3 decimals.
+    Native-units cells render with 2 decimals.
+    """
+    if is_pct:
+        return round(v * 100.0, 1) / 100.0
+    return round(v, 2)
+
+
 def build_table(
     rows_df: pd.DataFrame,
     metrics: List[str],
@@ -263,8 +291,13 @@ def build_table(
         for m in metrics:
             mean = row.get(f"{m}_mean", float("nan"))
             std = row.get(f"{m}_std", float("nan"))
-            scale = 100.0 if _is_pct_metric(m) else 1.0
-            out_row[m] = _fmt_mean_std(mean, std, ndigits=2, scale=scale)
+            # Percentages get 1 decimal (saves table width); native-units
+            # metrics keep 2 decimals.
+            if _is_pct_metric(m):
+                scale, ndigits = 100.0, 1
+            else:
+                scale, ndigits = 1.0, 2
+            out_row[m] = _fmt_mean_std(mean, std, ndigits=ndigits, scale=scale)
         out_rows.append(out_row)
     display_df = pd.DataFrame(out_rows, columns=out_cols)
 
@@ -273,8 +306,11 @@ def build_table(
         bold[c] = True
 
     # Bold the winner(s) across {moge, zeroplane, metric3d} per (dataset,
-    # metric). gt is excluded as the upper bound. Ties bold every row that
-    # matches the optimal value.
+    # metric). gt is excluded as the upper bound; moge_ep2 is excluded by
+    # design (it's a sibling ablation, not in the headline comparison).
+    # Ties bold every row that matches the optimal value, where "tie" is
+    # measured at the same precision the cell will be rendered with — so
+    # two cells that print the same string both get bolded.
     BOLD_METHODS = {"moge", "zeroplane", "metric3d"}
     for dataset, group in rows_df.groupby("dataset"):
         cand_rows = group[group["method"].isin(BOLD_METHODS)]
@@ -287,19 +323,20 @@ def build_table(
             mean_col = f"{m}_mean"
             if mean_col not in rows_df.columns:
                 continue
-            vals = {}
+            is_pct = _is_pct_metric(m)
+            vals_disp: Dict[int, float] = {}
             for ri in cand_rows.index:
                 try:
                     v = float(rows_df.at[ri, mean_col])
                 except (TypeError, ValueError):
                     continue
                 if not math.isnan(v):
-                    vals[int(ri)] = v
-            if len(vals) < 2:
+                    vals_disp[int(ri)] = _display_round(v, is_pct)
+            if len(vals_disp) < 2:
                 continue
-            best = max(vals.values()) if d == "↑" else min(vals.values())
-            for ri, v in vals.items():
-                if v == best:
+            best = max(vals_disp.values()) if d == "↑" else min(vals_disp.values())
+            for ri, vr in vals_disp.items():
+                if vr == best:
                     bold.at[ri, m] = True
 
     renames = {c: c for c in label_cols}

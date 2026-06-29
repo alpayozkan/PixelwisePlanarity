@@ -13,12 +13,18 @@ under ``<exp_dir>/latex/`` containing a self-contained
 Default column groups (mirrors the picked-summary's column set):
 
 - **Segmentation** — RI ↑, VI ↓, SC ↑
-- **Plane Depth ↑** — per-plane recall at 0.05 / 0.10 / 0.60 m
-- **Plane Normal ↑** — per-plane recall at 5° / 10° / 30°
+- **Plane Depth (%) ↑** — per-plane recall at 0.05 / 0.10 / 0.60 m
+- **Plane Normal (%) ↑** — per-plane recall at 5° / 10° / 30°
 - **Errors ↓** — Hungarian-matched mean normal (°) and offset (m) error
 - **Plane fit @1mm (%) ↑** — RANSAC P / R at τ = 1 mm
 - **Plane fit @5mm (%) ↑** — RANSAC P / R at τ = 5 mm
 - **Plane fit @10mm (%) ↑** — RANSAC P / R at τ = 10 mm
+
+Percentage cells (P/R/F1, per-plane depth/normal recall, etc.) are emitted
+with a single decimal (``92.3 ± 4.1``); native-units cells (errors in
+degrees / meters, RI/SC/VI) keep two decimals. Scaling and rounding are
+applied upstream by ``make_benchmark_summary.py`` — this script just
+passes formatted strings through.
 
 Columns not present in the XLSX are silently skipped (you can point this
 script at either the picked or complete XLSX).
@@ -69,7 +75,7 @@ DEFAULT_GROUPS: List[GroupSpec] = [
         ],
     },
     {
-        "name": r"Plane Depth $\uparrow$",
+        "name": r"Plane Depth (\%) $\uparrow$",
         "metrics": [
             ("per_plane_depth_005", "@5cm", None),
             ("per_plane_depth_01",  "@10cm", None),
@@ -77,7 +83,7 @@ DEFAULT_GROUPS: List[GroupSpec] = [
         ],
     },
     {
-        "name": r"Plane Normal $\uparrow$",
+        "name": r"Plane Normal (\%) $\uparrow$",
         "metrics": [
             ("per_plane_normal_5",  r"@5$^\circ$",  None),
             ("per_plane_normal_10", r"@10$^\circ$", None),

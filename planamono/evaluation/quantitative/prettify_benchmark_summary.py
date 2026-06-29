@@ -91,6 +91,39 @@ def metric_direction(metric: str) -> Optional[str]:
     return None
 
 
+# Metric families displayed as percentages (×100). Kept in sync with
+# make_benchmark_summary.py — see comment there.
+PCT_METRIC_PATTERNS: List[re.Pattern] = [
+    re.compile(r"^prec@.*cm$"),
+    re.compile(r"^rec@.*cm$"),
+    re.compile(r"^f1@.*cm$"),
+    re.compile(r"^per_pixel_depth_.*$"),
+    re.compile(r"^per_plane_depth_.*$"),
+    re.compile(r"^per_pixel_normal_.*$"),
+    re.compile(r"^per_plane_normal_.*$"),
+    re.compile(r"^per_pixel_offset_.*$"),
+    re.compile(r"^per_plane_offset_.*$"),
+    re.compile(r"^DE_accuracy_[123]$"),
+    re.compile(r"^pixel_DE_accuracy_[123]$"),
+    re.compile(r"^AP@\d+cm$"),
+]
+
+
+def _is_pct_metric(metric: str) -> bool:
+    return any(p.match(metric) for p in PCT_METRIC_PATTERNS)
+
+
+def _display_round(v: float, is_pct: bool) -> float:
+    """Round to the precision the XLSX cell will show — pct cells use the
+    ``0.0`` Excel format (1 decimal in pct space ≡ 3 decimals raw); other
+    cells use ``0.0000`` (4 decimals raw). Lets tie detection match what the
+    user actually sees, so two visually identical cells both get bolded.
+    """
+    if is_pct:
+        return round(v * 100.0, 1) / 100.0
+    return round(v, 4)
+
+
 # ---------------------------------------------------------------------------
 # Core
 # ---------------------------------------------------------------------------
@@ -131,7 +164,8 @@ def build_value_and_bold_frames(df: pd.DataFrame):
         base = c[: -len("_mean")]
         d = metric_direction(base) or ""
         direction_for[c] = d
-        rename_map[c] = f"{base} {d}".strip()
+        suffix = " (%)" if _is_pct_metric(base) else ""
+        rename_map[c] = f"{base} {d}{suffix}".strip()
     for c in keep_label_cols:
         rename_map[c] = c
 
@@ -146,8 +180,11 @@ def build_value_and_bold_frames(df: pd.DataFrame):
             bold_mask[c] = True
 
     # Bold the winner(s) across {moge, zeroplane, metric3d} per (dataset,
-    # metric). gt is excluded as the upper bound. Ties bold every row that
-    # matches the optimal value.
+    # metric). gt is excluded as the upper bound; moge_ep2 is excluded by
+    # design (it's a sibling ablation, not in the headline comparison).
+    # Ties bold every row that matches the optimal value, where "tie" is
+    # measured at the same precision the cell will be rendered with — so
+    # two cells that print the same value both get bolded.
     BOLD_METHODS = {"moge", "zeroplane", "metric3d"}
     for dataset, group in df.groupby("dataset"):
         cand = group[group["method"].isin(BOLD_METHODS)]
@@ -157,7 +194,9 @@ def build_value_and_bold_frames(df: pd.DataFrame):
             d = direction_for[c]
             if not d:
                 continue
-            vals: Dict[int, float] = {}
+            base = c[: -len("_mean")]
+            is_pct = _is_pct_metric(base)
+            vals_disp: Dict[int, float] = {}
             for ri in cand.index:
                 v = cand.at[ri, c]
                 try:
@@ -165,12 +204,12 @@ def build_value_and_bold_frames(df: pd.DataFrame):
                 except (TypeError, ValueError):
                     continue
                 if fv == fv:  # NaN check (NaN != NaN)
-                    vals[int(ri)] = fv
-            if len(vals) < 2:
+                    vals_disp[int(ri)] = _display_round(fv, is_pct)
+            if len(vals_disp) < 2:
                 continue
-            best = max(vals.values()) if d == "↑" else min(vals.values())
-            for ri, fv in vals.items():
-                if fv == best:
+            best = max(vals_disp.values()) if d == "↑" else min(vals_disp.values())
+            for ri, vr in vals_disp.items():
+                if vr == best:
                     bold_mask.at[ri, c] = True
 
     return values, bold_mask, rename_map
@@ -202,7 +241,11 @@ def write_xlsx(values: pd.DataFrame, bold_mask: pd.DataFrame,
         cell.font = bold_font
 
     # Data rows. We use ``enumerate(values.itertuples)`` so positional iteration
-    # matches the bold_mask index.
+    # matches the bold_mask index. Percent metrics are rescaled ×100 so the
+    # cell shows e.g. 92.3 instead of 0.923 — same convention as
+    # make_benchmark_summary.py and the LaTeX tables.
+    pct_cols = {c for c in values.columns
+                if c.endswith("_mean") and _is_pct_metric(c[: -len("_mean")])}
     for i, (_, row) in enumerate(values.iterrows(), start=2):
         for j, c in enumerate(values.columns, start=1):
             v = row[c]
@@ -210,20 +253,24 @@ def write_xlsx(values: pd.DataFrame, bold_mask: pd.DataFrame,
             if isinstance(v, float) and math.isnan(v):
                 cell = ws.cell(row=i, column=j, value=None)
             else:
+                if c in pct_cols and isinstance(v, (int, float)):
+                    v = v * 100.0
                 cell = ws.cell(row=i, column=j, value=v)
             if bool(bold_mask.iat[i - 2, values.columns.get_loc(c)]):
                 cell.font = bold_font
 
-    # Number formatting for the mean columns: 4 significant figures-ish via
-    # a general format, but with a sane fallback for very small numbers.
-    num_fmt = "0.0000"
+    # Number formatting for mean columns. Percent metrics get 1 decimal
+    # (saves width); the rest keep 4-decimal precision.
+    pct_fmt = "0.0"
+    other_fmt = "0.0000"
     for j, c in enumerate(values.columns, start=1):
         if not c.endswith("_mean"):
             continue
         col_letter = get_column_letter(j)
+        fmt = pct_fmt if c in pct_cols else other_fmt
         for cell in ws[col_letter][1:]:    # skip header
             if isinstance(cell.value, (int, float)):
-                cell.number_format = num_fmt
+                cell.number_format = fmt
 
     # Freeze header row + the first two label columns (method, dataset) for
     # easier scrolling through the wide metric set.
