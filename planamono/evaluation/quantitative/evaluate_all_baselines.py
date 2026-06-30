@@ -47,6 +47,10 @@ from planamono.evaluation.quantitative.eval_utils import (
 COMPUTE_PLANE_METRICS = True
 RANSAC_ITERATIONS = 200
 INLIER_RATIO_GATE = 0.9
+# RANSAC RNG seed for reproducible 3D metrics (see
+# docs/ransac_seeding_reproducibility.md). 0 = reproducible (default);
+# None (via --ransac_seed -1) = legacy non-deterministic behaviour.
+RANSAC_SEED = 0
 # THRESHOLDS = (0.01, 0.02, 0.05)
 THRESHOLDS = (0.001, 0.005, 0.01)
 BATCH_SIZE = 32
@@ -77,6 +81,21 @@ METHODS = {
         "display_name": "Ours (full)",
         "label_offset": 0,
         "nonplanar_label": None,  # Our method uses 0 for background
+        "uses_gt_h5": False,
+    },
+    "metric3d": {
+        # Metric3D predictions live in per-scene rendered_v2.h5 (keys: planes,
+        # frame_ids; 0 = non-planar). Evaluated here the SAME way as ours/zeroplane
+        # (GT depth + dataset K from ScanNetPPPlaneDataset; only the predicted
+        # `planes` are read), so the seed sweep is cross-method consistent. NOTE:
+        # this differs from the dedicated evaluate_metric3d.py, which uses the H5's
+        # own intrinsics/depth -- numbers here are not directly comparable to that.
+        "h5_folder": "metric3d_h5",          # symlinked to external_models/metric3d_scannetpp
+        "h5_filename": "rendered_v2.h5",
+        "exp_name": f"metric3d_{EXP_VER}",
+        "display_name": "Metric3D",
+        "label_offset": 0,
+        "nonplanar_label": None,             # Metric3D uses 0 for non-planar
         "uses_gt_h5": False,
     },
     "zeroplane": {
@@ -747,7 +766,12 @@ def evaluate_method(
     else:
         print(f"[DATA] Using GT labels as predictions for {len(val_dataset)} frames")
 
-    # Evaluation wrapper (uses threshold-consistent RANSAC)
+    # Evaluation wrapper (uses threshold-consistent RANSAC).
+    # Capture RANSAC_SEED into a closure local so the value (incl. any
+    # --ransac_seed override) travels to loky workers — workers re-import the
+    # module and would otherwise see the unmodified module-level default.
+    _ransac_seed = RANSAC_SEED
+
     def eval_frame_wrapper(scene_id, frame_idx, depth_np, gt_seg_np, K_np, c2w_np, labels, thresholds):
         return evaluate_single_frame(
             scene_id,
@@ -760,7 +784,8 @@ def evaluate_method(
             thresholds,
             compute_plane_metrics_flag=COMPUTE_PLANE_METRICS,
             ransac_iterations=RANSAC_ITERATIONS,
-            inlier_ratio_gate=INLIER_RATIO_GATE
+            inlier_ratio_gate=INLIER_RATIO_GATE,
+            ransac_seed=_ransac_seed
         )
 
     results = {}
@@ -1019,6 +1044,7 @@ def aggregate_results(methods: list, output_dir: Path = None):
 # ============================================================
 
 def main():
+    global RANSAC_SEED, EVAL_ROOT
     parser = argparse.ArgumentParser(description="Evaluate all baseline methods")
     parser.add_argument("--methods", nargs="+", default=None,
                         help=f"Methods to evaluate (default: all). Options: {list(METHODS.keys())}")
@@ -1034,7 +1060,24 @@ def main():
                         help="Start scene index (for distributed eval across SLURM array jobs)")
     parser.add_argument("--scene-end", type=int, default=None,
                         help="End scene index exclusive (for distributed eval)")
+    parser.add_argument("--ransac-seed", type=int, default=RANSAC_SEED,
+                        help="Seed for RANSAC plane-fitting RNG (default 0 = "
+                             "reproducible). Pass -1 to disable seeding (legacy "
+                             "non-deterministic behaviour).")
+    parser.add_argument("--eval-root", type=str, default=None,
+                        help="Override EVAL_ROOT, the directory where per-method "
+                             "results (<eval-root>/<exp_name>/) are written. Use a "
+                             "unique value per run to avoid overwriting results "
+                             "(e.g. seed/repeat sweeps).")
     args = parser.parse_args()
+
+    # Apply RANSAC seed override (-1 => None => non-deterministic).
+    RANSAC_SEED = None if args.ransac_seed is not None and args.ransac_seed < 0 else args.ransac_seed
+
+    # Apply EVAL_ROOT override (keeps the hardcoded default when not supplied).
+    if args.eval_root is not None:
+        EVAL_ROOT = Path(args.eval_root)
+        print(f"[CONFIG] EVAL_ROOT override: {EVAL_ROOT}")
 
     # Determine which methods to evaluate
     if args.methods is None:
@@ -1051,6 +1094,7 @@ def main():
     print(f"[CONFIG] Max scenes: {args.max_scenes}")
     print(f"[CONFIG] Compute plane metrics: {COMPUTE_PLANE_METRICS}")
     print(f"[CONFIG] RANSAC iterations: {RANSAC_ITERATIONS}")
+    print(f"[CONFIG] RANSAC seed: {RANSAC_SEED}")
     print(f"[CONFIG] Inlier ratio gate: {INLIER_RATIO_GATE}")
 
     if not args.aggregate_only:

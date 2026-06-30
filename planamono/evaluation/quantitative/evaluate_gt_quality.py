@@ -36,6 +36,7 @@ from joblib import Parallel, delayed
 from tqdm import tqdm
 
 from planamono.shared.plane_fitting import backproject_v1 as backproject
+from planamono.shared.plane_fitting import set_ransac_seed
 from planamono.paths import (
     repo_path,
     scannetpp_path,
@@ -108,6 +109,9 @@ def evaluate_gt_frame(sample_dict, thresholds, inlier_ratio_gate, gates, ransac_
     Returns:
         (default_metrics, multigates_metrics)
     """
+    # Reproducible RANSAC (see docs/ransac_seeding_reproducibility.md). Seeds the
+    # per-worker open3d global RNG; compute_plane_metrics* below inherit it.
+    set_ransac_seed(0)
     scene_id = sample_dict["scene_id"]
     frame_idx = sample_dict["frame_idx"]
     depth_np = sample_dict["depth_np"]

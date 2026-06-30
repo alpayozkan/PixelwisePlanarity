@@ -15,6 +15,82 @@ import copy
 from typing import Tuple, Dict, Optional, List
 
 
+# ============================================================
+# RANSAC SEEDING / REPRODUCIBILITY
+# ------------------------------------------------------------
+# Open3D's ``PointCloud.segment_plane`` uses a process-global Mersenne-Twister
+# RNG (``open3d.utility.random``) that is seeded from ``std::random_device`` at
+# first use, i.e. non-deterministically. Two mechanisms make fitting
+# reproducible (see docs/ransac_seeding_reproducibility.md):
+#   1. ``set_ransac_seed(seed)`` pins the global RNG (works on open3d >= 0.16,
+#      including 0.17 which has no per-call ``seed`` argument). Call this once
+#      per frame, inside the worker process, before any fitting.
+#   2. ``segment_plane(..., seed=...)`` (open3d >= 0.18) makes a single call
+#      deterministic regardless of fit order/threads. ``_segment_plane()``
+#      passes it only when the installed open3d supports it.
+# ``seed=None`` everywhere restores the legacy non-deterministic behaviour.
+
+
+def _detect_segment_plane_seed_support() -> bool:
+    """Return True if this open3d's ``segment_plane`` accepts a ``seed`` kwarg.
+
+    open3d's ``segment_plane`` is a pybind11 builtin with no inspectable
+    signature, so we probe it with a tiny throw-away fit (use float64 points —
+    float32 can segfault ``Vector3dVector``, see docs/open3d_float32_segfault.md).
+    """
+    try:
+        _p = o3d.geometry.PointCloud()
+        _p.points = o3d.utility.Vector3dVector(
+            np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0],
+                      [0.0, 1.0, 0.0], [1.0, 1.0, 0.0]], dtype=np.float64)
+        )
+        _p.segment_plane(distance_threshold=0.01, ransac_n=3,
+                         num_iterations=1, seed=0)
+        return True
+    except TypeError:
+        return False
+    except Exception:
+        # Any other failure: assume unsupported and fall back to global seeding.
+        return False
+
+
+_SEGMENT_PLANE_HAS_SEED = _detect_segment_plane_seed_support()
+
+
+def set_ransac_seed(seed: Optional[int]) -> None:
+    """Pin open3d's process-global RANSAC RNG. No-op when ``seed`` is None.
+
+    Must be called *inside* each worker process (e.g. at the top of every
+    per-frame evaluation) — loky workers are fresh processes and do not inherit
+    a seed set in the parent.
+    """
+    if seed is None:
+        return
+    try:
+        o3d.utility.random.seed(int(seed))
+    except Exception:
+        # Older/newer open3d without utility.random — global seeding unavailable;
+        # per-call seed (if supported) still applies.
+        pass
+
+
+def _segment_plane(pcd, distance_threshold: float, ransac_n: int,
+                   num_iterations: int, seed: Optional[int] = None):
+    """``pcd.segment_plane`` wrapper that forwards ``seed`` only when supported."""
+    if seed is not None and _SEGMENT_PLANE_HAS_SEED:
+        return pcd.segment_plane(
+            distance_threshold=distance_threshold,
+            ransac_n=ransac_n,
+            num_iterations=num_iterations,
+            seed=int(seed),
+        )
+    return pcd.segment_plane(
+        distance_threshold=distance_threshold,
+        ransac_n=ransac_n,
+        num_iterations=num_iterations,
+    )
+
+
 def backproject_v1(
     depth: np.ndarray,
     K: np.ndarray,
@@ -262,7 +338,8 @@ def fit_planes_per_label_v1(
     ransac_n: int = 3,
     num_iterations: int = 1000,
     min_support: int = 50,
-    verbose: bool = False
+    verbose: bool = False,
+    ransac_seed: Optional[int] = 0
 ) -> Tuple[Dict, pd.DataFrame]:
     """
     Fit planes to each labeled segment using RANSAC + least-squares refinement.
@@ -276,6 +353,9 @@ def fit_planes_per_label_v1(
         num_iterations: Number of RANSAC iterations
         min_support: Minimum number of points required for a valid plane
         verbose: Print progress messages
+        ransac_seed: Seed for reproducible RANSAC (default 0). Pins the global
+            open3d RNG and (on open3d >= 0.18) also passes a per-call seed.
+            None = legacy non-deterministic behaviour.
 
     Returns:
         results: Dict mapping plane_id to dict with:
@@ -294,6 +374,13 @@ def fit_planes_per_label_v1(
             - refined_inlier_ratio: Fraction of refined inliers
         plane_df: DataFrame with per-plane statistics
     """
+    # Reproducibility: pin the global RNG so direct callers that don't seed it
+    # themselves are deterministic on open3d 0.17 (no per-call seed) too. The
+    # per-call seed below additionally covers open3d >= 0.18. ransac_seed=None
+    # restores legacy non-deterministic behaviour. See
+    # docs/ransac_seeding_reproducibility.md.
+    set_ransac_seed(ransac_seed)
+
     # Flatten and filter invalid points
     pts = np.asarray(pts)
     labels_arr = np.asarray(labels).reshape(-1)
@@ -320,10 +407,12 @@ def fit_planes_per_label_v1(
         pcd.points = o3d.utility.Vector3dVector(pts[idx_global])
 
         # RANSAC plane fitting
-        plane_model, inliers_local = pcd.segment_plane(
+        plane_model, inliers_local = _segment_plane(
+            pcd,
             distance_threshold=distance_threshold,
             ransac_n=ransac_n,
-            num_iterations=num_iterations
+            num_iterations=num_iterations,
+            seed=ransac_seed,
         )
         inliers_local = np.asarray(inliers_local, dtype=np.int64)
 

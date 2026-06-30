@@ -11,12 +11,14 @@ import os
 import time
 from collections import defaultdict
 from contextlib import contextmanager
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 import h5py
 from tqdm import tqdm
+
+from planamono.shared.plane_fitting import set_ransac_seed
 
 
 # ============================================================
@@ -209,7 +211,8 @@ def evaluate_single_frame_old(
     thresholds: Tuple[float, ...],
     compute_plane_metrics_flag: bool = True,
     ransac_iterations: int = 200,
-    inlier_ratio_gate: float = 0.5
+    inlier_ratio_gate: float = 0.5,
+    ransac_seed: Optional[int] = 0
 ) -> Tuple[Dict, np.ndarray]:
     """
     [DEPRECATED] Use evaluate_single_frame() instead (v1 version).
@@ -234,12 +237,15 @@ def evaluate_single_frame_old(
         compute_plane_metrics_flag: Whether to compute RANSAC plane metrics
         ransac_iterations: Number of RANSAC iterations
         inlier_ratio_gate: Minimum inlier ratio to count a segment as valid (default 0.5)
+        ransac_seed: Seed for RANSAC reproducibility (default 0). None disables
+            seeding (legacy non-deterministic behaviour).
 
     Returns:
         (metrics_dict, labels) where metrics_dict contains all computed metrics
     """
     from planamono.shared.plane_fitting import backproject_v1 as backproject
 
+    set_ransac_seed(ransac_seed)
     metric_thr = {}
 
     if compute_plane_metrics_flag:
@@ -252,7 +258,8 @@ def evaluate_single_frame_old(
             metric_thr = compute_plane_metrics_old(
                 pts_world, pt_labels, thresholds,
                 num_iterations=ransac_iterations,
-                inlier_ratio_gate=inlier_ratio_gate
+                inlier_ratio_gate=inlier_ratio_gate,
+                ransac_seed=ransac_seed
             )
     else:
         for thr in thresholds:
@@ -374,7 +381,8 @@ def compute_plane_metrics_old(
     thresholds: Tuple[float, ...],
     num_iterations: int = 200,
     min_support: int = 100,
-    inlier_ratio_gate: float = 0.5
+    inlier_ratio_gate: float = 0.5,
+    ransac_seed: Optional[int] = 0
 ) -> Dict[str, float]:
     """
     [DEPRECATED] Use compute_plane_metrics() instead (v1 version).
@@ -403,7 +411,8 @@ def compute_plane_metrics_old(
         base_threshold=0.02,
         num_iterations=num_iterations,
         min_support=min_support,
-        inlier_ratio_gate=inlier_ratio_gate
+        inlier_ratio_gate=inlier_ratio_gate,
+        ransac_seed=ransac_seed
     )
 
     result = {}
@@ -420,7 +429,8 @@ def compute_plane_metrics(
     thresholds: Tuple[float, ...],
     num_iterations: int = 200,
     min_support: int = 100,
-    inlier_ratio_gate: float = 0.5
+    inlier_ratio_gate: float = 0.5,
+    ransac_seed: Optional[int] = 0
 ) -> Dict[str, float]:
     """
     Compute plane fitting metrics at multiple thresholds (threshold-consistent).
@@ -466,7 +476,8 @@ def compute_plane_metrics(
             ignore_labels=(0,),
             distance_threshold=thr,  # Use evaluation threshold for RANSAC
             num_iterations=num_iterations,
-            min_support=min_support
+            min_support=min_support,
+            ransac_seed=ransac_seed
         )
 
         if df is None or len(df) == 0:
@@ -503,6 +514,7 @@ def compute_plane_metrics_multigates(
     inlier_ratio_gates: Tuple[float, ...] = (0.5, 0.7, 0.8, 0.9),
     num_iterations: int = 200,
     min_support: int = 100,
+    ransac_seed: Optional[int] = 0,
 ) -> Dict[str, float]:
     """
     Compute plane fitting metrics at multiple thresholds AND multiple inlier ratio gates.
@@ -537,7 +549,8 @@ def compute_plane_metrics_multigates(
             ignore_labels=(0,),
             distance_threshold=thr,
             num_iterations=num_iterations,
-            min_support=min_support
+            min_support=min_support,
+            ransac_seed=ransac_seed
         )
 
         if df is None or len(df) == 0:
@@ -580,6 +593,7 @@ def evaluate_single_frame_multigates(
     inlier_ratio_gates: Tuple[float, ...] = (0.5, 0.7, 0.8, 0.9),
     compute_plane_metrics_flag: bool = True,
     ransac_iterations: int = 200,
+    ransac_seed: Optional[int] = 0,
 ) -> Tuple[Dict, np.ndarray]:
     """
     Evaluate a single frame at multiple inlier ratio gates.
@@ -605,6 +619,7 @@ def evaluate_single_frame_multigates(
     """
     from planamono.shared.plane_fitting import backproject_v1 as backproject
 
+    set_ransac_seed(ransac_seed)
     metric_thr = {}
 
     if compute_plane_metrics_flag:
@@ -621,6 +636,7 @@ def evaluate_single_frame_multigates(
                 pts_world, pt_labels, thresholds,
                 inlier_ratio_gates=inlier_ratio_gates,
                 num_iterations=ransac_iterations,
+                ransac_seed=ransac_seed,
             )
     else:
         for thr in thresholds:
@@ -655,7 +671,8 @@ def evaluate_single_frame(
     thresholds: Tuple[float, ...],
     compute_plane_metrics_flag: bool = True,
     ransac_iterations: int = 200,
-    inlier_ratio_gate: float = 0.5
+    inlier_ratio_gate: float = 0.5,
+    ransac_seed: Optional[int] = 0
 ) -> Tuple[Dict, np.ndarray]:
     """
     Evaluate a single frame with pre-computed segmentation labels (threshold-consistent).
@@ -679,12 +696,15 @@ def evaluate_single_frame(
         compute_plane_metrics_flag: Whether to compute RANSAC plane metrics
         ransac_iterations: Number of RANSAC iterations
         inlier_ratio_gate: Minimum inlier ratio to count a segment as valid (default 0.5)
+        ransac_seed: Seed for RANSAC reproducibility (default 0). None disables
+            seeding (legacy non-deterministic behaviour).
 
     Returns:
         (metrics_dict, labels) where metrics_dict contains all computed metrics
     """
     from planamono.shared.plane_fitting import backproject_v1 as backproject
 
+    set_ransac_seed(ransac_seed)
     metric_thr = {}
 
     if compute_plane_metrics_flag:
@@ -697,7 +717,8 @@ def evaluate_single_frame(
             metric_thr = compute_plane_metrics(
                 pts_world, pt_labels, thresholds,
                 num_iterations=ransac_iterations,
-                inlier_ratio_gate=inlier_ratio_gate
+                inlier_ratio_gate=inlier_ratio_gate,
+                ransac_seed=ransac_seed
             )
     else:
         for thr in thresholds:
@@ -738,6 +759,7 @@ def evaluate_single_frame_hypersim(
     compute_plane_metrics_flag: bool = True,
     ransac_iterations: int = 200,
     inlier_ratio_gate: float = 0.5,
+    ransac_seed: Optional[int] = 0,
 ) -> Tuple[Dict, np.ndarray]:
     """
     Evaluate a single Hypersim frame using backproject_mcam (exact V-Ray ray directions).
@@ -765,6 +787,7 @@ def evaluate_single_frame_hypersim(
     """
     from planamono.shared.plane_fitting import backproject_mcam
 
+    set_ransac_seed(ransac_seed)
     metric_thr = {}
 
     if compute_plane_metrics_flag:
@@ -779,7 +802,8 @@ def evaluate_single_frame_hypersim(
             metric_thr = compute_plane_metrics(
                 pts_world, pt_labels, thresholds,
                 num_iterations=ransac_iterations,
-                inlier_ratio_gate=inlier_ratio_gate
+                inlier_ratio_gate=inlier_ratio_gate,
+                ransac_seed=ransac_seed
             )
     else:
         for thr in thresholds:
@@ -813,6 +837,7 @@ def evaluate_single_frame_hypersim_multigates(
     inlier_ratio_gates: Tuple[float, ...] = (0.5, 0.7, 0.8, 0.9),
     compute_plane_metrics_flag: bool = True,
     ransac_iterations: int = 200,
+    ransac_seed: Optional[int] = 0,
 ) -> Tuple[Dict, np.ndarray]:
     """
     Evaluate a single Hypersim frame at multiple inlier ratio gates using backproject_mcam.
@@ -838,6 +863,7 @@ def evaluate_single_frame_hypersim_multigates(
     """
     from planamono.shared.plane_fitting import backproject_mcam
 
+    set_ransac_seed(ransac_seed)
     metric_thr = {}
 
     if compute_plane_metrics_flag:
@@ -856,6 +882,7 @@ def evaluate_single_frame_hypersim_multigates(
                 pts_world, pt_labels, thresholds,
                 inlier_ratio_gates=inlier_ratio_gates,
                 num_iterations=ransac_iterations,
+                ransac_seed=ransac_seed,
             )
     else:
         for thr in thresholds:

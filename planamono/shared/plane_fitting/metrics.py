@@ -210,7 +210,8 @@ def fit_planes_and_evaluate_multi_threshold(
     base_threshold: float = 0.02,
     num_iterations: int = 200,
     min_support: int = 100,
-    inlier_ratio_gate: float = 0.5
+    inlier_ratio_gate: float = 0.5,
+    ransac_seed: Optional[int] = 0
 ) -> Dict[float, Dict[str, float]]:
     """
     Fit planes ONCE with RANSAC, then evaluate at multiple distance thresholds.
@@ -225,6 +226,8 @@ def fit_planes_and_evaluate_multi_threshold(
         num_iterations: RANSAC iterations
         min_support: Minimum points for RANSAC
         inlier_ratio_gate: Quality gate for segment filtering
+        ransac_seed: If not None, seed RANSAC for reproducibility (forwarded to
+            fit_planes_per_label_v1). None = legacy non-deterministic behaviour.
 
     Returns:
         {threshold: {"precision": float, "recall": float}} for each threshold
@@ -235,7 +238,8 @@ def fit_planes_and_evaluate_multi_threshold(
         ignore_labels=(0,),
         distance_threshold=base_threshold,
         num_iterations=num_iterations,
-        min_support=min_support
+        min_support=min_support,
+        ransac_seed=ransac_seed
     )
 
     if df is None or len(df) == 0:

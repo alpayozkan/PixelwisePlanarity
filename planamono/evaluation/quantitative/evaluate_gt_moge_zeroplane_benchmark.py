@@ -66,6 +66,7 @@ from planamono.shared.segmentation.compute_plane_params import compute_plane_par
 from planamono.shared.plane_fitting.metrics_planes import compute_gt_normals_from_depth_labels  # noqa: E402
 from planamono.shared.plane_fitting import backproject_v1                                    # noqa: E402
 from planamono.evaluation.quantitative.eval_utils import compute_plane_metrics                # noqa: E402
+from planamono.shared.plane_fitting import set_ransac_seed                                    # noqa: E402
 from planamono.evaluation.quantitative.metrics_benchmark import compute_benchmark_metrics    # noqa: E402
 
 
@@ -275,7 +276,11 @@ def _eval_one_frame_benchmark(
     ransac_iterations: int,
     inlier_ratio_gate: float,
     rivoisc_ver: str,
+    ransac_seed: Optional[int] = 0,
 ) -> Dict[str, float]:
+    # Reproducible RANSAC for the prec/rec block below (see
+    # docs/ransac_seeding_reproducibility.md). Runs inside the loky worker.
+    set_ransac_seed(ransac_seed)
     metrics = compute_benchmark_metrics(
         pred_seg=labels_pred,
         gt_seg=labels_gt,
@@ -307,6 +312,7 @@ def _eval_one_frame_benchmark(
             pts_world, pt_labels, ransac_thresholds,
             num_iterations=ransac_iterations,
             inlier_ratio_gate=inlier_ratio_gate,
+            ransac_seed=ransac_seed,
         )
 
     return {"scene_id": scene_id, "frame_idx": frame_id, **metrics, **ransac_block}
@@ -908,6 +914,7 @@ def _evaluate_method_dataset(
                 args.ransac_iterations,
                 args.inlier_ratio_gate,
                 args.rivoisc_ver,
+                args.ransac_seed,
             )
             for t in tasks
         )
@@ -980,6 +987,9 @@ def main():
                          "(default: 0.001 0.005 0.01).")
     ap.add_argument("--ransac_iterations", type=int, default=RANSAC_ITERATIONS)
     ap.add_argument("--inlier_ratio_gate", type=float, default=INLIER_RATIO_GATE)
+    ap.add_argument("--ransac_seed", type=int, default=0,
+                    help="Seed for the RANSAC prec/rec block (default 0 = "
+                         "reproducible). Pass -1 to disable seeding.")
 
     # Whether to use K scaled to depth/label resolution for the RANSAC
     # prec/rec block. Default True (correct: 3D points in true meters).
@@ -1015,6 +1025,9 @@ def main():
 
     args = ap.parse_args()
     args.ransac_thresholds = tuple(args.ransac_thresholds)
+    # -1 => None => legacy non-deterministic RANSAC.
+    if args.ransac_seed is not None and args.ransac_seed < 0:
+        args.ransac_seed = None
 
     scene_filter: Optional[set] = None
     if args.scene_ids:

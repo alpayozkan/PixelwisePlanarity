@@ -53,6 +53,11 @@ RANSAC_ITERATIONS = 200
 # Inlier ratio threshold for quality gate
 INLIER_RATIO_GATE = 0.9
 
+# RANSAC RNG seed for reproducible 3D metrics (see
+# docs/ransac_seeding_reproducibility.md). 0 = reproducible; None = legacy
+# non-deterministic behaviour.
+RANSAC_SEED = 0
+
 exp_name = 'hypersim_moge_ours_v1'
 csv_out_dir = f"/cluster/scratch/aoezkan/planeseg/hypersim/eval/{exp_name}"
 h5_root = f"/cluster/scratch/aoezkan/planeseg/hypersim/inference/{exp_name}_h5"
@@ -162,6 +167,7 @@ if __name__ == "__main__":
     print(f"[CONFIG] Max scenes: {max_scenes_val}")
     print(f"[CONFIG] Compute plane metrics: {COMPUTE_PLANE_METRICS}")
     print(f"[CONFIG] RANSAC iterations: {RANSAC_ITERATIONS}")
+    print(f"[CONFIG] RANSAC seed: {RANSAC_SEED}")
 
     timer = Timer()
 
@@ -238,7 +244,8 @@ if __name__ == "__main__":
             thresholds,
             compute_plane_metrics_flag=COMPUTE_PLANE_METRICS,
             ransac_iterations=RANSAC_ITERATIONS,
-            inlier_ratio_gate=INLIER_RATIO_GATE
+            inlier_ratio_gate=INLIER_RATIO_GATE,
+            ransac_seed=RANSAC_SEED
         )
 
     results = {}

@@ -8,6 +8,7 @@ Provides:
 """
 import sys
 from pathlib import Path
+from typing import Optional
 # sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import cv2
@@ -179,6 +180,7 @@ def pseudo_mono_infer(
     num_iters: int = 5000,
     max_planes: int = 1000,
     candidate_min_px: int = 30,
+    ransac_seed: Optional[int] = 0,
 ) -> np.ndarray:
     """
     Runs single-image plane segmentation:
@@ -187,9 +189,15 @@ def pseudo_mono_infer(
     - Open3D sequential RANSAC to get plane candidates
     - Global re-label with normal gate and post size-filter
 
+    ``ransac_seed`` (default 0) pins Open3D's RANSAC RNG for reproducibility;
+    pass None for legacy non-deterministic behaviour. See
+    docs/ransac_seeding_reproducibility.md.
+
     Returns:
         labels: (H,W) int32 with 0 = non-planar, 1..K = planes
     """
+    from planamono.shared.plane_fitting import set_ransac_seed, _segment_plane
+    set_ransac_seed(ransac_seed)
 
     def _denorm_K(K_norm: np.ndarray, W: int, H: int):
         fx = float(K_norm[0, 0] * W)
@@ -223,10 +231,12 @@ def pseudo_mono_infer(
         for _ in range(max_planes):
             if len(cur2orig) < ransac_n:
                 break
-            model, inliers = pcd.segment_plane(
+            model, inliers = _segment_plane(
+                pcd,
                 distance_threshold=dist_thresh,
                 ransac_n=ransac_n,
                 num_iterations=num_iters,
+                seed=ransac_seed,
             )
             inliers = np.asarray(inliers, dtype=np.int64)
             if inliers.size < candidate_min_px:
