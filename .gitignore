@@ -1,1 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+
+# OS
+.DS_Store
+
+# Logs and run outputs
 logs/
+table_*.csv
+
+# Cluster-internal (not part of the public repo)
+CLAUDE.md
+alpay_scripts.md
+restructure_check.md
+scripts/
+submit_*.sh
+**/submit_*.sh
+batch_*.sh
+**/batch_*.sh
+evaluation/scripts/gt_fast/
