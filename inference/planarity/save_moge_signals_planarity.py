@@ -2,7 +2,7 @@
 Run **4-head MoGe-2** inference (with planarity head) and dump the signals
 relevant to plane segmentation as one H5 per scene.
 
-Supports three datasets via ``--dataset``:
+Supports four datasets via ``--dataset``:
 
     scannetpp     ScanNet++ iPhone JPGs (per-scene folders).
                   RGB lives at  <data_root>/<scene>/iphone/rgb/<frame>.jpg
@@ -10,6 +10,10 @@ Supports three datasets via ``--dataset``:
                   Single virtual scene "nyuv2".
     sevenscenes   7-Scenes ZeroPlane "_d2" NPZ files.
                   One H5 per logical scene (chess, fire, ...).
+    hypersim      Hypersim HDR HDF5 frames (tone-mapped like the training
+                  loader). One H5 per (scene, camera): "<scene>/<cam>".
+                  Frames enumerated from the rendered plane-GT H5s so signals
+                  align with evaluation.
 
 Output layout per scene (identical schema across datasets):
 
@@ -23,7 +27,7 @@ Output layout per scene (identical schema across datasets):
         metric_scale    (N,)          float32     per-image scalar
 
     attrs:
-        dataset              "scannetpp" / "nyuv2" / "sevenscenes"
+        dataset              "scannetpp" / "nyuv2" / "sevenscenes" / "hypersim"
         split                only for NPZ datasets (e.g. "test" / "val")
         resolution           "HxW"
         num_tokens           int
@@ -64,6 +68,13 @@ NYU-v2 (auto-discovers samples):
         --model_path .../moge_HIRES_4datasets/model_epoch1.pt \\
         --output_root /scratch/.../moge_signals_4ds_ep1/sevenscenes \\
         --batch_size 16 --num_tokens 1600
+
+Hypersim test split (one H5 per scene/cam; --scenes optional scene filter):
+    python save_moge_signals_planarity.py \\
+        --dataset hypersim \\
+        --model_path .../moge_HIRES_4datasets/model_epoch1.pt \\
+        --output_root /scratch/.../moge_signals_4ds_ep1/hypersim \\
+        --batch_size 8 --num_tokens 1600
 """
 import argparse
 import os
@@ -87,7 +98,7 @@ os.environ.setdefault("HF_HOME", "/cluster/scratch/aoezkan/cache/huggingface")
 
 from MoGe.moge.utils.geometry_torch import recover_focal_shift  # noqa: E402
 from inference.planarity.moge_inference import MoGePlanarityInference  # noqa: E402
-from paths import scannetpp_path, nyuv2_path, sevenscenes_path  # noqa: E402
+from paths import scannetpp_path, nyuv2_path, sevenscenes_path, hypersim_path  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -186,6 +197,7 @@ class FrameSpec:
     frame_id: str                            # written to H5 frame_ids
     jpg_path: Optional[str] = None           # for scannetpp
     npz_path: Optional[str] = None           # for nyuv2 / sevenscenes
+    hdf5_path: Optional[str] = None          # for hypersim
 
 
 def _resize_rgb(rgb: np.ndarray, target_hw: Tuple[int, int]) -> np.ndarray:
@@ -315,6 +327,69 @@ class _SevenScenesAdapter(_NPZAdapter):
         return self._by_scene.get(scene_id, [])[::max(1, frame_step)]
 
 
+class _HypersimAdapter(_Adapter):
+    """Hypersim HDR HDF5 loader.
+
+    Enumerates frames via ``HypersimPlaneDataset`` so the exported signals
+    cover exactly the frames present in the rendered plane-GT H5s (one per
+    scene/camera). Each (scene, camera) pair becomes one logical scene
+    "<scene_id>/<cam_name>", giving the per-camera H5 layout evaluation expects.
+    HDR frames are tone-mapped with the same routine as the training loader.
+    """
+    name = "hypersim"
+
+    def __init__(self, data_root: str, split: str,
+                 scene_filter: Optional[List[str]] = None):
+        from shared.datasets.hypersim_plane_dataset import HypersimPlaneDataset
+        from paths import hypersim_rendered_path, hypersim_params_path
+        self.split = split
+        ds = HypersimPlaneDataset(
+            hypersim_root=data_root,
+            plane_label_root=hypersim_rendered_path,
+            params_root=hypersim_params_path,
+            split_txt_dir=str(_REPO_ROOT / "splits" / "hypersim"),
+            split=split,
+        )
+        self._tonemap = ds._tonemap_rgb_robust
+        # valid_pairs = [(scene_id, cam_name, idx, fid, rgb_path, ...), ...]
+        by_scene: Dict[str, List[FrameSpec]] = defaultdict(list)
+        for scene_id, cam_name, _idx, fid, rgb_path, *_rest in ds.valid_pairs:
+            by_scene[f"{scene_id}/{cam_name}"].append(FrameSpec(
+                frame_id=str(fid),
+                hdf5_path=rgb_path,
+            ))
+        self._by_scene = dict(by_scene)
+        self._scene_ids = sorted(by_scene.keys())
+        if scene_filter:
+            wanted = {s.strip() for s in scene_filter if s.strip()}
+            # Filter accepts scene ids ('ai_001_001') or scene/cam ('ai_001_001/cam_00')
+            self._scene_ids = [s for s in self._scene_ids
+                               if s in wanted or s.split("/")[0] in wanted]
+
+    def list_scenes(self) -> List[str]:
+        return list(self._scene_ids)
+
+    def list_frames(self, scene_id: str, frame_step: int) -> List[FrameSpec]:
+        return self._by_scene.get(scene_id, [])[::max(1, frame_step)]
+
+    def load_rgb_batch(self, frames: List[FrameSpec], target_hw: Tuple[int, int]) -> torch.Tensor:
+        H, W = target_hw
+        imgs = np.empty((len(frames), H, W, 3), dtype=np.float32)
+        for i, fs in enumerate(frames):
+            with h5py.File(fs.hdf5_path, "r") as f:
+                rgb = f[list(f.keys())[0]][:]                       # (H, W, 3)
+            if rgb.dtype == np.uint8:
+                rgb = rgb.astype(np.float32) / 255.0
+            elif rgb.dtype == np.uint16:
+                rgb = rgb.astype(np.float32) / 65535.0
+            else:
+                rgb = self._tonemap(rgb.astype(np.float32))         # HDR → [0,1]
+            if rgb.shape[:2] != (H, W):
+                rgb = cv2.resize(rgb, (W, H), interpolation=cv2.INTER_LINEAR)
+            imgs[i] = rgb.astype(np.float32)
+        return torch.from_numpy(imgs).permute(0, 3, 1, 2).contiguous()
+
+
 def _build_adapter(args, target_hw: Tuple[int, int]) -> _Adapter:
     if args.dataset == "scannetpp":
         if not args.scenes:
@@ -337,6 +412,14 @@ def _build_adapter(args, target_hw: Tuple[int, int]) -> _Adapter:
         return _SevenScenesAdapter(
             data_root=args.data_root or sevenscenes_path,
             split=args.split or "val",
+            scene_filter=scene_filter,
+        )
+
+    if args.dataset == "hypersim":
+        scene_filter = _read_scenes(args.scenes) if args.scenes else None
+        return _HypersimAdapter(
+            data_root=args.data_root or hypersim_path,
+            split=args.split or "test",
             scene_filter=scene_filter,
         )
 
@@ -447,21 +530,24 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dataset", required=True,
-                    choices=["scannetpp", "nyuv2", "sevenscenes"],
+                    choices=["scannetpp", "nyuv2", "sevenscenes", "hypersim"],
                     help="Which dataset adapter to use.")
     ap.add_argument("--data_root", type=str, default=None,
                     help="Override dataset root. "
                          "scannetpp default: <scannetpp_path>/data; "
                          "nyuv2 default: paths.nyuv2_path; "
-                         "sevenscenes default: paths.sevenscenes_path.")
+                         "sevenscenes default: paths.sevenscenes_path; "
+                         "hypersim default: paths.hypersim_path.")
     ap.add_argument("--rgb_root", dest="data_root_legacy", default=None,
                     help="Deprecated alias for --data_root (legacy scannetpp callers).")
     ap.add_argument("--scenes", type=str, default=None,
                     help="scannetpp: REQUIRED — txt path or comma-separated scene list. "
                          "sevenscenes: OPTIONAL — comma-separated scene-name filter "
-                         "(default = all 7 scenes). nyuv2: ignored.")
+                         "(default = all 7 scenes). hypersim: OPTIONAL — filter by "
+                         "scene id or scene/cam. nyuv2: ignored.")
     ap.add_argument("--split", type=str, default=None,
-                    help="Split for NPZ datasets (nyuv2 default 'test', sevenscenes default 'val').")
+                    help="Dataset split (nyuv2 default 'test', sevenscenes default 'val', "
+                         "hypersim default 'test' — resolved via splits/hypersim/<split>.txt).")
     ap.add_argument("--output_root", type=str, required=True)
     ap.add_argument("--model_path", type=str, default=DEFAULT_MODEL_PATH,
                     help="Path to a 4-head MoGe checkpoint (.pt). Must include planarity_head.")
