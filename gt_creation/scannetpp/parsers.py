@@ -222,7 +222,7 @@ labelNumPlanes = {
 nonPlanar = {'bicycle', 'bottle', 'water bottle', 'pillow', 'curtain', 'person', 'mirror', 'lamp', 'bag', 'book', 'books', 'paper', 'towel', 'shower curtain', 'box', 'clothes'}
 
 
-def process_groups_v1(points, faces, segmentation, groupSegments, groupLabels, classLabelMap, out_dir, debug=True):
+def process_groups(points, faces, segmentation, groupSegments, groupLabels, classLabelMap, out_dir, debug=True):
     """
     ScanNet++-optimized: groupSegments[i] is a list of VERTEX INDICES (identity segmentation).
     We fit planes per OBJECT (one shot), with optional RANSAC fallback, and save outputs.

@@ -11,10 +11,10 @@ import argparse
 import yaml
 from pathlib import Path
 
-# Add parent directory to path for imports
+# Add repository root to path for absolute imports when running directly
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from .plane_extraction import run
+from gt_creation.scannetpp.plane_extraction import run
 
 
 def cast_config_types(cfg):

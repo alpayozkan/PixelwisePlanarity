@@ -22,9 +22,27 @@ import argparse
 from tqdm import tqdm
 
 
-def remap_semantic(semantic_img):
-    """Remap semantic labels, replacing -1 with 0."""
+def remap_semantic_old(semantic_img):
+    """Remap semantic labels, replacing -1 with 0.
+
+    BUGGY: plane_id=0 (the largest plane) collides with non-planar after
+    this remap — both end up as 0.  Use remap_plane_ids() instead.
+    """
     return np.where(semantic_img < 0, 0, semantic_img)
+
+
+def remap_plane_ids(semantic_img):
+    """Shift plane IDs by +1 so that 0 is reserved exclusively for non-planar.
+
+    Input convention  (from plane_extraction + raycast):
+        -1 = non-planar mesh face OR raycast miss
+         0, 1, 2, … = valid plane IDs (0 = largest plane)
+
+    Output convention (stored in HDF5, consumed by dataset / eval):
+         0 = non-planar
+         1, 2, 3, … = valid plane IDs
+    """
+    return np.where(semantic_img < 0, 0, semantic_img + 1)
 
 
 if __name__ == "__main__":
@@ -113,7 +131,8 @@ if __name__ == "__main__":
 
         c2w = np.array(frame_data["aligned_pose"])
         semantic_img = raycast_semantic(sem_mesh, vertex_labels, K_scaled, (W, H), c2w)
-        semantic_img = remap_semantic(semantic_img)
+        # semantic_img = remap_semantic_old(semantic_img)  # BUGGY: plane_id=0 collides with non-planar
+        semantic_img = remap_plane_ids(semantic_img)
 
         seg_path = os.path.join(render_save_path, f"{frame_id}.png")
         save_label_image(seg_path, semantic_img)
