@@ -1,0 +1,20 @@
+[project]
+name = "planeseg-camera"
+version = "0.1.0"
+description = "Planar surface detection and segmentation from RGB images (camera-ready planamono)"
+requires-python = ">=3.8"
+dependencies = [
+    "numpy",
+    "open3d",
+]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["paths"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["shared*", "evaluation*", "inference*", "gt_creation*"]
