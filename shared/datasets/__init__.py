@@ -10,6 +10,7 @@ from .sevenscenes_plane_dataset import SevenScenesPlaneDataset
 from .synthia import SYNTHIAPlanarityDataset
 from .synthia_plane_dataset import SynthiaPlaneDataset
 from .vkitti2_plane_dataset import VKITTI2PlaneDataset
+from .mixed import MixedPlanarityDataset
 
 __all__ = [
     'ScanNetPPPlaneDataset',
@@ -20,4 +21,5 @@ __all__ = [
     'SYNTHIAPlanarityDataset',
     'SynthiaPlaneDataset',
     'VKITTI2PlaneDataset',
+    'MixedPlanarityDataset',
 ]
