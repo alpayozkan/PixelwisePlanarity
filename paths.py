@@ -28,6 +28,13 @@ scannetpp_rend_plane_path = '/cluster/scratch/aoezkan/planeseg/scannetpp/plane_g
 nyuv2_path = '/cluster/scratch/aoezkan/planeseg/dataset/nyuv2_plane'
 sevenscenes_path = '/cluster/scratch/aoezkan/planeseg/dataset/sevenscenes_plane'
 
+# ============ Outdoor datasets: SYNTHIA and VKITTI2 ============
+# NOTE: plane GT was purged from ayavuz's scratch — restore data here before use.
+synthia_path = '/cluster/scratch/aoezkan/planeseg/synthia/synthia_planes'
+vkitti2_path = '/cluster/scratch/aoezkan/planeseg/vkitti2/vkitti2_planes'
+# raw SYNTHIA RGB/depth (used by gt_creation/synthia check utilities)
+synthia_raw_path = '/cluster/scratch/aoezkan/planeseg/synthia/raw'
+
 # ============ Models / checkpoints ============
 # Trained MoGe 4-head planarity checkpoint (HIRES, 4 datasets, epoch 1 — production)
 # Local copy of ayavuz's checkpoints (populate via scripts/copy_ayavuz_assets.sh)
