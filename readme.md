@@ -55,14 +55,14 @@ from shared.plane_fitting import backproject_v1, fit_planes_per_label_v1
 # Rendering
 from shared.rendering import render_rgb_depth, raycast_semantic
 
-# Segmentation
-from shared.segmentation import compute_vectorized_planar_segments_v1
+# Segmentation (single region-growing algorithm, GPU-accelerated)
+from shared.segmentation import compute_vectorized_planar_segments
 
 # Utilities
 from shared.utils import depth_to_normal_remi, extract_zdepth
 
 # Datasets
-from shared.datasets import ScanNetPPPlaneDataset, HypersimPlanarityDataset
+from shared.datasets import ScanNetPPPlaneDataset, HypersimPlaneDataset, HypersimPlanarityDataset
 ```
 
 ### Ground Truth Generation
@@ -106,15 +106,44 @@ segments = predict_plane_segmentation(
 ### Evaluation
 
 ```bash
-# Run full evaluation
-python evaluation/run_evaluation.py --method moge --split test
+# Primary: H5-based evaluation of all baseline methods (GT, ours, ZeroPlane, Metric3D, ...)
+python evaluation/quantitative/evaluate_all_baselines.py --methods gt ours --max-scenes 5
+python evaluation/quantitative/evaluate_all_baselines.py --aggregate-only   # rebuild summary tables
 
-# Quantitative metrics
-python evaluation/quantitative/evaluator.py
+# On-the-fly evaluation (runs MoGe inference per frame)
+python evaluation/run_evaluation.py --method moge --split test
 
 # Qualitative visualization
 python evaluation/qualitative/visualize_comparison.py
 ```
+
+The H5 prediction inputs for `evaluate_all_baselines.py` are produced by:
+
+```bash
+python inference/planarity/save_moge_signals_planarity.py   # RGB → planarity/depth/normal H5
+python inference/planarity/segment_signals_to_planes.py     # signals → plane-label H5
+```
+
+Region growing uses fixed canonical parameters everywhere:
+planarity > 0.3, normal threshold 5.0°, relative depth threshold 0.025, ≥8 matching neighbors.
+
+Dataset and model paths are configured in `paths.py` at the repo root.
+
+### Training
+
+The MoGe 4-head training code lives in the `MoGe/` submodule (branch with
+repo-layout fixes required — see below). Entry points, run from the repo root
+with the `planeseg` env active:
+
+```bash
+python MoGe/train_moge_4heads_planarity_scannetpp.py   # ScanNet++ (rendered plane GT)
+python MoGe/train_moge_4heads_planarity_hypersim.py    # Hypersim
+python MoGe/train_moge_4heads_planarity_mixed.py       # Mixed (Hypersim + ScanNet++)
+```
+
+Training data are the rendered plane-GT H5s produced by `gt_creation/` plus
+the split lists in `splits/`; dataset roots resolve through `paths.py`
+(ScanNet++) or the trainers' `--dataset_dir` arguments.
 
 ## Key Algorithms
 
@@ -150,6 +179,14 @@ GT generation configured via YAML files in `gt_creation/configs/`:
 - `inlier_frac_min`: Minimum inlier fraction
 - `merge_theta_deg` / `merge_dist_m`: Plane merging thresholds
 
+## Environment Setup
+
+```bash
+bash env/create_env.sh              # creates conda env `planeseg` from env/environment.yml,
+                                    # pip-installs this repo editable, inits the MoGe submodule
+conda activate planeseg
+```
+
 ## Dependencies
 
 - **Core**: `numpy`, `opencv-python`, `torch`, `pandas`
@@ -183,7 +220,7 @@ GT generation configured via YAML files in `gt_creation/configs/`:
 
 ## Notes
 
-- All hardcoded paths have been removed
+- Cluster paths are centralized in `paths.py` (repo root)
 - Imports updated for new structure
 - Comprehensive docstrings added
 - Type hints added where appropriate

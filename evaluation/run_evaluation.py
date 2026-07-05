@@ -38,11 +38,8 @@ if __name__ == "__main__":
     # === Model args (for moge/monoplane) ===
     parser.add_argument("--model_path", type=str, default=None,
                         help="Path to trained MoGe checkpoint (.pt)")
-    parser.add_argument("--model_size", type=str, default="large",
-                        choices=["small", "middle", "large"],
-                        help="MoGe model size")
     parser.add_argument("--cache_dir", type=str, default=None,
-                        help="Cache directory for MoGe weights (or set MOGE_CACHE_DIR)")
+                        help="HuggingFace cache dir for MoGe base weights (sets HF_HOME)")
     parser.add_argument("--device", type=str, default="cuda")
 
     # === Dataset paths ===
@@ -128,19 +125,12 @@ if __name__ == "__main__":
             sys.exit(1)
 
         print(f"[INFO] Loading MoGe model: {args.model_path}")
+        if args.cache_dir:
+            os.environ["HF_HOME"] = args.cache_dir
         inference_model = MoGePlanarityInference(
             args.model_path,
-            model_size=args.model_size,
-            device=args.device,
-            cache_dir=args.cache_dir
+            device=args.device
         )
-
-        # Optimizations
-        inference_model.model.encoder.use_memory_efficient_attention = False
-        torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction = False
-        inference_model.model = inference_model.model.half()
-        if hasattr(inference_model.model.encoder, 'enable_pytorch_native_sdpa'):
-            inference_model.model.encoder.enable_pytorch_native_sdpa()
 
         print("[INFO] Model loaded")
 

@@ -27,7 +27,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-from shared.segmentation import compute_vectorized_planar_segments_v4
+from shared.segmentation import compute_vectorized_planar_segments
 from shared.utils.label_utils import remap_labels
 from shared.utils import visualize_top_components_v1
 from inference.planarity.moge_inference import MoGePlanarityInference
@@ -53,7 +53,7 @@ def process_scene(scene_id, image_list, inference_model, output_dir, args):
         res = inference_model.predict(image_path, num_tokens=args.num_tokens, return_all_heads=True)
 
         depth = res['points'][:, :, 2]
-        normal = np.transpose(res['normal'], (2, 0, 1))
+        normal = res['normal']  # (H, W, 3)
         planarity = res['planarity_probability']
 
         # Resize to original resolution
@@ -66,7 +66,7 @@ def process_scene(scene_id, image_list, inference_model, output_dir, args):
 
         # Compute segmentation
         normal_threshold_rad = np.deg2rad(args.normal_threshold_deg)
-        labels, n_components = compute_vectorized_planar_segments_v4(
+        labels, n_components = compute_vectorized_planar_segments(
             planarity_mask, normal, depth,
             normal_threshold_rad, args.depth_threshold,
             neighbor_match_count_thresh=args.neighbor_match_count_thresh
@@ -138,11 +138,9 @@ def main():
                         help="Root directory for output")
 
     # Model configuration
-    parser.add_argument("--model_size", type=str, default="large",
-                        choices=["small", "middle", "large"])
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--cache_dir", type=str, default=None,
-                        help="Cache dir for MoGe weights (or set MOGE_CACHE_DIR)")
+                        help="HuggingFace cache dir for MoGe base weights (sets HF_HOME)")
 
     # Processing parameters
     parser.add_argument("--frame_skip", type=int, default=50,
@@ -152,10 +150,11 @@ def main():
                         help="Limit number of scenes to process")
 
     # Segmentation parameters
-    parser.add_argument("--threshold_planarity", type=float, default=0.6)
-    parser.add_argument("--normal_threshold_deg", type=float, default=10.0)
-    parser.add_argument("--depth_threshold", type=float, default=0.05)
-    parser.add_argument("--neighbor_match_count_thresh", type=int, default=24)
+    parser.add_argument("--threshold_planarity", type=float, default=0.3)
+    parser.add_argument("--normal_threshold_deg", type=float, default=5.0)
+    parser.add_argument("--depth_threshold", type=float, default=0.025,
+                        help="Relative depth threshold (fraction of center depth)")
+    parser.add_argument("--neighbor_match_count_thresh", type=int, default=8)
 
     # Output options
     parser.add_argument("--save_visualization", action="store_true",
@@ -183,22 +182,14 @@ def main():
     print(f"Frame skip: {args.frame_skip}")
     print("-" * 60)
 
-    # Load model
+    # Load model (base MoGe weights come from HuggingFace; cache via HF_HOME)
+    if args.cache_dir:
+        os.environ["HF_HOME"] = args.cache_dir
     print("[INFO] Loading model...")
     inference_model = MoGePlanarityInference(
         model_path=args.model_path,
-        model_size=args.model_size,
-        device=args.device,
-        cache_dir=args.cache_dir
+        device=args.device
     )
-
-    # Optimizations
-    import torch
-    inference_model.model.encoder.use_memory_efficient_attention = False
-    torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction = False
-    inference_model.model = inference_model.model.half()
-    if hasattr(inference_model.model.encoder, 'enable_pytorch_native_sdpa'):
-        inference_model.model.encoder.enable_pytorch_native_sdpa()
 
     print("[INFO] Model loaded")
     print("-" * 60)

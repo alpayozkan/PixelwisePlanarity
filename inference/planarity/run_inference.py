@@ -58,15 +58,10 @@ Examples:
                         help="Directory to save results")
 
     # Model configuration
-    parser.add_argument("--model_size", type=str, default="large",
-                        choices=["small", "middle", "large"],
-                        help="MoGe model size (default: large)")
     parser.add_argument("--device", type=str, default="cuda",
                         help="Device for inference (default: cuda)")
-
-    # Path configuration (uses env vars: MOGE_PATH, MOGE_CACHE_DIR)
     parser.add_argument("--cache_dir", type=str, default=None,
-                        help="Cache directory for pretrained models (or set MOGE_CACHE_DIR env var)")
+                        help="HuggingFace cache dir for MoGe base weights (sets HF_HOME)")
 
     # Output options
     parser.add_argument("--save_raw", action="store_true",
@@ -102,28 +97,19 @@ Examples:
     print("MoGe Planarity Inference")
     print("=" * 60)
     print(f"Model: {args.model_path}")
-    print(f"Model size: {args.model_size}")
     print(f"Input: {args.input_dir}")
     print(f"Output: {args.output_dir}")
     print(f"Device: {args.device}")
     print("-" * 60)
 
-    # Initialize model
+    # Initialize model (base MoGe weights come from HuggingFace; cache via HF_HOME)
+    if args.cache_dir:
+        os.environ["HF_HOME"] = args.cache_dir
     print("[INFO] Loading model...")
     model = MoGePlanarityInference(
         model_path=args.model_path,
-        model_size=args.model_size,
-        device=args.device,
-        cache_dir=args.cache_dir
+        device=args.device
     )
-
-    # Optional optimizations
-    model.model.encoder.use_memory_efficient_attention = False
-    import torch
-    torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction = False
-    model.model = model.model.half()
-    if hasattr(model.model.encoder, 'enable_pytorch_native_sdpa'):
-        model.model.encoder.enable_pytorch_native_sdpa()
 
     print("[INFO] Model loaded successfully")
     print("-" * 60)

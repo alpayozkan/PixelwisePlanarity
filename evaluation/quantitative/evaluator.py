@@ -22,9 +22,9 @@ from tqdm import tqdm
 
 from shared.plane_fitting import (
     backproject_v1 as backproject,
-    fit_planes_per_label_v1,
+    fit_planes_per_label,
     mark_planes_below_threshold_as_outliers,
-    compute_precision_recall_v1,
+    compute_precision_recall,
     project_labels_to_image
 )
 
@@ -120,7 +120,7 @@ def moge_planarity_infer(inference_model, rgb_path, img_res):
     res = inference_model.predict(rgb_path, num_tokens=1024, return_all_heads=True)
 
     depth = res['points'][:, :, 2]
-    normal = np.transpose(res['normal'], (2, 0, 1))
+    normal = res['normal']  # (H, W, 3)
     planarity = res['planarity_probability']
 
     # Resize to target resolution
@@ -128,17 +128,17 @@ def moge_planarity_infer(inference_model, rgb_path, img_res):
     normal = cv2.resize(normal.astype(np.float32), (W, H), interpolation=cv2.INTER_LINEAR)
     planarity = cv2.resize(planarity.astype(np.float32), (W, H), interpolation=cv2.INTER_LINEAR)
 
-    # Compute segmentation
-    from shared.segmentation import compute_vectorized_planar_segments_v4
+    # Compute segmentation (canonical region-growing parameters)
+    from shared.segmentation import compute_vectorized_planar_segments
     from shared.utils.label_utils import remap_labels
 
-    planarity_mask = (planarity > 0.6).astype(np.int16)
-    normal_threshold_rad = np.deg2rad(10.0)
+    planarity_mask = (planarity > 0.3).astype(np.int16)
+    normal_threshold_rad = np.deg2rad(5.0)
 
-    labels, _ = compute_vectorized_planar_segments_v4(
+    labels, _ = compute_vectorized_planar_segments(
         planarity_mask, normal, depth,
-        normal_threshold_rad, 0.05,
-        neighbor_match_count_thresh=24
+        normal_threshold_rad, 0.025,
+        neighbor_match_count_thresh=8
     )
     filtered_segmentation = labels.copy()
     filtered_segmentation, _ = remap_labels(filtered_segmentation)
@@ -293,7 +293,7 @@ def pseudo_mono_infer(
     return labels
 
 
-def mono_planarity_infer_v1(model, rgb_path, img_res):
+def mono_planarity_infer(model, rgb_path, img_res):
     """Run monoplane inference using pseudo_mono_infer."""
     H, W = img_res
     labels = pseudo_mono_infer(
@@ -327,7 +327,7 @@ def evaluate_planarity(
 
     Args:
         val_loader: PyTorch DataLoader returning batches with keys:
-                    "scene_id", "frame_idx", "image", "depth", "plane", "intrinsic", "pose"
+                    "scene_id", "frame_idx", "image", "depth", "plane", "K", "c2w", "rgb_path"
         inference_model: optional MoGe model for 'moge' inference
         tag: One of ["gt", "moge", "planercnn", "zeroplane", "monoplane"]
         img_res: (height, width) tuple for output resolution
@@ -349,8 +349,10 @@ def evaluate_planarity(
     thresholds = [0.01, 0.02, 0.05]  # in meters
 
     for batch in tqdm(val_loader):
-        frame_idx = batch["frame_idx"].item()
+        # frame_idx is a string frame id (e.g. "frame_000025") in ScanNetPPPlaneDataset
+        fid = batch["frame_idx"][0]
         scene_id = batch["scene_id"][0]
+        frame_idx = int(fid.split("_")[-1])
 
         if frame_idx % frame_skip != 0:
             continue  # Skip non-keyframes
@@ -359,12 +361,10 @@ def evaluate_planarity(
         images = batch["image"].to(device)
         depths = batch["depth"].to(device)
         gt_plane = batch["plane"].to(device)
-        Ks = batch["intrinsic"]
-        c2ws = batch["pose"]
+        Ks = batch["K"]
+        c2ws = batch["c2w"]
 
-        rgb_path = os.path.join(
-            rgb_root, scene_id, "iphone", "rgb", f"frame_{frame_idx:06d}.jpg"
-        )
+        rgb_path = batch["rgb_path"][0]
 
         # === Convert to numpy ===
         img_np = images[0].permute(1, 2, 0).cpu().numpy()
@@ -381,7 +381,7 @@ def evaluate_planarity(
             plane_pred = moge_planarity_infer(inference_model, rgb_path, img_res)
         elif tag == "monoplane":
             assert inference_model is not None, "MoGe model must be provided for tag='monoplane'"
-            plane_pred = mono_planarity_infer_v1(inference_model.model, rgb_path, img_res)
+            plane_pred = mono_planarity_infer(inference_model.model, rgb_path, img_res)
         elif tag in ["planercnn", "zeroplane"]:
             base_dir = "PlaneRCNN" if tag == "planercnn" else "ZeroPlane"
             h5_path = os.path.join(baseline_root, base_dir, scene_id, "rendered_v2.h5")
@@ -399,7 +399,7 @@ def evaluate_planarity(
 
         metric_per_threshold = {}
         for thr in thresholds:
-            results_planefit, plane_df = fit_planes_per_label_v1(
+            results_planefit, plane_df = fit_planes_per_label(
                 pts_world, labels,
                 ignore_labels=(0,),
                 distance_threshold=thr,
@@ -412,7 +412,7 @@ def evaluate_planarity(
                 results_planefit, plane_df, inlier_ratio_threshold=0.5
             )
 
-            metric_res = compute_precision_recall_v1(plane_df, total_scene_points=pts_world.shape[0])
+            metric_res = compute_precision_recall(plane_df, total_scene_points=pts_world.shape[0])
 
             prec = float(metric_res['global_precision'])
             rec = float(metric_res['global_recall'])
