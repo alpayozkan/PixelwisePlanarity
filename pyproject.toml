@@ -1,5 +1,5 @@
 [project]
-name = "planeseg-camera"
+name = "planeseg"
 version = "0.1.0"
 description = "Planar surface detection and segmentation from RGB images (camera-ready planamono)"
 requires-python = ">=3.8"
