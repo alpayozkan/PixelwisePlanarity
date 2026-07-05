@@ -1,5 +1,5 @@
 """
-Dataset loaders for ScanNet++, Hypersim, NYU-v2, and 7-Scenes.
+Dataset loaders for ScanNet++, Hypersim, NYU-v2, 7-Scenes, SYNTHIA, and VKITTI2.
 """
 
 from .scannetpp import ScanNetPPPlaneDataset
@@ -7,6 +7,9 @@ from .hypersim import HypersimPlanarityDataset
 from .hypersim_plane_dataset import HypersimPlaneDataset
 from .nyuv2_plane_dataset import NYUv2PlaneDataset
 from .sevenscenes_plane_dataset import SevenScenesPlaneDataset
+from .synthia import SYNTHIAPlanarityDataset
+from .synthia_plane_dataset import SynthiaPlaneDataset
+from .vkitti2_plane_dataset import VKITTI2PlaneDataset
 
 __all__ = [
     'ScanNetPPPlaneDataset',
@@ -14,4 +17,7 @@ __all__ = [
     'HypersimPlaneDataset',
     'NYUv2PlaneDataset',
     'SevenScenesPlaneDataset',
+    'SYNTHIAPlanarityDataset',
+    'SynthiaPlaneDataset',
+    'VKITTI2PlaneDataset',
 ]
