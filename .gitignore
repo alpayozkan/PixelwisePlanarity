@@ -14,7 +14,7 @@ table_*.csv
 CLAUDE.md
 alpay_scripts.md
 restructure_check.md
-scripts/
+/scripts/
 submit_*.sh
 **/submit_*.sh
 batch_*.sh
