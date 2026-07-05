@@ -15,6 +15,82 @@ import copy
 from typing import Tuple, Dict, Optional, List
 
 
+# ============================================================
+# RANSAC SEEDING / REPRODUCIBILITY
+# ------------------------------------------------------------
+# Open3D's ``PointCloud.segment_plane`` uses a process-global Mersenne-Twister
+# RNG (``open3d.utility.random``) that is seeded from ``std::random_device`` at
+# first use, i.e. non-deterministically. Two mechanisms make fitting
+# reproducible (see docs/ransac_seeding_reproducibility.md):
+#   1. ``set_ransac_seed(seed)`` pins the global RNG (works on open3d >= 0.16,
+#      including 0.17 which has no per-call ``seed`` argument). Call this once
+#      per frame, inside the worker process, before any fitting.
+#   2. ``segment_plane(..., seed=...)`` (open3d >= 0.18) makes a single call
+#      deterministic regardless of fit order/threads. ``_segment_plane()``
+#      passes it only when the installed open3d supports it.
+# ``seed=None`` everywhere restores the legacy non-deterministic behaviour.
+
+
+def _detect_segment_plane_seed_support() -> bool:
+    """Return True if this open3d's ``segment_plane`` accepts a ``seed`` kwarg.
+
+    open3d's ``segment_plane`` is a pybind11 builtin with no inspectable
+    signature, so we probe it with a tiny throw-away fit (use float64 points —
+    float32 can segfault ``Vector3dVector``, see docs/open3d_float32_segfault.md).
+    """
+    try:
+        _p = o3d.geometry.PointCloud()
+        _p.points = o3d.utility.Vector3dVector(
+            np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0],
+                      [0.0, 1.0, 0.0], [1.0, 1.0, 0.0]], dtype=np.float64)
+        )
+        _p.segment_plane(distance_threshold=0.01, ransac_n=3,
+                         num_iterations=1, seed=0)
+        return True
+    except TypeError:
+        return False
+    except Exception:
+        # Any other failure: assume unsupported and fall back to global seeding.
+        return False
+
+
+_SEGMENT_PLANE_HAS_SEED = _detect_segment_plane_seed_support()
+
+
+def set_ransac_seed(seed: Optional[int]) -> None:
+    """Pin open3d's process-global RANSAC RNG. No-op when ``seed`` is None.
+
+    Must be called *inside* each worker process (e.g. at the top of every
+    per-frame evaluation) — loky workers are fresh processes and do not inherit
+    a seed set in the parent.
+    """
+    if seed is None:
+        return
+    try:
+        o3d.utility.random.seed(int(seed))
+    except Exception:
+        # Older/newer open3d without utility.random — global seeding unavailable;
+        # per-call seed (if supported) still applies.
+        pass
+
+
+def _segment_plane(pcd, distance_threshold: float, ransac_n: int,
+                   num_iterations: int, seed: Optional[int] = None):
+    """``pcd.segment_plane`` wrapper that forwards ``seed`` only when supported."""
+    if seed is not None and _SEGMENT_PLANE_HAS_SEED:
+        return pcd.segment_plane(
+            distance_threshold=distance_threshold,
+            ransac_n=ransac_n,
+            num_iterations=num_iterations,
+            seed=int(seed),
+        )
+    return pcd.segment_plane(
+        distance_threshold=distance_threshold,
+        ransac_n=ransac_n,
+        num_iterations=num_iterations,
+    )
+
+
 def backproject_v1(
     depth: np.ndarray,
     K: np.ndarray,
@@ -23,6 +99,8 @@ def backproject_v1(
 ) -> Tuple[np.ndarray, Optional[np.ndarray], np.ndarray]:
     """
     Backproject depth image to 3D world coordinates.
+
+    NOTE: Use backproject_v2 for better performance (~10x faster).
 
     Args:
         depth: (H,W) depth map in meters
@@ -69,6 +147,162 @@ def backproject_v1(
     return pts_world, labels, valid_idx
 
 
+def backproject_v2(
+    depth: np.ndarray,
+    K: np.ndarray,
+    T_cw: np.ndarray,
+    plane_seg: Optional[np.ndarray] = None
+) -> Tuple[np.ndarray, Optional[np.ndarray], np.ndarray]:
+    """
+    OPTIMIZED: Backproject depth image to 3D world coordinates.
+
+    ~10x faster than v1 by:
+    - Filtering valid pixels FIRST (avoid computing rays for invalid pixels)
+    - Using float32 instead of float64
+    - Avoiding full meshgrid allocation
+    - Direct intrinsic formula (no matrix inverse)
+
+    Args:
+        depth: (H,W) depth map in meters
+        K: (3,3) or (4,4) camera intrinsic matrix
+        T_cw: (4,4) camera-to-world transformation matrix
+        plane_seg: (H,W) optional plane segmentation labels
+
+    Returns:
+        pts_world: (N,3) 3D points in world coordinates
+        labels: (N,) plane labels for valid points (None if plane_seg is None)
+        valid_idx: (N,) indices into flattened H*W image that were valid
+    """
+    # Ensure contiguous arrays (important for threading safety)
+    depth = np.ascontiguousarray(depth)
+    H, W = depth.shape
+
+    # Find valid pixels FIRST (before any heavy computation)
+    depth_flat = depth.ravel().copy()  # Copy to avoid view issues with threading
+    valid = np.isfinite(depth_flat) & (depth_flat > 0)
+    valid_idx = np.flatnonzero(valid).astype(np.int64)
+
+    if valid_idx.size == 0:
+        labels = np.array([], dtype=np.int32) if plane_seg is not None else None
+        return np.zeros((0, 3), dtype=np.float32), labels, valid_idx
+
+    # Get valid depth values (copy to own memory)
+    z_valid = np.ascontiguousarray(depth_flat[valid_idx].astype(np.float32))
+
+    # Compute u, v coordinates ONLY for valid pixels
+    v_coords = (valid_idx // W).astype(np.float32)  # row
+    u_coords = (valid_idx % W).astype(np.float32)   # col
+
+    # Extract intrinsic parameters (avoid matrix inverse)
+    K_arr = np.asarray(K, dtype=np.float32)
+    fx, fy = float(K_arr[0, 0]), float(K_arr[1, 1])
+    cx, cy = float(K_arr[0, 2]), float(K_arr[1, 2])
+
+    # Backproject to camera coordinates (direct formula, no matrix multiply)
+    x_cam = (u_coords - cx) * z_valid / fx
+    y_cam = (v_coords - cy) * z_valid / fy
+
+    # Stack to (N, 3) - ensure contiguous
+    pts_cam = np.ascontiguousarray(np.column_stack([x_cam, y_cam, z_valid]))
+
+    # Transform to world coordinates
+    T_cw_arr = np.asarray(T_cw, dtype=np.float32)
+    R = np.ascontiguousarray(T_cw_arr[:3, :3])
+    t = T_cw_arr[:3, 3].copy()
+
+    # pts_world = pts_cam @ R.T + t
+    pts_world = np.ascontiguousarray(pts_cam @ R.T + t)
+
+    # Extract plane labels for valid points
+    labels = None
+    if plane_seg is not None:
+        seg_flat = np.ascontiguousarray(np.asarray(plane_seg, dtype=np.int32).ravel())
+        labels = seg_flat[valid_idx].copy()
+
+    return pts_world, labels, valid_idx
+
+
+def backproject_mcam(
+    depth_euc: np.ndarray,
+    M_cam_from_uv: np.ndarray,
+    native_w: int,
+    native_h: int,
+    T_cw: np.ndarray,
+    plane_seg: Optional[np.ndarray] = None,
+) -> Tuple[np.ndarray, Optional[np.ndarray], np.ndarray]:
+    """
+    Backproject Euclidean depth to 3D using V-Ray's M_cam_from_uv camera model.
+
+    Unlike backproject_v1/v2 which use a pinhole K approximation, this function
+    uses the actual V-Ray camera matrix to compute per-pixel ray directions.
+    This eliminates the systematic position errors (radial artifacts) that grow
+    toward image edges with the pinhole approximation.
+
+    The 3D point for each pixel is:  P = depth_euc * normalize(M_cam_from_uv @ [u_ndc, v_ndc, 1])
+
+    Args:
+        depth_euc: (H, W) Euclidean ray distance in meters (from depth_meters.hdf5)
+        M_cam_from_uv: (3, 3) V-Ray camera matrix from metadata CSV
+        native_w: Native render width (for NDC grid computation)
+        native_h: Native render height (for NDC grid computation)
+        T_cw: (4, 4) camera-to-world transformation matrix
+        plane_seg: (H, W) optional plane segmentation labels
+
+    Returns:
+        pts_world: (N, 3) 3D points in world coordinates
+        labels: (N,) plane labels for valid points (None if plane_seg is None)
+        valid_idx: (N,) indices into flattened H*W image that were valid
+    """
+    H, W = depth_euc.shape
+    M = np.asarray(M_cam_from_uv, dtype=np.float64)
+
+    # Build NDC grid (same convention as V-Ray / render.py)
+    u_px = np.arange(W, dtype=np.float64)
+    v_px = np.arange(H, dtype=np.float64)
+
+    # If depth has been resized, map pixel coords through native resolution
+    u_native = u_px * (native_w / W)
+    v_native = v_px * (native_h / H)
+    u_ndc = (2.0 * u_native + 1.0) / native_w - 1.0
+    v_ndc = 1.0 - (2.0 * v_native + 1.0) / native_h
+
+    uu, vv = np.meshgrid(u_ndc, v_ndc)
+    uvs = np.stack([uu, vv, np.ones_like(uu)], axis=-1)  # (H, W, 3)
+
+    # Camera-space ray directions via M_cam_from_uv
+    dirs_cam = uvs @ M.T  # (H, W, 3)
+
+    # Normalize to unit vectors
+    ray_lengths = np.linalg.norm(dirs_cam, axis=-1, keepdims=True)  # (H, W, 1)
+    ray_lengths = np.maximum(ray_lengths, 1e-12)
+    dirs_unit = dirs_cam / ray_lengths  # (H, W, 3)
+
+    # Valid depth mask
+    depth_flat = depth_euc.ravel().astype(np.float64)
+    valid = np.isfinite(depth_flat) & (depth_flat > 0)
+    valid_idx = np.flatnonzero(valid)
+
+    if valid_idx.size == 0:
+        labels = np.array([], dtype=np.int32) if plane_seg is not None else None
+        return np.zeros((0, 3), dtype=np.float64), labels, valid_idx
+
+    # 3D points in camera space: P_cam = depth_euc * ray_unit_direction
+    dirs_flat = dirs_unit.reshape(-1, 3)
+    pts_cam = dirs_flat[valid] * depth_flat[valid, None]  # (N, 3)
+
+    # Transform to world coordinates
+    T_cw = np.asarray(T_cw, dtype=np.float64)
+    pts_cam_h = np.hstack([pts_cam, np.ones((pts_cam.shape[0], 1))])
+    pts_world = (pts_cam_h @ T_cw.T)[:, :3]
+
+    # Extract plane labels for valid points
+    labels = None
+    if plane_seg is not None:
+        labels = np.asarray(plane_seg, dtype=np.int32).ravel()[valid]
+
+    return pts_world, labels, valid_idx
+
+
 def refine_plane_least_squares(P: np.ndarray) -> np.ndarray:
     """
     Refine plane parameters using PCA (least squares).
@@ -96,7 +330,7 @@ def refine_plane_least_squares(P: np.ndarray) -> np.ndarray:
     return np.r_[n, d]
 
 
-def fit_planes_per_label_v1(
+def fit_planes_per_label(
     pts: np.ndarray,
     labels: np.ndarray,
     ignore_labels: Tuple[int, ...] = (0,),
@@ -104,7 +338,8 @@ def fit_planes_per_label_v1(
     ransac_n: int = 3,
     num_iterations: int = 1000,
     min_support: int = 50,
-    verbose: bool = False
+    verbose: bool = False,
+    ransac_seed: Optional[int] = 0
 ) -> Tuple[Dict, pd.DataFrame]:
     """
     Fit planes to each labeled segment using RANSAC + least-squares refinement.
@@ -118,6 +353,9 @@ def fit_planes_per_label_v1(
         num_iterations: Number of RANSAC iterations
         min_support: Minimum number of points required for a valid plane
         verbose: Print progress messages
+        ransac_seed: Seed for reproducible RANSAC (default 0). Pins the global
+            open3d RNG and (on open3d >= 0.18) also passes a per-call seed.
+            None = legacy non-deterministic behaviour.
 
     Returns:
         results: Dict mapping plane_id to dict with:
@@ -136,6 +374,13 @@ def fit_planes_per_label_v1(
             - refined_inlier_ratio: Fraction of refined inliers
         plane_df: DataFrame with per-plane statistics
     """
+    # Reproducibility: pin the global RNG so direct callers that don't seed it
+    # themselves are deterministic on open3d 0.17 (no per-call seed) too. The
+    # per-call seed below additionally covers open3d >= 0.18. ransac_seed=None
+    # restores legacy non-deterministic behaviour. See
+    # docs/ransac_seeding_reproducibility.md.
+    set_ransac_seed(ransac_seed)
+
     # Flatten and filter invalid points
     pts = np.asarray(pts)
     labels_arr = np.asarray(labels).reshape(-1)
@@ -162,10 +407,12 @@ def fit_planes_per_label_v1(
         pcd.points = o3d.utility.Vector3dVector(pts[idx_global])
 
         # RANSAC plane fitting
-        plane_model, inliers_local = pcd.segment_plane(
+        plane_model, inliers_local = _segment_plane(
+            pcd,
             distance_threshold=distance_threshold,
             ransac_n=ransac_n,
-            num_iterations=num_iterations
+            num_iterations=num_iterations,
+            seed=ransac_seed,
         )
         inliers_local = np.asarray(inliers_local, dtype=np.int64)
 
@@ -236,7 +483,7 @@ def filter_planes_by_inlier_ratio(
     Remove planes with low inlier ratios.
 
     Args:
-        results: Output from fit_planes_per_label_v1
+        results: Output from fit_planes_per_label
         plane_df: DataFrame with per-plane statistics
         inlier_ratio_threshold: Minimum acceptable refined inlier ratio
         verbose: Print filtering statistics
@@ -274,7 +521,7 @@ def mark_planes_below_threshold_as_outliers(
     This keeps the plane IDs but marks all their points as outliers.
 
     Args:
-        results: Output from fit_planes_per_label_v1
+        results: Output from fit_planes_per_label
         plane_df: DataFrame with per-plane statistics
         inlier_ratio_threshold: Minimum acceptable refined inlier ratio
         verbose: Print marking statistics

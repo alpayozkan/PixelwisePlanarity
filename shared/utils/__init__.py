@@ -11,12 +11,14 @@ from .depth_normal import (
 from .label_utils import (
     keep_top_k_planes,
     remap_labels,
+    remap_labels_fast,
     fill_holes_inpaint,
     match_planes_by_overlap,
     map_array
 )
 from .visualization import (
     visualize_top_components_v1,
+    visualize_top_components_v2,
     generate_plane_colors,
     visualize_segmentation_comparison,
     visualize_normals
@@ -37,11 +39,13 @@ __all__ = [
     # label_utils
     'keep_top_k_planes',
     'remap_labels',
+    'remap_labels_fast',
     'fill_holes_inpaint',
     'match_planes_by_overlap',
     'map_array',
     # visualization
     'visualize_top_components_v1',
+    'visualize_top_components_v2',
     'generate_plane_colors',
     'visualize_segmentation_comparison',
     'visualize_normals',

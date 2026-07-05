@@ -1,12 +1,19 @@
 """
-Planar segmentation algorithms using normal and depth consistency.
+Planar segmentation via region growing on normal and depth consistency.
 
-This module provides vectorized algorithms for segmenting planar regions
-based on surface normal similarity and depth proximity.
+`compute_vectorized_planar_segments` (formerly v5_relative in planamono) is the
+single region-growing algorithm kept in this repo. It is GPU-accelerated
+(PyTorch) and uses a Sobel-based normal-similarity gate combined with a
+relative depth gate, followed by connected-component labeling.
+
+Canonical parameters (used across inference and evaluation):
+    normal_threshold_rad = np.deg2rad(5.0)
+    depth_threshold      = 0.025   (relative: 2.5% of center depth)
+    neighbor_match_count_thresh = 8
+    planarity mask threshold upstream: probability > 0.3
 """
 
 import numpy as np
-from scipy.ndimage import label
 from typing import Tuple
 
 import torch
@@ -14,85 +21,87 @@ import torch.nn.functional as F
 import cc3d
 
 
-def compute_vectorized_planar_segments_v1(
+def compute_vectorized_planar_segments(
     planarity_mask: np.ndarray,
     normal: np.ndarray,
     depth: np.ndarray,
     normal_threshold_rad: float,
     depth_threshold: float,
-    neighbor_match_count_thresh: int = 1
+    neighbor_match_count_thresh: int = 8,
+    device: str = "cuda"
 ) -> Tuple[np.ndarray, int]:
     """
-    Compute planar segments using 8-connected neighbor matching.
-
-    This is the recommended version with neighbor match count thresholding
-    for robustness against noise.
+    Segment planar regions using Sobel-based normal similarity and a relative
+    depth gate: |d_center - d_neighbor| < depth_threshold * d_center
+    (depth_threshold is a fraction, e.g. 0.025 = 2.5% of center depth).
 
     Args:
         planarity_mask: (H,W) binary mask where 1 = planar, 0 = non-planar
         normal: (H,W,3) surface normals (unit vectors)
         depth: (H,W) depth map in meters
         normal_threshold_rad: Angular threshold in radians for normal similarity
-        depth_threshold: Depth difference threshold in meters
-        neighbor_match_count_thresh: Minimum number of matching neighbors (default 1)
+        depth_threshold: Relative depth threshold as fraction of center depth
+        neighbor_match_count_thresh: Minimum matching neighbors in 5x5 window (default 8)
+        device: Torch device ("cuda" or "cpu")
 
     Returns:
-        labeled: (H,W) int array with segment IDs (0-indexed)
+        labels: (H,W) int array with segment IDs
         num_components: Number of segments found
     """
     H, W = planarity_mask.shape
-    mask = planarity_mask.astype(bool)
 
-    # Pad arrays for neighbor access
-    pad = ((1, 1), (1, 1))
-    padded_mask = np.pad(mask, pad, constant_values=0)
-    padded_depth = np.pad(depth, pad, constant_values=0)
-    padded_normal = np.pad(normal, pad + ((0, 0),), mode='constant')
+    planarity_t = torch.as_tensor(np.ascontiguousarray(planarity_mask), device=device, dtype=torch.bool)
+    normal_t = torch.as_tensor(np.ascontiguousarray(normal), device=device, dtype=torch.float32)
+    depth_t = torch.as_tensor(np.ascontiguousarray(depth), device=device, dtype=torch.float32)
 
-    # 8-connected neighbor offsets
-    shifts = [(-1, -1), (-1, 0), (-1, 1),
-              ( 0, -1),          ( 0, 1),
-              ( 1, -1), ( 1, 0), ( 1, 1)]
+    # Sobel filters for normal gradient magnitude
+    sobel_x = torch.tensor([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], device=device, dtype=torch.float32)
+    sobel_y = torch.tensor([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], device=device, dtype=torch.float32)
+    sobel_x_batch = sobel_x.view(1, 1, 3, 3).expand(3, 1, 3, 3).contiguous()
+    sobel_y_batch = sobel_y.view(1, 1, 3, 3).expand(3, 1, 3, 3).contiguous()
 
-    def get_shifted(arr, shift):
-        dy, dx = shift
-        return arr[1 + dy : 1 + dy + H, 1 + dx : 1 + dx + W]
+    normal_batch = normal_t.permute(2, 0, 1).unsqueeze(0)
+    normal_dx = F.conv2d(normal_batch, sobel_x_batch, padding=1, groups=3)
+    normal_dy = F.conv2d(normal_batch, sobel_y_batch, padding=1, groups=3)
+    normal_grad_mag = torch.sqrt((normal_dx ** 2 + normal_dy ** 2).sum(dim=1)).squeeze(0)
 
-    # Stack shifted versions of neighbors
-    neighbor_masks = np.stack([get_shifted(padded_mask, s) for s in shifts], axis=2)  # (H, W, 8)
-    neighbor_depths = np.stack([get_shifted(padded_depth, s) for s in shifts], axis=2)  # (H, W, 8)
-    neighbor_normals = np.stack([get_shifted(padded_normal, s) for s in shifts], axis=3)  # (H, W, 3, 8)
+    grad_mag_threshold = torch.sqrt(
+        torch.tensor(2.0, device=device) - 2 * torch.cos(torch.tensor(normal_threshold_rad, device=device))
+    )
+    normal_similar = (normal_grad_mag <= grad_mag_threshold)
 
-    # Prepare center values
-    center_depth = depth[:, :, None]  # (H, W, 1)
-    center_normal = normal[:, :, :, None]  # (H, W, 3, 1)
+    kernel_size = 5
+    pad = kernel_size // 2
+    center_idx = (kernel_size * kernel_size) // 2
+    neighbor_indices = [i for i in range(kernel_size * kernel_size) if i != center_idx]
 
-    # Valid planar neighbor pairs
-    valid_pair = mask[:, :, None] & neighbor_masks
+    depth_padded = F.pad(depth_t[None, None], (pad, pad, pad, pad), mode='constant', value=0)
+    depth_patches = F.unfold(depth_padded, kernel_size=kernel_size).view(25, H, W)
 
-    # Normal similarity check (angular difference)
-    dot = np.sum(center_normal * neighbor_normals, axis=2)  # (H, W, 8)
-    norm_center = np.linalg.norm(center_normal, axis=2, keepdims=True)  # (H, W, 1, 1)
-    norm_center = norm_center[..., 0]  # (H, W, 1)
-    norm_neighbor = np.linalg.norm(neighbor_normals, axis=2)  # (H, W, 8)
+    mask_padded = F.pad(planarity_t[None, None].float(), (pad, pad, pad, pad), mode='constant', value=0)
+    mask_patches = F.unfold(mask_padded, kernel_size=kernel_size).view(25, H, W).bool()
 
-    cos_angle = np.clip(dot / (norm_center * norm_neighbor + 1e-8), -1.0, 1.0)
-    angle = np.arccos(cos_angle)
-    normal_similar = angle < normal_threshold_rad  # (H, W, 8)
+    normal_sim_padded = F.pad(normal_similar[None, None].float(), (pad, pad, pad, pad), mode='constant', value=0)
+    normal_sim_patches = F.unfold(normal_sim_padded, kernel_size=kernel_size).view(25, H, W).bool()
 
-    # Depth closeness check
-    depth_diff = np.abs(center_depth - neighbor_depths)
-    depth_close = depth_diff < depth_threshold  # (H, W, 8)
+    neighbor_depths = depth_patches[neighbor_indices]
+    neighbor_masks = mask_patches[neighbor_indices]
+    neighbor_normals = normal_sim_patches[neighbor_indices]
 
-    # Count matching neighbors
-    neighbor_match_count = np.sum(valid_pair & normal_similar & depth_close, axis=2)
-    connected = neighbor_match_count >= neighbor_match_count_thresh  # (H, W)
+    valid_pair = planarity_t.unsqueeze(0) & neighbor_masks
 
-    # Connected component labeling with 8-connectivity
-    structure = np.ones((3, 3), dtype=bool)
-    labeled, num_components = label(connected & mask, structure=structure)
+    # Relative depth check: |d_c - d_n| < threshold * d_c
+    center_depth = depth_t.unsqueeze(0)
+    depth_diff = torch.abs(center_depth - neighbor_depths)
+    depth_close = depth_diff < (depth_threshold * center_depth)
 
-    return labeled, num_components
+    matches = valid_pair & neighbor_normals & depth_close
+    connected = (matches.sum(dim=0) >= neighbor_match_count_thresh)
+
+    labels = cc3d.connected_components(connected.cpu().numpy())
+    num_components = int(labels.max())
+
+    return labels, num_components
 
 
 def filter_small_segments(
@@ -122,100 +131,3 @@ def filter_small_segments(
         next_label += 1
 
     return new_seg
-
-
-def compute_vectorized_planar_segments_v4(
-    planarity_mask: np.ndarray,
-    normal: np.ndarray,
-    depth: np.ndarray,
-    normal_threshold_rad: float,
-    depth_threshold: float,
-    neighbor_match_count_thresh: int = 8,
-    device: str = "cuda"
-) -> Tuple[np.ndarray, int]:
-    """
-    GPU-accelerated planar segmentation using 5x5 neighborhood.
-
-    Uses Sobel filters for gradient computation and GPU tensors for
-    faster processing on large images.
-
-    Args:
-        planarity_mask: (H,W) binary mask where 1 = planar, 0 = non-planar
-        normal: (H,W,3) surface normals (unit vectors)
-        depth: (H,W) depth map in meters
-        normal_threshold_rad: Angular threshold in radians for normal similarity
-        depth_threshold: Depth difference threshold in meters
-        neighbor_match_count_thresh: Minimum matching neighbors in 5x5 window (default 8)
-        device: Torch device ("cuda" or "cpu")
-
-    Returns:
-        labels: (H,W) int array with segment IDs
-        num_components: Number of segments found
-    """
-    # Convert to torch tensors on GPU
-    planarity_mask = torch.as_tensor(planarity_mask, device=device, dtype=torch.bool)
-    normal = torch.as_tensor(normal, device=device, dtype=torch.float32)
-    depth = torch.as_tensor(depth, device=device, dtype=torch.float32)
-
-    H, W = planarity_mask.shape
-
-    # === 1. Gradients (Sobel via conv2d) ===
-    sobel_x = torch.tensor([[-1, 0, 1],
-                            [-2, 0, 2],
-                            [-1, 0, 1]], device=device, dtype=torch.float32).view(1,1,3,3)
-    sobel_y = torch.tensor([[-1,-2,-1],
-                            [ 0, 0, 0],
-                            [ 1, 2, 1]], device=device, dtype=torch.float32).view(1,1,3,3)
-
-    def sobel_filter(img2d):
-        img = img2d[None,None]  # (1,1,H,W)
-        dx = F.conv2d(img, sobel_x, padding=1)
-        dy = F.conv2d(img, sobel_y, padding=1)
-        return dx[0,0], dy[0,0]
-
-    depth_dx, depth_dy = sobel_filter(depth)
-    normal_dx = []
-    normal_dy = []
-    for i in range(3):
-        dx, dy = sobel_filter(normal[..., i])
-        normal_dx.append(dx)
-        normal_dy.append(dy)
-    normal_dx = torch.stack(normal_dx, dim=-1)
-    normal_dy = torch.stack(normal_dy, dim=-1)
-
-    normal_grad_mag = torch.sqrt(torch.sum(normal_dx**2 + normal_dy**2, dim=-1))
-    grad_mag_threshold = torch.sqrt(torch.tensor(2.0, device=device) -
-                                    2*torch.cos(torch.tensor(normal_threshold_rad, device=device)))
-
-    normal_similar = (normal_grad_mag <= grad_mag_threshold)
-
-    # === 2. Pad arrays ===
-    n = 2
-    padded_mask   = F.pad(planarity_mask[None,None].float(), (n,n,n,n)).squeeze(0).squeeze(0).bool()
-    padded_depth  = F.pad(depth[None,None], (n,n,n,n)).squeeze(0).squeeze(0)
-    padded_normal = F.pad(normal_similar[None,None].float(), (n,n,n,n)).squeeze(0).squeeze(0).bool()
-
-    # === 3. Neighbor stacking ===
-    shifts = [(dy, dx) for dy in range(-2, 3) for dx in range(-2, 3) if not (dy == 0 and dx == 0)]
-
-    def get_shifted(arr, dy, dx):
-        return arr[n+dy:n+dy+H, n+dx:n+dx+W]
-
-    neighbor_masks   = torch.stack([get_shifted(padded_mask, *s) for s in shifts], dim=-1)
-    neighbor_depths  = torch.stack([get_shifted(padded_depth, *s) for s in shifts], dim=-1)
-    neighbor_normals = torch.stack([get_shifted(padded_normal, *s) for s in shifts], dim=-1)
-
-    center_depth = depth.unsqueeze(-1)
-
-    valid_pair = planarity_mask.unsqueeze(-1) & neighbor_masks
-    depth_diff = (center_depth - neighbor_depths).abs()
-    depth_close = (depth_diff < depth_threshold)
-
-    neighbor_match_count = (valid_pair & neighbor_normals & depth_close).sum(dim=-1)
-    connected = (neighbor_match_count >= neighbor_match_count_thresh)
-
-    # === 4. Connected components ===
-    labels = cc3d.connected_components(connected.detach().cpu().numpy())
-    num_components = labels.max()
-
-    return labels, int(num_components)

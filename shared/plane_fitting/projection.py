@@ -9,7 +9,7 @@ import numpy as np
 from typing import Tuple
 
 
-def project_points_to_image_v1(
+def project_points_to_image(
     pts_world: np.ndarray,
     K: np.ndarray,
     T_cw: np.ndarray,
@@ -83,7 +83,7 @@ def project_labels_to_image(
         label_img: (H,W) int32 array with projected labels
     """
     # Project points to pixel coordinates
-    uv, visible_idx = project_points_to_image_v1(pts_world, K, T_cw, H, W)
+    uv, visible_idx = project_points_to_image(pts_world, K, T_cw, H, W)
 
     # Create label image
     label_img = np.zeros((H, W), dtype=np.int32)
