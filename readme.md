@@ -129,6 +129,22 @@ planarity > 0.3, normal threshold 5.0°, relative depth threshold 0.025, ≥8 ma
 
 Dataset and model paths are configured in `paths.py` at the repo root.
 
+### Training
+
+The MoGe 4-head training code lives in the `MoGe/` submodule (branch with
+repo-layout fixes required — see below). Entry points, run from the repo root
+with the `planeseg` env active:
+
+```bash
+python MoGe/train_moge_4heads_planarity_scannetpp.py   # ScanNet++ (rendered plane GT)
+python MoGe/train_moge_4heads_planarity_hypersim.py    # Hypersim
+python MoGe/train_moge_4heads_planarity_mixed.py       # Mixed (Hypersim + ScanNet++)
+```
+
+Training data are the rendered plane-GT H5s produced by `gt_creation/` plus
+the split lists in `splits/`; dataset roots resolve through `paths.py`
+(ScanNet++) or the trainers' `--dataset_dir` arguments.
+
 ## Key Algorithms
 
 ### Plane Fitting (RANSAC + LS Refinement)
