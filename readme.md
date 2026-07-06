@@ -1,228 +1,160 @@
 # Planar Surface Detection and Segmentation
 
-Clean, restructured codebase for planar surface detection and segmentation from RGB images.
+Planar surface detection and segmentation from single RGB images using a 4-head MoGe-2
+backbone (planarity + metric depth + normal + mask), GPU-accelerated region growing, and an
+H5-based evaluation suite. Includes the full ground-truth generation pipeline (semantic mesh →
+2D plane labels) for ScanNet++, Hypersim, SYNTHIA, and VKITTI2.
 
-## Structure
+## Pipeline overview
 
 ```
-clean_structure/
-├── shared/               # Core utilities used across all modules
-│   ├── plane_fitting/   # RANSAC plane fitting, metrics, projection
-│   ├── rendering/       # Mesh rendering and raycasting (Open3D)
-│   ├── segmentation/    # Planar segmentation algorithms
-│   ├── datasets/        # PyTorch dataset loaders (ScanNet++, Hypersim)
-│   └── utils/           # Depth/normal processing, visualization, I/O
-├── gt_creation/         # Ground truth generation from 3D meshes
-│   ├── scannetpp/       # ScanNet++ plane extraction
-│   ├── hypersim/        # Hypersim plane extraction
-│   ├── configs/         # YAML configuration files
-│   └── scripts/         # Shell scripts for batch processing
-├── inference/           # Inference pipelines
-│   ├── planarity/       # Planarity prediction (MoGe)
-│   └── segmentation/    # Plane segmentation from predictions
-├── evaluation/          # Evaluation tools
-│   ├── quantitative/    # Metrics computation
-│   └── qualitative/     # Visualization and comparisons
-├── exploration/         # Jupyter notebooks
-│   ├── hypersim/        # Hypersim experiments
-│   └── scannetpp/       # ScanNet++ experiments
-├── MoGe/                # External MoGe model integration
-└── notes/               # Restructuring documentation
+RGB → MoGe 4-head model → planarity, metric depth, normals, mask     (inference/planarity/)
+        ↓
+   8-connected region growing on planarity + normal + depth          (shared/segmentation/)
+        ↓
+   per-segment RANSAC plane fitting                                  (shared/plane_fitting/)
+        ↓
+   2D metrics (SC, RI, VOI) + 3D precision/recall @ thresholds       (evaluation/quantitative/)
 ```
 
-## Datasets
+## Repository structure
 
-### ScanNet++
-- **Mesh-based GT generation** from semantic meshes
-- **Rendered labels**: Planes, semantics, depth → HDF5
-- **iPhone RGB images** with camera poses
-
-### Hypersim
-- **Synthetic photorealistic scenes**
-- **HDF5 format**: RGB (HDR), depth, normals, semantics
-- **Plane extraction** from mesh geometry
-
-## Quick Start
-
-### Shared Modules
-
-All core functionality is in `shared/`:
-
-```python
-# Plane fitting
-from shared.plane_fitting import backproject_v1, fit_planes_per_label_v1
-
-# Rendering
-from shared.rendering import render_rgb_depth, raycast_semantic
-
-# Segmentation (single region-growing algorithm, GPU-accelerated)
-from shared.segmentation import compute_vectorized_planar_segments
-
-# Utilities
-from shared.utils import depth_to_normal_remi, extract_zdepth
-
-# Datasets
-from shared.datasets import ScanNetPPPlaneDataset, HypersimPlaneDataset, HypersimPlanarityDataset
+```
+├── shared/               # Core library used by everything else
+│   ├── plane_fitting/    #   RANSAC fitting, metrics, projection
+│   ├── segmentation/     #   Region growing, merging, postprocessing
+│   ├── rendering/        #   Open3D mesh rendering and raycasting
+│   ├── datasets/         #   Loaders: ScanNet++, Hypersim, NYU-v2, 7-Scenes, SYNTHIA, VKITTI2
+│   ├── outdoor/          #   Outdoor-specific plane fitting
+│   └── utils/            #   Depth/normal processing, visualization, labels, I/O
+├── gt_creation/          # Semantic mesh → 2D plane-label GT (HDF5)
+│   ├── scannetpp/  hypersim/  synthia/  vkitti2/
+│   ├── configs/          #   YAML configs per dataset
+│   └── scripts/          #   SLURM batch scripts (see SHELL_SCRIPTS.md)
+├── inference/            # RGB → signals → plane labels
+│   ├── planarity/        #   MoGe wrapper, signal export, segmentation from H5
+│   └── segmentation/     #   On-the-fly prediction pipeline
+├── evaluation/           # Metrics + visualization
+│   ├── quantitative/     #   evaluate_all_baselines.py + outdoor variants
+│   └── qualitative/      #   Comparison videos, 3D visualization
+├── splits/               # Train/val/test scene lists per dataset
+├── env/                  # Conda environment + setup script
+├── MoGe/                 # Git submodule: MoGe fork with 4-head training code
+└── paths.py              # ALL dataset/checkpoint/output paths — edit before running anything
 ```
 
-### Ground Truth Generation
-
-**ScanNet++ (from `gt_creation/scannetpp/`):**
-```bash
-# Single scene
-python scene_runner.py <scene_id> --config ../configs/scannetpp_default.yml
-
-# Batch processing
-bash scripts/scannetpp_pipeline.sh
-```
-
-**Hypersim (from `gt_creation/hypersim/`):**
-```bash
-# Single scene
-python scene_runner.py <scene_id> --config ../configs/hypersim_default.yml
-
-# Batch processing
-bash scripts/hypersim_pipeline.sh
-```
-
-### Inference
-
-```python
-from inference.planarity import MoGePlanarityInference
-from inference.segmentation import predict_plane_segmentation
-
-# Planarity prediction
-model = MoGePlanarityInference(model_path="path/to/moge.pth")
-planarity = model.predict(rgb_image)
-
-# Plane segmentation
-segments = predict_plane_segmentation(
-    planarity_mask=planarity,
-    depth=depth_image,
-    normal=normal_image
-)
-```
-
-### Evaluation
+## Environment setup
 
 ```bash
-# Primary: H5-based evaluation of all baseline methods (GT, ours, ZeroPlane, Metric3D, ...)
+bash env/create_env.sh    # conda env `planeseg` from env/environment.yml,
+                          # `pip install -e .`, MoGe submodule init
+conda activate planeseg
+```
+
+**Before running anything**: edit `paths.py` (repo root). Every dataset root, checkpoint path,
+and output root resolves through it.
+
+## Main pipeline (H5-based, three stages)
+
+```bash
+# 1. RGB → planarity/depth/normal signals (one moge_signals.h5 per scene)
+python inference/planarity/save_moge_signals_planarity.py \
+    --dataset scannetpp --scenes splits/scannetpp/test.txt \
+    --model_path <checkpoint.pt> --output_root <signals_root> \
+    --frame_step 25 --batch_size 8 --num_tokens 1600
+# --dataset also accepts nyuv2 / sevenscenes (ZeroPlane "_d2" NPZ) and hypersim
+
+# 2. Signals → plane labels (one planes.h5 per scene); shardable across SLURM jobs
+python inference/planarity/segment_signals_to_planes.py \
+    --input_root <signals_root> --output_root <planes_root> \
+    [--part_id 0 --num_parts 15]
+
+# 3. Evaluate methods against GT
 python evaluation/quantitative/evaluate_all_baselines.py --methods gt ours --max-scenes 5
-python evaluation/quantitative/evaluate_all_baselines.py --aggregate-only   # rebuild summary tables
-
-# On-the-fly evaluation (runs MoGe inference per frame)
-python evaluation/run_evaluation.py --method moge --split test
-
-# Qualitative visualization
-python evaluation/qualitative/visualize_comparison.py
+python evaluation/quantitative/evaluate_all_baselines.py --aggregate-only   # summary tables
 ```
 
-The H5 prediction inputs for `evaluate_all_baselines.py` are produced by:
+The method registry (H5 folders, label conventions, experiment names) is the `METHODS` dict at
+the top of `evaluate_all_baselines.py`; add new baselines there. Outdoor variants:
+`evaluate_synthia_all_baselines.py`, `evaluate_vkitti2_all_baselines.py`.
+
+### Canonical segmentation parameters
+
+Used identically in `segment_signals_to_planes.py` and the benchmark — keep in sync:
+**planarity > 0.3, normal threshold 5.0°, relative depth threshold 0.025, ≥8 matching neighbors.**
+
+### Reproducibility
+
+3D metrics use seeded RANSAC (`RANSAC_SEED = 0`) in `evaluate_all_baselines.py`
+(`--ransac-seed -1` restores legacy non-deterministic behavior). Keep the seed fixed when
+comparing methods.
+
+### Label conventions
+
+- Ours / GT: label **0 = non-planar**. ZeroPlane uses label 20 (remapped via `nonplanar_label`
+  in `METHODS`).
+- Always resize label maps with `cv2.INTER_NEAREST`, never linear.
+
+## Ground truth generation
+
+From `gt_creation/<dataset>/` (scannetpp, hypersim, synthia, vkitti2):
 
 ```bash
-python inference/planarity/save_moge_signals_planarity.py   # RGB → planarity/depth/normal H5
-python inference/planarity/segment_signals_to_planes.py     # signals → plane-label H5
+python scene_runner.py <scene_id> --config ../configs/<dataset>_default.yml
 ```
 
-Region growing uses fixed canonical parameters everywhere:
-planarity > 0.3, normal threshold 5.0°, relative depth threshold 0.025, ≥8 matching neighbors.
+Batch SLURM scripts (arguments documented in `SHELL_SCRIPTS.md`):
 
-Dataset and model paths are configured in `paths.py` at the repo root.
+```bash
+bash gt_creation/scripts/scannetpp_plane_extraction.sh <scene_list> [config]
+bash gt_creation/scripts/scannetpp_render_planes.sh <scene_list>
+# hypersim_*, synthia_*, vkitti2_* analogues; hypersim_raycast_depth.sh for raycast z-depth
+```
 
-### Training
+Algorithm: label-strict region growing on mesh faces → EM sweep with quality gates → IRLS
+plane fitting → merge/split → quality filtering (8 geometric checks) → raycast to 2D (HDF5).
 
-The MoGe 4-head training code lives in the `MoGe/` submodule (branch with
-repo-layout fixes required — see below). Entry points, run from the repo root
-with the `planeseg` env active:
+Key YAML parameters: `rg_theta_deg`/`rg_dist_m` (region growing), `min_faces_patch`/
+`min_area_patch` (minimum plane size), `inlier_frac_min`/`p95_final_max` (quality gates),
+`merge_theta_deg`/`merge_dist_m` (merging).
+
+## Training
+
+Entry points live in the `MoGe/` submodule; run from the repo root with `planeseg` active:
 
 ```bash
 python MoGe/train_moge_4heads_planarity_scannetpp.py   # ScanNet++ (rendered plane GT)
 python MoGe/train_moge_4heads_planarity_hypersim.py    # Hypersim
-python MoGe/train_moge_4heads_planarity_mixed.py       # Mixed (Hypersim + ScanNet++)
+python MoGe/train_moge_4heads_planarity_mixed.py       # Mixed datasets
 ```
 
-Training data are the rendered plane-GT H5s produced by `gt_creation/` plus
-the split lists in `splits/`; dataset roots resolve through `paths.py`
-(ScanNet++) or the trainers' `--dataset_dir` arguments.
+Training consumes the rendered plane-GT H5s from `gt_creation/` plus the split lists in
+`splits/`; dataset roots resolve through `paths.py` or the trainers' `--dataset_dir` arguments.
 
-## Key Algorithms
+## Evaluation metrics
 
-### Plane Fitting (RANSAC + LS Refinement)
-1. Backproject depth to 3D points
-2. RANSAC plane fitting per segment
-3. Least-squares refinement on inliers
-4. Quality filtering by inlier ratio
+- **2D segmentation**: Segmentation Covering (SC), Rand Index (RI), Variation of Information (VOI)
+- **3D geometry**: precision/recall @ distance thresholds (RANSAC-fitted planes vs GT)
+- **Depth**: REL, RMSE, δ < 1.25ⁿ — **Normals**: mean angle error, <11.25°/22.5°/30°
 
-### Planar Segmentation
-1. Binary planarity prediction
-2. Depth → surface normals
-3. 8-connected region growing with normal/depth thresholds
-4. Connected component labeling
-5. Small component removal
+## HDF5 schemas
 
-### GT Generation
-1. **Region Growing**: Label-strict growth on mesh faces
-2. **EM Sweep**: Expand planes with quality gates
-3. **IRLS Fitting**: Robust plane parameter estimation
-4. **Merge & Split**: Consolidate compatible planes
-5. **Quality Filtering**: Multiple geometric checks
-6. **Raycasting**: Project plane labels to 2D images
+`moge_signals.h5` (per scene): `frame_ids (N,)`, `planarity (N,H,W) f16`,
+`normal (N,H,W,3) f16`, `depth_metric (N,H,W) f16`, `mask (N,H,W) u8`,
+`intrinsics (N,3,3) f32`, `metric_scale (N,) f32`.
 
-## Configuration
+`planes.h5` (per scene): `planes (N,H,W) uint16` (0 = non-planar), `frame_ids`.
 
-GT generation configured via YAML files in `gt_creation/configs/`:
+Always read chunked (`f['planes'][idx, :]`) — never load full arrays.
 
-**Key parameters:**
-- `rg_theta_deg`: Region growing angular threshold (degrees)
-- `rg_dist_m`: Region growing distance threshold (meters)
-- `min_faces_patch`: Minimum faces per plane
-- `inlier_frac_min`: Minimum inlier fraction
-- `merge_theta_deg` / `merge_dist_m`: Plane merging thresholds
+## SLURM
 
-## Environment Setup
-
-```bash
-bash env/create_env.sh              # creates conda env `planeseg` from env/environment.yml,
-                                    # pip-installs this repo editable, inits the MoGe submodule
-conda activate planeseg
-```
+Shell scripts carry commented `#SBATCH` directives (typical: `--time=8:00:00
+--cpus-per-task=4 --mem-per-cpu=8G --gpus=1`). Uncomment, `mkdir -p logs`, `sbatch script.sh`.
+Python-level sharding uses `--part_id / --num_parts` (contiguous slices of the sorted scene
+list; all parts share one output root safely).
 
 ## Dependencies
 
-- **Core**: `numpy`, `opencv-python`, `torch`, `pandas`
-- **3D**: `open3d`, `trimesh`, `plyfile`
-- **I/O**: `h5py`, `pyyaml`
-- **Utilities**: `tqdm`, `natsort`, `matplotlib`
-- **Segmentation**: `cc3d`, `scipy`
-
-## Documentation
-
-- `notes/RESTRUCTURING_LOG.md` - File mapping (old → new)
-- `notes/REMOVED_FILES.md` - What was removed and why
-- `notes/VERSION_DECISIONS.md` - Which file versions were kept
-- `notes/CONSOLIDATED_FUNCTIONS.md` - Function-level mappings
-
-## Status
-
- **Completed Modules:**
-- shared/plane_fitting (RANSAC fitting, metrics, projection)
-- shared/rendering (mesh rendering, raycasting)
-- shared/segmentation (plan2seg algorithms)
-- shared/utils (depth/normal, visualization, labels, I/O)
-- shared/datasets (ScanNet++, Hypersim loaders)
-
- **In Progress:**
-- gt_creation/ (plane extraction pipelines)
-- inference/ (MoGe integration, prediction)
-- evaluation/ (metrics, visualization)
-- exploration/ (notebook organization)
-- training/ (carry MoGe/train_moge_4heads_planarity_fixed.py to appropriate place)
-
-## Notes
-
-- Cluster paths are centralized in `paths.py` (repo root)
-- Imports updated for new structure
-- Comprehensive docstrings added
-- Type hints added where appropriate
-- Only latest/best versions of algorithms kept
-- Extensive documentation in `notes/`
+`numpy`, `opencv-python`, `torch`, `pandas`, `open3d`, `trimesh`, `plyfile`, `h5py`,
+`pyyaml`, `tqdm`, `natsort`, `matplotlib`, `scipy`, `cc3d` — pinned in `env/environment.yml`.
