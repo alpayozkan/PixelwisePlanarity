@@ -1,7 +1,7 @@
 [project]
 name = "planeseg"
 version = "0.1.0"
-description = "Planar surface detection and segmentation from RGB images (camera-ready planamono)"
+description = "Pixel-wise planarity: planar surface detection and segmentation from single RGB images"
 requires-python = ">=3.8"
 dependencies = [
     "numpy",
