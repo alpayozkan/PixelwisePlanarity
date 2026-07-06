@@ -85,7 +85,7 @@ if __name__ == "__main__":
         print(f"[ERROR] Mesh file not found: {mesh_path}")
         sys.exit(1)
 
-    render_save_path = os.path.join(output_root, scene_id, "rendered_v2")
+    render_save_path = os.path.join(output_root, scene_id, "rendered")
     os.makedirs(render_save_path, exist_ok=True)
 
     print(f"[INFO] Reading mesh: {mesh_path}")

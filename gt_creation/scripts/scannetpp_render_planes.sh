@@ -40,7 +40,7 @@ while IFS= read -r scene_id; do
 
     echo "================================================================"
     echo "[INFO] Raycasting planes for scene: $scene_id"
-    python "$SCRIPT_DIR/../scannetpp/rendering.py" "$scene_id" \
+    python "$SCRIPT_DIR/../scannetpp/render_scene.py" "$scene_id" \
         --input_root "$INPUT_ROOT" \
         --plane_root "$PLANE_ROOT" \
         --output_root "$OUTPUT_ROOT" \
