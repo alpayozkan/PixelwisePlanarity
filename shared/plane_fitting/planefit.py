@@ -21,7 +21,7 @@ from typing import Tuple, Dict, Optional, List
 # Open3D's ``PointCloud.segment_plane`` uses a process-global Mersenne-Twister
 # RNG (``open3d.utility.random``) that is seeded from ``std::random_device`` at
 # first use, i.e. non-deterministically. Two mechanisms make fitting
-# reproducible (see docs/ransac_seeding_reproducibility.md):
+# reproducible:
 #   1. ``set_ransac_seed(seed)`` pins the global RNG (works on open3d >= 0.16,
 #      including 0.17 which has no per-call ``seed`` argument). Call this once
 #      per frame, inside the worker process, before any fitting.
@@ -36,7 +36,7 @@ def _detect_segment_plane_seed_support() -> bool:
 
     open3d's ``segment_plane`` is a pybind11 builtin with no inspectable
     signature, so we probe it with a tiny throw-away fit (use float64 points —
-    float32 can segfault ``Vector3dVector``, see docs/open3d_float32_segfault.md).
+    float32 can segfault ``Vector3dVector``).
     """
     try:
         _p = o3d.geometry.PointCloud()
@@ -302,8 +302,7 @@ def fit_planes_per_label(
     # Reproducibility: pin the global RNG so direct callers that don't seed it
     # themselves are deterministic on open3d 0.17 (no per-call seed) too. The
     # per-call seed below additionally covers open3d >= 0.18. ransac_seed=None
-    # restores legacy non-deterministic behaviour. See
-    # docs/ransac_seeding_reproducibility.md.
+    # restores legacy non-deterministic behaviour.
     set_ransac_seed(ransac_seed)
 
     # Flatten and filter invalid points

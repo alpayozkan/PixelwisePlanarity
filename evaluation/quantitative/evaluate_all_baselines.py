@@ -58,9 +58,10 @@ from evaluation.quantitative.eval_utils import (
 COMPUTE_PLANE_METRICS = True
 RANSAC_ITERATIONS = 200
 INLIER_RATIO_GATE = 0.9
-# RANSAC RNG seed for reproducible 3D metrics (see
-# docs/ransac_seeding_reproducibility.md). 0 = reproducible (default);
-# None (via --ransac_seed -1) = legacy non-deterministic behaviour.
+# RANSAC RNG seed for reproducible 3D metrics. Open3D's segment_plane draws
+# random triplets; seeding makes precision/recall@tau repeatable run-to-run
+# (residual cross-machine variance stays ~1e-3 at the tightest threshold).
+# 0 = reproducible (default); --ransac-seed -1 = legacy non-deterministic.
 RANSAC_SEED = 0
 # THRESHOLDS = (0.01, 0.02, 0.05)
 THRESHOLDS = (0.001, 0.005, 0.01)
@@ -177,7 +178,6 @@ class LazyH5SceneLoader:
         # ZeroPlane planes are argmax over channels 0..19 with non-planar = 20, so
         # a plain 20->0 would merge the real plane-0 into the background (present in
         # every frame). Shift planes up by 1 first, then send non-planar to 0.
-        # See docs/ransac_seeding_reproducibility.md sibling note / git history.
         if self.nonplanar_label is not None:
             nonplanar_mask = (pred == self.nonplanar_label)
             pred = pred + 1
