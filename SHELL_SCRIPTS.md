@@ -20,7 +20,6 @@ All shell scripts are organized in `scripts/` directories within each module.
 │   └── run_segmentation.sh
 │
 └── evaluation/scripts/            # Evaluation
-    ├── run_evaluation.sh
     ├── run_qualitative.sh
     └── run_3d_comparison.sh
 ```
@@ -153,27 +152,7 @@ Full pipeline: RGB → MoGe → plane segmentation.
 
 ## Evaluation Scripts
 
-### 1. Quantitative Evaluation
-Run metrics evaluation on ScanNet++.
-```bash
-./run_evaluation.sh <method> [model_path] [rgb_root] [dataset_root] [save_dir] [max_scenes] [model_size] [cache_dir]
-```
-
-**Methods:** `gt`, `moge`, `planercnn`, `zeroplane`, `monoplane`
-
-**Defaults:**
-- `method`: `moge`
-- `model_path`: `/cluster/scratch/aoezkan/MoGe/checkpoints/final_planarity_4heads_model.pt`
-- `rgb_root`: `/cluster/project/cvg/Shared_datasets/scannet++/data`
-- `dataset_root`: `/cluster/scratch/aoezkan/dataset/scannetpp`
-- `save_dir`: `/cluster/scratch/aoezkan/dataset/scannetpp/results/metrics`
-- `max_scenes`: `5`
-
-**Output:** `eval_{method}_{max_scenes}.csv`
-
----
-
-### 2. Qualitative Comparison
+### 1. Qualitative Comparison
 Generate side-by-side comparison videos.
 ```bash
 ./run_qualitative.sh [rgb_root] [results_root] [gt_root] [output_root] [frame_skip] [max_scenes]
@@ -190,7 +169,7 @@ Generate side-by-side comparison videos.
 
 ---
 
-### 3. 3D Plane Comparison
+### 2. 3D Plane Comparison
 Render 3D GT-vs-prediction plane comparisons for ScanNet++ scenes.
 ```bash
 ./run_3d_comparison.sh [scene_list] [output_root] [checkpoint]
@@ -249,7 +228,6 @@ scene_id_4
 | Extract VKITTI2 planes | `vkitti2_plane_extraction.sh` | --config |
 | Planarity inference | `run_planarity_inference.sh` | model_path, input_dir |
 | Segmentation | `run_segmentation.sh` | model_path, input_root |
-| Evaluate metrics | `run_evaluation.sh` | method, model_path |
 | Comparison videos | `run_qualitative.sh` | rgb_root, results_root |
 | 3D plane comparison | `run_3d_comparison.sh` | scene_list, checkpoint |
 
@@ -260,5 +238,3 @@ scene_id_4
 | Variable | Used By | Description |
 |----------|---------|-------------|
 | `MOGE_CACHE_DIR` | inference scripts | HuggingFace cache for MoGe weights |
-| `SCANNETPP_RGB_ROOT` | evaluator.py | RGB images root (fallback) |
-| `BASELINE_ROOT` | evaluator.py | Baseline methods root (fallback) |
