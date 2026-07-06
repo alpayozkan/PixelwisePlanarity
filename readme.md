@@ -74,9 +74,11 @@ python evaluation/quantitative/evaluate_all_baselines.py --methods gt ours --max
 python evaluation/quantitative/evaluate_all_baselines.py --aggregate-only   # summary tables
 ```
 
-The method registry (H5 folders, label conventions, experiment names) is the `METHODS` dict at
-the top of `evaluate_all_baselines.py`; add new baselines there. Outdoor variants:
-`evaluate_synthia_all_baselines.py`, `evaluate_vkitti2_all_baselines.py`.
+The method registry is the `METHODS` dict at the top of `evaluate_all_baselines.py` and ships
+with exactly two methods: `gt` (upper bound from rendered GT labels) and `ours`
+(experiment name `moge_ours_ep1` — planes from the pipeline above with the 4-head MoGe
+checkpoint, read from `paths.ours_planes_root`). Add new baselines to the dict as documented
+there. Outdoor variants: `evaluate_synthia_all_baselines.py`, `evaluate_vkitti2_all_baselines.py`.
 
 ### Canonical segmentation parameters
 
@@ -103,11 +105,15 @@ From `gt_creation/<dataset>/` (scannetpp, hypersim, synthia, vkitti2):
 python scene_runner.py <scene_id> --config ../configs/<dataset>_default.yml
 ```
 
+Rendering to 2D labels (ScanNet++): `render_scene.py` raycasts the extracted plane mesh into
+every Nth iPhone frame and writes the per-scene `rendered.h5` consumed by training and
+evaluation; `rendering.py` produces PNG label previews (`<scene>/rendered/`).
+
 Batch SLURM scripts (arguments documented in `SHELL_SCRIPTS.md`):
 
 ```bash
 bash gt_creation/scripts/scannetpp_plane_extraction.sh <scene_list> [config]
-bash gt_creation/scripts/scannetpp_render_planes.sh <scene_list>
+bash gt_creation/scripts/scannetpp_render_planes.sh <scene_list>   # -> rendered.h5 per scene
 # hypersim_*, synthia_*, vkitti2_* analogues; hypersim_raycast_depth.sh for raycast z-depth
 ```
 
