@@ -435,7 +435,6 @@ def compute_plane_metrics(
     """
     Compute plane fitting metrics at multiple thresholds (threshold-consistent).
 
-    This is the RECOMMENDED version (formerly compute_plane_metrics_v1).
 
     DIFFERENCE FROM compute_plane_metrics_old:
     - compute_plane_metrics_old: Uses fixed base_threshold=0.02 (2cm) for RANSAC fitting,
@@ -677,7 +676,6 @@ def evaluate_single_frame(
     """
     Evaluate a single frame with pre-computed segmentation labels (threshold-consistent).
 
-    This is the RECOMMENDED version (formerly evaluate_single_frame_v1).
 
     Uses compute_plane_metrics() which runs RANSAC at each evaluation threshold
     (not fixed 2cm). This ensures visualization and evaluation use identical plane fits.

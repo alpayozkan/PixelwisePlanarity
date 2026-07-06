@@ -67,31 +67,6 @@ Renders planes to HDF5 for all cameras in each scene.
 - `<scene_id>/rendered_planes_cam_00.h5`
 - `<scene_id>/rendered_planes_cam_01.h5` (if exists)
 
-## Batch Submission (SLURM Clusters)
-
-For processing multiple scene splits in parallel:
-
-```bash
-./batch_submit.sh scene_splits/ scannetpp_plane_extraction.sh scannetpp
-```
-
-**Directory structure:**
-```
-scene_splits/
-├── split_0/
-│   └── scene_list_0.txt
-├── split_1/
-│   └── scene_list_1.txt
-└── split_2/
-    └── scene_list_2.txt
-```
-
-**Monitor jobs:**
-```bash
-squeue -u $USER              # Check job status
-scancel <job_id>             # Cancel job
-tail -f logs/split_0.out     # View progress
-```
 
 ## Scene List Format
 
