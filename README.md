@@ -67,7 +67,8 @@ python demo/run_demo.py        # runs on the example frames in demo/inputs/
 For each input image the script runs the full pipeline (MoGe 4-head inference +
 plane segmentation with the canonical parameters) and writes
 `demo/outputs/<frame>/{depth,normal,planarity,planeseg}.png` plus a combined
-side-by-side figure (`combined.png`):
+montage (`combined.png` — RGB | depth | normal | planarity | plane segmentation,
+top-20 planes shown):
 
 ![Demo output](demo/assets/demo_example.jpg)
 
