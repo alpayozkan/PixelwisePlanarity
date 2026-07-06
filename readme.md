@@ -38,7 +38,7 @@ RGB → MoGe 4-head model → planarity, metric depth, normals, mask     (pxwpla
 │   ├── evaluation/       #   Metrics + visualization
 │   │   ├── quantitative/     # evaluate_all_baselines.py + outdoor variants
 │   │   └── qualitative/      # Comparison videos, 3D visualization
-│   └── paths.py          #   ALL dataset/checkpoint/output paths — edit before running anything
+│   └── paths.py          #   ALL dataset/checkpoint/output paths — configure before running
 ├── splits/               # Train/val/test scene lists per dataset
 ├── env/                  # Conda environment + setup script
 └── MoGe/                 # Git submodule: MoGe fork with 4-head training code
@@ -52,8 +52,10 @@ bash env/create_env.sh    # conda env `pxwplanar` from env/environment.yml,
 conda activate pxwplanar
 ```
 
-**Before running anything**: edit `pxwplanar/paths.py`. Every dataset root, checkpoint path,
-and output root resolves through it.
+**Before running anything**: configure the paths in `pxwplanar/paths.py`. Every dataset root,
+checkpoint path, and output root resolves through it from a single data root — either set the
+`PXWPLANAR_DATA_ROOT` environment variable (default: `<repo>/data`), or create
+`pxwplanar/paths_local.py` (gitignored) overriding any subset of the variables.
 
 ## Main pipeline (H5-based, three stages)
 

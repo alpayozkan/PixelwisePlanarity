@@ -1,8 +1,8 @@
 # plane_config.yml
 
 # --- Input files are handled per-scene and passed separately ---
-input_root: "/cluster/project/cvg/Shared_datasets/scannetpp_v2/data"
-output_root: "/cluster/scratch/aoezkan/dataset/scannetpp/plane_ours_gt"
+input_root: "/path/to/scannetpp_v2/data"
+output_root: "/path/to/output/scannetpp_plane_gt"
 
 # I/O
 out_json_name: "planes.json"

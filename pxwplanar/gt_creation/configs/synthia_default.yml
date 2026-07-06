@@ -4,7 +4,7 @@
 # Data paths (override with CLI args)
 # SYNTHIA scenes are in: test/test5_{N}segs_weather_{W}_spawn_{S}_.../DD-MM-YYYY_HH-MM-SS/
 # Point --scene_dir to the timestamp directory or the parent test5_... directory
-output_root: /cluster/scratch/aoezkan/planeseg/synthia/synthia_planes
+output_root: /path/to/output/synthia_planes
 
 # RANSAC parameters
 ransac_iters: 500

@@ -1,61 +1,69 @@
 # Centralized path configuration for datasets, GT data, and model checkpoints.
+#
+# Machine-specific locations resolve from a single data root:
+#   1. set the PXWPLANAR_DATA_ROOT environment variable (default: <repo>/data), or
+#   2. create pxwplanar/paths_local.py (gitignored) redefining any variables below.
 
 import os
 
 # This repository's root (split lists in splits/ resolve against it).
 repo_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# Root for all datasets, checkpoints, and outputs.
+data_root = os.environ.get('PXWPLANAR_DATA_ROOT', os.path.join(repo_path, 'data'))
+
 # ============ Dataset dirs (original) ============
-hypersim_path = '/cluster/project/cvg/Shared_datasets/Hypersim'
-scannetpp_path = '/cluster/project/cvg/Shared_datasets/scannet++'
-scannetppv2_path = '/cluster/project/cvg/Shared_datasets/scannetpp_v2'
+hypersim_path = os.path.join(data_root, 'datasets', 'hypersim')
+scannetpp_path = os.path.join(data_root, 'datasets', 'scannetpp')
+scannetppv2_path = os.path.join(data_root, 'datasets', 'scannetpp_v2')
 
 # ============ Our plane GT dataset dirs (3D mesh plane extraction) ============
-# NOTE: Hypersim mesh GT was purged from ayavuz's scratch — restore data here before use.
-hypersim_plane_path = '/cluster/scratch/aoezkan/planeseg/hypersim/hypersim_mesh_ours'
-scannetpp_plane_path = '/cluster/scratch/aoezkan/planeseg/dataset_mesh/scannetpp/'
+hypersim_plane_path = os.path.join(data_root, 'plane_gt_mesh', 'hypersim')
+scannetpp_plane_path = os.path.join(data_root, 'plane_gt_mesh', 'scannetpp')
 
 # ============ Hypersim processed data ============
 # Unified dataset (RGB + depth + rendered plane labels under one root)
-hypersim_merged_path = '/cluster/scratch/aoezkan/planeseg/dataset/hypersim'
-hypersim_rendered_path = '/cluster/scratch/aoezkan/planeseg/dataset/hypersim'
+hypersim_merged_path = os.path.join(data_root, 'dataset', 'hypersim')
+hypersim_rendered_path = os.path.join(data_root, 'dataset', 'hypersim')
 # camera parameters (not in the unified dataset, kept separately)
-# NOTE: purged from ayavuz's scratch — restore data here before use.
-hypersim_params_path = '/cluster/scratch/aoezkan/planeseg/hypersim/Hypersim_params'
+hypersim_params_path = os.path.join(data_root, 'hypersim_params')
 
 # ============ ScanNet++ rendered data ============
-# Local copy of ayavuz's SCANNETPP_BACKUP (populate via scripts/copy_ayavuz_assets.sh)
-scannetpp_merged_path = '/cluster/scratch/aoezkan/planeseg/dataset/scannetpp'
-scannetpp_rend_plane_path = '/cluster/scratch/aoezkan/planeseg/scannetpp/plane_gt_rendered'
+scannetpp_merged_path = os.path.join(data_root, 'dataset', 'scannetpp')
+scannetpp_rend_plane_path = os.path.join(data_root, 'plane_gt_rendered', 'scannetpp')
 
 # ============ NYU-v2 and 7-Scenes (ZeroPlane "_d2" NPZ format) ============
-nyuv2_path = '/cluster/scratch/aoezkan/planeseg/dataset/nyuv2_plane'
-sevenscenes_path = '/cluster/scratch/aoezkan/planeseg/dataset/sevenscenes_plane'
+nyuv2_path = os.path.join(data_root, 'dataset', 'nyuv2_plane')
+sevenscenes_path = os.path.join(data_root, 'dataset', 'sevenscenes_plane')
 
 # ============ Outdoor datasets: SYNTHIA and VKITTI2 ============
-# NOTE: plane GT was purged from ayavuz's scratch — restore data here before use.
-synthia_path = '/cluster/scratch/aoezkan/planeseg/synthia/synthia_planes'
-vkitti2_path = '/cluster/scratch/aoezkan/planeseg/vkitti2/vkitti2_planes'
+synthia_path = os.path.join(data_root, 'synthia', 'synthia_planes')
+vkitti2_path = os.path.join(data_root, 'vkitti2', 'vkitti2_planes')
 # raw SYNTHIA RGB/depth (used by gt_creation/synthia check utilities)
-synthia_raw_path = '/cluster/scratch/aoezkan/planeseg/synthia/raw'
+synthia_raw_path = os.path.join(data_root, 'synthia', 'raw')
 
 # ============ Models / checkpoints ============
 # Trained MoGe 4-head planarity checkpoint (HIRES, 4 datasets, epoch 1 — production)
-# Local copy of ayavuz's checkpoints (populate via scripts/copy_ayavuz_assets.sh)
-planarity_model_path = '/cluster/scratch/aoezkan/planeseg/checkpoints/moge_HIRES_4datasets/model_epoch1.pt'
-# HuggingFace cache for MoGe base weights (export as HF_HOME)
-moge_cache_dir = '/cluster/scratch/aoezkan/cache/huggingface'
+planarity_model_path = os.path.join(data_root, 'checkpoints', 'moge_HIRES_4datasets', 'model_epoch1.pt')
+# HuggingFace cache for MoGe base weights (exported as HF_HOME)
+moge_cache_dir = os.path.join(data_root, 'cache', 'huggingface')
 
 # ============ Evaluation / inference output roots ============
-eval_root = '/cluster/scratch/aoezkan/planeseg/scannetpp/eval'
-synthia_eval_root = '/cluster/scratch/aoezkan/planeseg/synthia/eval'
-synthia_h5_root = '/cluster/scratch/aoezkan/planeseg/synthia/inference'
-vkitti2_eval_root = '/cluster/scratch/aoezkan/planeseg/vkitti2/eval'
-vkitti2_h5_root = '/cluster/scratch/aoezkan/planeseg/vkitti2/inference'
+eval_root = os.path.join(data_root, 'eval', 'scannetpp')
+synthia_eval_root = os.path.join(data_root, 'eval', 'synthia')
+synthia_h5_root = os.path.join(data_root, 'inference', 'synthia')
+vkitti2_eval_root = os.path.join(data_root, 'eval', 'vkitti2')
+vkitti2_h5_root = os.path.join(data_root, 'inference', 'vkitti2')
 # 3D qualitative comparison renders
-vis3d_root = '/cluster/scratch/aoezkan/planeseg/3d_vis/scannetpp'
-inference_h5_root = '/cluster/scratch/aoezkan/planeseg/scannetpp/inference'
+vis3d_root = os.path.join(data_root, '3d_vis', 'scannetpp')
+inference_h5_root = os.path.join(data_root, 'inference', 'scannetpp')
 # Our method's predicted plane labels (per-scene planes.h5) evaluated as "ours"
 # by evaluate_all_baselines.py; produced by the signals->planes pipeline
 # (4-head MoGe moge_HIRES_4datasets ep1, 1440x1920).
-ours_planes_root = '/cluster/scratch/aoezkan/planeseg/inference/moge_ours_ep1'
+ours_planes_root = os.path.join(data_root, 'inference', 'moge_ours_ep1')
+
+# Optional site-specific overrides (create pxwplanar/paths_local.py; gitignored).
+try:
+    from pxwplanar.paths_local import *  # noqa: F401,F403
+except ImportError:
+    pass

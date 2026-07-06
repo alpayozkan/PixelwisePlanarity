@@ -13,10 +13,10 @@
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 REPO_ROOT="$(dirname "$(dirname "$(dirname "$SCRIPT_DIR")")")"
 
-# Configuration - Original cluster paths as defaults
+# Configuration - defaults resolve from pxwplanar/paths.py
 SCENE_LIST="${1:-scene_list.txt}"
 H5_ROOT="${2:-$(python -c "import sys; sys.path.insert(0, '$REPO_ROOT'); from pxwplanar.paths import scannetpp_rend_plane_path; print(scannetpp_rend_plane_path)")}"
-RGB_ROOT="${3:-/cluster/project/cvg/Shared_datasets/scannet++/data}"
+RGB_ROOT="${3:-$(python -c "import sys; sys.path.insert(0, '$REPO_ROOT'); from pxwplanar.paths import scannetpp_path; print(scannetpp_path)")/data}"
 OUTPUT_ROOT="${4:-$REPO_ROOT/visualizations/scannetpp}"
 FPS="${5:-5}"
 

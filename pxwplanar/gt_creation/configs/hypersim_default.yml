@@ -1,8 +1,8 @@
 # plane_config.yml
 
 # --- Input/output paths ---
-input_root: "/cluster/scratch/agavryushin/Hypersim"
-output_root: "/cluster/scratch/ayavuz/dataset/Hypersim_GT"
+input_root: "/path/to/Hypersim"
+output_root: "/path/to/output/hypersim_plane_gt"
 
 # Optional mesh path (must be set even if unused, to satisfy argparse logic)
 mesh: ""

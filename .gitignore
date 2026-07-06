@@ -11,6 +11,9 @@ build/
 logs/
 table_*.csv
 
+# Site-specific path overrides
+pxwplanar/paths_local.py
+
 # Cluster-internal (not part of the public repo)
 CLAUDE.md
 alpay_scripts.md

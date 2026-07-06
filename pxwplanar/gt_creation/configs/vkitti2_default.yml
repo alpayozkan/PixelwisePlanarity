@@ -2,14 +2,14 @@
 # ========================================
 
 # Data root (if rgb/depth/semseg are all under one directory)
-data_root: /cluster/scratch/aoezkan/planeseg/vkitti2/raw
+data_root: /path/to/vkitti2/raw
 
 # Or specify separate roots (overrides data_root):
-# rgb_root: /cluster/project/cvg/Shared_datasets/vkitti2/vkitti_2.0.3_rgb
-# depth_root: /cluster/project/cvg/Shared_datasets/vkitti2/vkitti_2.0.3_depth
-# semseg_root: /cluster/project/cvg/Shared_datasets/vkitti2/vkitti_2.0.3_classSegmentation
+# rgb_root: /path/to/vkitti2/vkitti_2.0.3_rgb
+# depth_root: /path/to/vkitti2/vkitti_2.0.3_depth
+# semseg_root: /path/to/vkitti2/vkitti_2.0.3_classSegmentation
 
-output_root: /cluster/scratch/aoezkan/planeseg/vkitti2/vkitti2_planes
+output_root: /path/to/output/vkitti2_planes
 
 # RANSAC parameters
 ransac_iters: 500
