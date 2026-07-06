@@ -94,7 +94,7 @@ METHODS = {
         # parameters (planarity>0.3, n<5deg, d_rel<0.025, >=8 neighbors).
         "h5_folder": None,
         "h5_root_override": ours_planes_root,
-        "exp_name": "ours",
+        "exp_name": "moge_ours_ep1",
         "display_name": "Ours",
         "label_offset": 0,
         "nonplanar_label": None,
