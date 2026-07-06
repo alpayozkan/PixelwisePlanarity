@@ -48,3 +48,7 @@ moge_cache_dir = '/cluster/scratch/aoezkan/cache/huggingface'
 # ============ Evaluation / inference output roots ============
 eval_root = '/cluster/scratch/aoezkan/planeseg/scannetpp/eval'
 inference_h5_root = '/cluster/scratch/aoezkan/planeseg/scannetpp/inference'
+# Our method's predicted plane labels (per-scene planes.h5) evaluated as "ours"
+# by evaluate_all_baselines.py; produced by the signals->planes pipeline
+# (4-head MoGe moge_HIRES_4datasets ep1, 1440x1920).
+ours_planes_root = '/cluster/scratch/aoezkan/planeseg/inference/moge_planes_4ds_ep1'
