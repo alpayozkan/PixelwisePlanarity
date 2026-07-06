@@ -1,6 +1,9 @@
 # Centralized path configuration for datasets, GT data, and model checkpoints.
 
-repo_path = '/cluster/home/aoezkan/planeseg/PixelwisePlanarityCamera/'
+import os
+
+# This repository's root (split lists in splits/ resolve against it).
+repo_path = os.path.dirname(os.path.abspath(__file__))
 
 # ============ Dataset dirs (original) ============
 hypersim_path = '/cluster/project/cvg/Shared_datasets/Hypersim'
