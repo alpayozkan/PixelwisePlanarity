@@ -61,224 +61,24 @@ H5_ROOT = Path("/cluster/scratch/aoezkan/planeseg/vkitti2/inference")
 VKITTI2_ROOT = vkitti2_path
 
 # Experiment version
-EXP_VER = "v1"
-
-# Method definitions
 METHODS = {
     "gt": {
-        "h5_folder": None,
-        "exp_name": f"gt_{EXP_VER}",
+        "h5_folder": None,  # Use GT labels directly
+        "exp_name": "gt",
         "display_name": "GT (upper bound)",
         "label_offset": 0,
         "nonplanar_label": None,
         "uses_gt_h5": True,
     },
     "ours": {
-        "h5_folder": "moge_ours_h5",
-        "exp_name": f"moge_ours_{EXP_VER}",
-        "display_name": "Ours (full)",
-        "label_offset": 0,
-        "nonplanar_label": None,
-        "uses_gt_h5": False,
-    },
-    "zeroplane": {
-        "h5_folder": "zeroplane_h5",
-        "exp_name": f"zeroplane_{EXP_VER}",
-        "display_name": "ZeroPlane",
-        "label_offset": 0,
-        "nonplanar_label": 20,
-        "uses_gt_h5": False,
-    },
-    "zeroplane_mixed_h5_dust3r": {
-        "h5_folder": "zeroplane_mixed_h5_dust3r_h5",
-        "exp_name": f"zeroplane_mixed_h5_dust3r_{EXP_VER}",
-        "display_name": "ZeroPlane (mixed_h5+dust3r)",
-        "label_offset": 0,
-        "nonplanar_label": 20,
-        "uses_gt_h5": False,
-    },
-    "zeroplane_default_dust3r_released": {
-        "h5_folder": "zeroplane_default_dust3r_released_h5",
-        "exp_name": f"zeroplane_default_dust3r_released_{EXP_VER}",
-        "display_name": "ZeroPlane (default+dust3r released)",
-        "label_offset": 0,
-        "nonplanar_label": 20,
-        "uses_gt_h5": False,
-    },
-    "zeroplane_all_h5_dust3r": {
-        "h5_folder": "zeroplane_all_h5_dust3r_h5",
-        "exp_name": f"zeroplane_all_h5_dust3r_{EXP_VER}",
-        "display_name": "ZeroPlane (all_h5+dust3r)",
-        "label_offset": 0,
-        "nonplanar_label": 20,
-        "uses_gt_h5": False,
-    },
-    "zeroplane_mixed_h5_dinov2_moge_60k": {
-        "h5_folder": "zeroplane_mixed_h5_dinov2_moge_60k_h5",
-        "exp_name": f"zeroplane_mixed_h5_dinov2_moge_60k_{EXP_VER}",
-        "display_name": "ZeroPlane (mixed_h5+dinov2_moge 60k)",
-        "label_offset": 0,
-        "nonplanar_label": 20,
-        "uses_gt_h5": False,
-    },
-    "zeroplane_all_h5_dinov2_moge_60k": {
-        "h5_folder": "zeroplane_all_h5_dinov2_moge_60k_h5",
-        "exp_name": f"zeroplane_all_h5_dinov2_moge_60k_{EXP_VER}",
-        "display_name": "ZeroPlane (all_h5+dinov2_moge 60k)",
-        "label_offset": 0,
-        "nonplanar_label": 20,
-        "uses_gt_h5": False,
-    },
-    "zeroplane_mixed_h5_dinov2_moge_165k": {
-        "h5_folder": "zeroplane_mixed_h5_dinov2_moge_165k_h5",
-        "exp_name": f"zeroplane_mixed_h5_dinov2_moge_165k_{EXP_VER}",
-        "display_name": "ZeroPlane (mixed_h5+dinov2_moge 165k)",
-        "label_offset": 0,
-        "nonplanar_label": 20,
-        "uses_gt_h5": False,
-    },
-    "zeroplane_all_h5_dinov2_moge_165k": {
-        "h5_folder": "zeroplane_all_h5_dinov2_moge_165k_h5",
-        "exp_name": f"zeroplane_all_h5_dinov2_moge_165k_{EXP_VER}",
-        "display_name": "ZeroPlane (all_h5+dinov2_moge 165k)",
-        "label_offset": 0,
-        "nonplanar_label": 20,
-        "uses_gt_h5": False,
-    },
-    "zeroplane_mixed_h5_dust3r_75k": {
-        "h5_folder": "zeroplane_mixed_h5_dust3r_75k_h5",
-        "exp_name": f"zeroplane_mixed_h5_dust3r_75k_{EXP_VER}",
-        "display_name": "ZeroPlane (mixed_h5+dust3r 75k)",
-        "label_offset": 0,
-        "nonplanar_label": 20,
-        "uses_gt_h5": False,
-    },
-    "zeroplane_mixed_h5_dust3r_75k_v6": {
-        "h5_folder": "zeroplane_mixed_h5_dust3r_75k_v6_h5",
-        "exp_name": f"zeroplane_mixed_h5_dust3r_75k_v6_{EXP_VER}",
-        "display_name": "ZeroPlane (mixed_h5+dust3r 75k v6)",
-        "label_offset": 0,
-        "nonplanar_label": 20,
-        "uses_gt_h5": False,
-    },
-    "moge_mixed_bce_476644_ep6": {
-        "h5_folder": "moge_mixed_bce_476644_ep6_h5",
-        "exp_name": f"moge_mixed_bce_476644_ep6_{EXP_VER}",
-        "display_name": "MoGe Mixed BCE 476644 ep6",
-        "label_offset": 0,
-        "nonplanar_label": None,
-        "uses_gt_h5": False,
-    },
-    "moge_hires_ep3": {
-        "h5_folder": "moge_hires_ep3_h5",
-        "exp_name": f"moge_hires_ep3_{EXP_VER}",
-        "display_name": "MoGe HiRes ep3",
-        "label_offset": 0,
-        "nonplanar_label": None,
-        "uses_gt_h5": False,
-    },
-    "moge_hires_ep3_v5_relative_seg": {
-        "h5_folder": "moge_hires_ep3_v5_relative_seg_h5",
-        "exp_name": f"moge_hires_ep3_v5_relative_seg_{EXP_VER}",
-        "display_name": "MoGe ep3 v5_rel (Sobel+rel)",
-        "label_offset": 0,
-        "nonplanar_label": None,
-        "uses_gt_h5": False,
-    },
-    "moge_hires_ep3_v5origparams_relative_seg": {
-        "h5_folder": "moge_hires_ep3_v5origparams_relative_seg_h5",
-        "exp_name": f"moge_hires_ep3_v5origparams_relative_seg_{EXP_VER}",
-        "display_name": "MoGe ep3 v5orig_rel (Sobel+rel)",
-        "label_offset": 0,
-        "nonplanar_label": None,
-        "uses_gt_h5": False,
-    },
-    # ── 4ds ep2 + v5_relative segmentation ──────────────────────────────
-    "moge_hires_4ds_ep2_v5_relative_seg": {
-        "h5_folder": "moge_hires_4ds_ep2_v5_relative_seg_h5",
-        "exp_name": f"moge_hires_4ds_ep2_v5_relative_seg_{EXP_VER}",
-        "display_name": "MoGe 4ds ep2 v5_rel (plan=0.3, norm=5°)",
-        "label_offset": 0,
-        "nonplanar_label": None,
-        "uses_gt_h5": False,
-    },
-    "moge_hires_4ds_ep2_v5origparams_relative_seg": {
-        "h5_folder": "moge_hires_4ds_ep2_v5origparams_relative_seg_h5",
-        "exp_name": f"moge_hires_4ds_ep2_v5origparams_relative_seg_{EXP_VER}",
-        "display_name": "MoGe 4ds ep2 v5orig_rel (plan=0.6, norm=10°)",
-        "label_offset": 0,
-        "nonplanar_label": None,
-        "uses_gt_h5": False,
-    },
-    "moge_hires_ep2": {
-        "h5_folder": "moge_hires_ep2_h5",
-        "exp_name": f"moge_hires_ep2_{EXP_VER}",
-        "display_name": "MoGe HiRes ep2",
-        "label_offset": 0,
-        "nonplanar_label": None,
-        "uses_gt_h5": False,
-    },
-    "moge_hires_4ds_ep2": {
-        "h5_folder": "moge_hires_4ds_ep2_h5",
-        "exp_name": f"moge_hires_4ds_ep2_{EXP_VER}",
-        "display_name": "MoGe HiRes 4DS ep2",
-        "label_offset": 0,
-        "nonplanar_label": None,
-        "uses_gt_h5": False,
-    },
-    "moge_hires_4ds_ep1": {
+        # planes.h5 from the signals->planes pipeline with the 4-head MoGe
+        # checkpoint (moge_HIRES_4datasets, epoch 1).
         "h5_folder": "moge_hires_4ds_ep1_h5",
-        "exp_name": f"moge_hires_4ds_ep1_{EXP_VER}",
-        "display_name": "MoGe HiRes 4DS ep1",
+        "exp_name": "moge_ours_ep1",
+        "display_name": "Ours",
         "label_offset": 0,
         "nonplanar_label": None,
         "uses_gt_h5": False,
-    },
-    "moge_hires_ep2_v6": {
-        "h5_folder": "moge_hires_ep2_v6_h5",
-        "exp_name": f"moge_hires_ep2_v6_{EXP_VER}",
-        "display_name": "MoGe HiRes ep2 (v6 seg)",
-        "label_offset": 0,
-        "nonplanar_label": None,
-        "uses_gt_h5": False,
-    },
-    "planeTR": {
-        "h5_folder": "planeTR_h5",
-        "exp_name": f"planeTR_{EXP_VER}",
-        "display_name": "PlaneTR",
-        "label_offset": 0,
-        "nonplanar_label": 21,  # PlaneTR uses 21 for non-planar regions
-        "uses_gt_h5": False,
-    },
-    "planeTR_lines": {
-        "h5_folder": "planeTR_lines_h5",
-        "exp_name": f"planeTR_lines_{EXP_VER}",
-        "display_name": "PlaneTR (lines)",
-        "label_offset": 0,
-        "nonplanar_label": 21,
-        "uses_gt_h5": False,
-    },
-    "planar_recon": {
-        "h5_folder": "planar_recon_h5",
-        "exp_name": f"planar_recon_{EXP_VER}",
-        "display_name": "PlanarReconstruction",
-        "label_offset": 0,
-        "nonplanar_label": None,
-        "uses_gt_h5": False,
-    },
-    "pseudo_planamono": {
-        "h5_folder": None,
-        "h5_root_override": "/cluster/scratch/aoezkan/planeseg/vkitti2/inference/pseudo_planamono_vkitti2",
-        "h5_filename": "rendered_v2.h5",
-        "exp_name": f"pseudo_planamono_{EXP_VER}",
-        "display_name": "Pseudo-Planamono",
-        "label_offset": 0,
-        "nonplanar_label": None,
-        "uses_gt_h5": False,
-        # pseudo_planamono uses sequential frame IDs (0000, 0001, ...) rather than
-        # actual frame numbers (00000, 00005, ...) — ordinal matching required.
-        "dataset_root": VKITTI2_ROOT,
-        "dataset_h5_filename": "scene_data.h5",
     },
 }
 
@@ -721,14 +521,14 @@ def aggregate_results(methods: list, output_dir: Path = None):
         thresh_str = f"{thr*100:.1f}cm"
         prec_rec_cols.extend([f"P@{thresh_str}", f"R@{thresh_str}", f"F1@{thresh_str}"])
     df_pr = df_all[[c for c in prec_rec_cols if c in df_all.columns]]
-    out_path = output_dir / f"table_precision_recall_baselines_{EXP_VER}.csv"
+    out_path = output_dir / "table_precision_recall_baselines.csv"
     df_pr.to_csv(out_path, index=False)
     print(f"Saved: {out_path}")
 
     # Table 2: Segmentation
     seg_cols = ["Method", "num_scenes", "num_frames", "RI", "VOI", "SC"]
     df_seg = df_all[[c for c in seg_cols if c in df_all.columns]]
-    out_path = output_dir / f"table_segmentation_baselines_{EXP_VER}.csv"
+    out_path = output_dir / "table_segmentation_baselines.csv"
     df_seg.to_csv(out_path, index=False)
     print(f"Saved: {out_path}")
 
@@ -739,7 +539,7 @@ def aggregate_results(methods: list, output_dir: Path = None):
         combined_cols.extend([f"P@{thresh_str}", f"R@{thresh_str}", f"F1@{thresh_str}"])
     combined_cols.extend(["bp_accuracy", "bp_precision", "bp_recall", "bp_f1", "bp_iou"])
     df_combined = df_all[[c for c in combined_cols if c in df_all.columns]]
-    out_path = output_dir / f"table_combined_baselines_{EXP_VER}.csv"
+    out_path = output_dir / "table_combined_baselines.csv"
     df_combined.to_csv(out_path, index=False)
     print(f"Saved: {out_path}")
 
