@@ -33,6 +33,16 @@ checkpoint path, and output root resolves through it from a single data root —
 `PXWPLANAR_DATA_ROOT` environment variable (default: `<repo>/data`), or create
 `pxwplanar/paths_local.py` (gitignored) overriding any subset of the variables.
 
+### Pretrained checkpoint
+
+Download the 4-head planarity checkpoint (`model_epoch1.pt`) from
+[Google Drive](https://drive.google.com/drive/folders/1SqsAtNbKMO6YPAQPFuzwn-Y2hhEufF83?usp=sharing)
+and place it at the location configured in `pxwplanar/paths.py`
+(`planarity_model_path`, default:
+`<data_root>/checkpoints/moge_HIRES_4datasets/model_epoch1.pt`) — or pass
+`--model_path` to the scripts directly. The MoGe-2 base weights
+(`Ruicheng/moge-2-vitl-normal`) are pulled from HuggingFace automatically.
+
 ## Demo
 
 ```bash
