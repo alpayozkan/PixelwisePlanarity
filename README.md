@@ -1,9 +1,69 @@
-# Planar Surface Detection and Segmentation
+<h1 align="center">Pixel-wise Planarity for High-Precision<br>Monocular Plane Segmentation</h1>
+
+<p align="center">
+  Ahmetcan Yavuz &middot; Alpay Ozkan &middot; R&eacute;mi Pautrat &middot; Shaohui Liu &middot; Marc Pollefeys
+</p>
+
+<p align="center"><b>ECCV 2026</b></p>
+
+<p align="center">
+  <img src="demo/assets/demo.gif" alt="Demo: RGB | depth | normal | planarity | planes" width="100%">
+</p>
+<p align="center">
+  <em>From a single RGB image, a 4-head MoGe-2 backbone predicts planarity, metric depth and
+  normals; region growing turns them into a plane segmentation.<br>
+  Panels: RGB &nbsp;|&nbsp; depth &nbsp;|&nbsp; normal &nbsp;|&nbsp; planarity &nbsp;|&nbsp; planes.</em>
+</p>
 
 Planar surface detection and segmentation from single RGB images using a 4-head MoGe-2
 backbone (planarity + metric depth + normal + mask), GPU-accelerated region growing, and an
 H5-based evaluation suite. Includes the full ground-truth generation pipeline (semantic mesh →
 2D plane labels) for ScanNet++, Hypersim, SYNTHIA, and VKITTI2.
+
+## Setup
+
+```bash
+bash env/create_env.sh    # conda env `pxwplanar` from env/environment.yml,
+                          # `pip install -e .`, MoGe submodule init
+conda activate pxwplanar
+```
+
+**Before running anything**: configure the paths in `pxwplanar/paths.py`. Every dataset root,
+checkpoint path, and output root resolves through it from a single data root — either set the
+`PXWPLANAR_DATA_ROOT` environment variable (default: `<repo>/data`), or create
+`pxwplanar/paths_local.py` (gitignored) overriding any subset of the variables.
+
+## Demo
+
+```bash
+python demo/run_demo.py        # runs on the example frames in demo/inputs/
+python demo/make_gif.py        # assemble the montages into demo/assets/demo.gif
+```
+
+For each input image the script runs the full pipeline (MoGe 4-head inference +
+plane segmentation with the canonical parameters) and writes
+`demo/outputs/<frame>/{depth,normal,planarity,planeseg}.png` plus a combined
+montage (`combined.png` — RGB | depth | normal | planarity | planes,
+top-20 planes shown). The checkpoint and HuggingFace cache default from
+`pxwplanar/paths.py` (`planarity_model_path`, `moge_cache_dir`); pass
+`--model_path` to override.
+
+Minimal API usage:
+
+```python
+from pxwplanar.inference.planarity.moge_inference import MoGePlanarityInference
+from pxwplanar.shared.segmentation import compute_vectorized_planar_segments
+import numpy as np
+
+model = MoGePlanarityInference("<checkpoint.pt>")
+res = model.predict_metric("image.jpg", num_tokens=1600, return_all_heads=True)
+# res: planarity_probability, depth (m), normal, points, mask, intrinsics
+
+labels, n = compute_vectorized_planar_segments(
+    (res["planarity_probability"] > 0.3).astype(np.int16),
+    res["normal"], res["depth"],
+    np.deg2rad(5.0), 0.025, neighbor_match_count_thresh=8)
+```
 
 ## Pipeline overview
 
@@ -17,7 +77,8 @@ RGB → MoGe 4-head model → planarity, metric depth, normals, mask     (pxwpla
    2D metrics (SC, RI, VOI) + 3D precision/recall @ thresholds       (pxwplanar/evaluation/quantitative/)
 ```
 
-## Repository structure
+<details>
+<summary><b>Repository structure</b></summary>
 
 ```
 ├── pxwplanar/            # The Python package (pip-installed editable)
@@ -39,43 +100,17 @@ RGB → MoGe 4-head model → planarity, metric depth, normals, mask     (pxwpla
 │   │   ├── quantitative/     # evaluate_all_baselines.py + outdoor variants
 │   │   └── qualitative/      # Comparison videos, 3D visualization
 │   └── paths.py          #   ALL dataset/checkpoint/output paths — configure before running
-├── demo/                 # Example frames + run_demo.py (depth/normal/planarity/planeseg figures)
+├── demo/                 # Example frames + run_demo.py + make_gif.py
 ├── splits/               # Train/val/test scene lists per dataset
 ├── env/                  # Conda environment + setup script
 └── MoGe/                 # Git submodule: MoGe fork with 4-head training code
 ```
 
-## Environment setup
+</details>
 
-```bash
-bash env/create_env.sh    # conda env `pxwplanar` from env/environment.yml,
-                          # `pip install -e .`, MoGe submodule init
-conda activate pxwplanar
-```
+## Evaluation
 
-**Before running anything**: configure the paths in `pxwplanar/paths.py`. Every dataset root,
-checkpoint path, and output root resolves through it from a single data root — either set the
-`PXWPLANAR_DATA_ROOT` environment variable (default: `<repo>/data`), or create
-`pxwplanar/paths_local.py` (gitignored) overriding any subset of the variables.
-
-## Demo
-
-```bash
-python demo/run_demo.py        # runs on the example frames in demo/inputs/
-```
-
-For each input image the script runs the full pipeline (MoGe 4-head inference +
-plane segmentation with the canonical parameters) and writes
-`demo/outputs/<frame>/{depth,normal,planarity,planeseg}.png` plus a combined
-montage (`combined.png` — RGB | depth | normal | planarity | plane segmentation,
-top-20 planes shown):
-
-![Demo output](demo/assets/demo_example.jpg)
-
-The checkpoint and HuggingFace cache default from `pxwplanar/paths.py`
-(`planarity_model_path`, `moge_cache_dir`); pass `--model_path` to override.
-
-## Main pipeline (H5-based, three stages)
+The benchmark runs in three H5-based stages:
 
 ```bash
 # 1. RGB → planarity/depth/normal signals (one moge_signals.h5 per scene)
@@ -101,6 +136,11 @@ with exactly two methods: `gt` (upper bound from rendered GT labels) and `ours`
 checkpoint, read from `paths.ours_planes_root`). Add new baselines to the dict as documented
 there. Outdoor variants: `evaluate_synthia_all_baselines.py`, `evaluate_vkitti2_all_baselines.py`.
 
+Metrics: **2D segmentation** — Segmentation Covering (SC), Rand Index (RI), Variation of
+Information (VOI); **3D geometry** — precision/recall @ distance thresholds (RANSAC-fitted
+planes vs GT); **depth** — REL, RMSE, δ < 1.25ⁿ; **normals** — mean angle error,
+<11.25°/22.5°/30°.
+
 ### Canonical segmentation parameters
 
 Used identically in `segment_signals_to_planes.py` and the benchmark — keep in sync:
@@ -120,6 +160,13 @@ comparing methods.
 
 ## Ground truth generation
 
+Semantic mesh → 2D plane-label GT: label-strict region growing on mesh faces → EM sweep with
+quality gates → IRLS plane fitting → merge/split → quality filtering (8 geometric checks) →
+raycast to 2D (HDF5).
+
+<details>
+<summary><b>Commands and parameters</b></summary>
+
 From `pxwplanar/gt_creation/<dataset>/` (scannetpp, hypersim, synthia, vkitti2):
 
 ```bash
@@ -138,12 +185,11 @@ bash pxwplanar/gt_creation/scripts/scannetpp_render_planes.sh <scene_list>   # -
 # hypersim_*, synthia_*, vkitti2_* analogues; hypersim_raycast_depth.sh for raycast z-depth
 ```
 
-Algorithm: label-strict region growing on mesh faces → EM sweep with quality gates → IRLS
-plane fitting → merge/split → quality filtering (8 geometric checks) → raycast to 2D (HDF5).
-
 Key YAML parameters: `rg_theta_deg`/`rg_dist_m` (region growing), `min_faces_patch`/
 `min_area_patch` (minimum plane size), `inlier_frac_min`/`p95_final_max` (quality gates),
 `merge_theta_deg`/`merge_dist_m` (merging).
+
+</details>
 
 ## Training
 
@@ -161,13 +207,8 @@ Training consumes the rendered plane-GT H5s from `pxwplanar/gt_creation/` plus t
 `splits/`. ScanNet++ roots default from `pxwplanar/paths.py` (override with `--rgb_root` /
 `--plane_gt_root`); Hypersim roots are passed explicitly.
 
-## Evaluation metrics
-
-- **2D segmentation**: Segmentation Covering (SC), Rand Index (RI), Variation of Information (VOI)
-- **3D geometry**: precision/recall @ distance thresholds (RANSAC-fitted planes vs GT)
-- **Depth**: REL, RMSE, δ < 1.25ⁿ — **Normals**: mean angle error, <11.25°/22.5°/30°
-
-## HDF5 schemas
+<details>
+<summary><b>HDF5 schemas</b></summary>
 
 `moge_signals.h5` (per scene): `frame_ids (N,)`, `planarity (N,H,W) f16`,
 `normal (N,H,W,3) f16`, `depth_metric (N,H,W) f16`, `mask (N,H,W) u8`,
@@ -177,12 +218,17 @@ Training consumes the rendered plane-GT H5s from `pxwplanar/gt_creation/` plus t
 
 Always read chunked (`f['planes'][idx, :]`) — never load full arrays.
 
-## SLURM
+</details>
+
+<details>
+<summary><b>SLURM usage</b></summary>
 
 Shell scripts carry commented `#SBATCH` directives (typical: `--time=8:00:00
 --cpus-per-task=4 --mem-per-cpu=8G --gpus=1`). Uncomment, `mkdir -p logs`, `sbatch script.sh`.
 Python-level sharding uses `--part_id / --num_parts` (contiguous slices of the sorted scene
 list; all parts share one output root safely).
+
+</details>
 
 ## Dependencies
 
