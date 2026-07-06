@@ -14,13 +14,16 @@
 #SBATCH --error=logs/hypersim_raycast_depth_%j.err
 
 # Configuration
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+REPO_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
+
 SCENE_LIST="${1:-scene_list.txt}"
 PARAMS_ROOT="${2:-/cluster/scratch/aoezkan/planeseg/hypersim/Hypersim_params}"
 PLANE_ROOT="${3:-/cluster/scratch/aoezkan/planeseg/hypersim/hypersim_mesh_ours}"
 OUTPUT_ROOT="${4:-/cluster/scratch/aoezkan/planeseg/dataset/hypersim}"
 FRAME_SKIP="${5:-1}"
-PYTHON_SCRIPT="${6:-/cluster/home/aoezkan/planeseg/PixelwisePlanarityCamera/gt_creation/hypersim/raycast_depth.py}"
-METADATA_CSV="${7:-/cluster/home/aoezkan/planeseg/PixelwisePlanarityCamera/shared/datasets/metadata_camera_parameters.csv}"
+PYTHON_SCRIPT="${6:-$SCRIPT_DIR/../hypersim/raycast_depth.py}"
+METADATA_CSV="${7:-$REPO_ROOT/shared/datasets/metadata_camera_parameters.csv}"
 DEPTH_TYPE="${8:-zdepth}"
 
 # Activate conda environment

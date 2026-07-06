@@ -16,7 +16,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 SCENE_LIST="${1:-scene_list.txt}"
 H5_ROOT="${2:-/cluster/scratch/aoezkan/dataset/scannetpp/plane_ours_gt}"
 RGB_ROOT="${3:-/cluster/project/cvg/Shared_datasets/scannet++/data}"
-OUTPUT_ROOT="${4:-/cluster/scratch/aoezkan/dataset/scannetpp/visual}"
+OUTPUT_ROOT="${4:-/cluster/scratch/aoezkan/planeseg/scannetpp/visual}"
 FPS="${5:-5}"
 
 # Validate inputs

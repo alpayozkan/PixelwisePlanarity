@@ -12,13 +12,14 @@
 
 # Get script directory (works from any location)
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+REPO_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
-# Configuration - Original cluster paths as defaults
-MODEL_PATH="${1:-/cluster/scratch/aoezkan/MoGe/checkpoints/final_planarity_4heads_model.pt}"
+# Configuration - checkpoint/cache defaults resolve from paths.py
+MODEL_PATH="${1:-$(python -c "import sys; sys.path.insert(0, '$REPO_ROOT'); from paths import planarity_model_path; print(planarity_model_path)")}"
 INPUT_DIR="${2:-/path/to/input/images}"
 OUTPUT_DIR="${3:-/path/to/output}"
 MODEL_SIZE="${4:-large}"
-CACHE_DIR="${5:-/cluster/scratch/aoezkan/MoGe/checkpoints}"
+CACHE_DIR="${5:-$(python -c "import sys; sys.path.insert(0, '$REPO_ROOT'); from paths import moge_cache_dir; print(moge_cache_dir)")}"
 
 # Validate inputs
 if [[ ! -f "$MODEL_PATH" ]]; then

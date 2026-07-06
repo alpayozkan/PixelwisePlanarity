@@ -30,7 +30,7 @@ RGB → MoGe 4-head model → planarity, metric depth, normals, mask     (infere
 ├── gt_creation/          # Semantic mesh → 2D plane-label GT (HDF5)
 │   ├── scannetpp/  hypersim/  synthia/  vkitti2/
 │   ├── configs/          #   YAML configs per dataset
-│   └── scripts/          #   SLURM batch scripts (see SHELL_SCRIPTS.md)
+│   └── scripts/          #   SLURM batch scripts (README in each scripts/ dir)
 ├── inference/            # RGB → signals → plane labels
 │   ├── planarity/        #   MoGe wrapper, signal export, segmentation from H5
 │   └── segmentation/     #   On-the-fly prediction pipeline
@@ -109,7 +109,7 @@ Rendering to 2D labels (ScanNet++): `render_scene.py` raycasts the extracted pla
 every Nth iPhone frame and writes the per-scene `rendered.h5` consumed by training and
 evaluation; `rendering.py` produces PNG label previews (`<scene>/rendered/`).
 
-Batch SLURM scripts (arguments documented in `SHELL_SCRIPTS.md`):
+Batch SLURM scripts (arguments documented in `gt_creation/scripts/README.md`):
 
 ```bash
 bash gt_creation/scripts/scannetpp_plane_extraction.sh <scene_list> [config]

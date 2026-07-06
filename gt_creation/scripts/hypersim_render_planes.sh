@@ -10,6 +10,9 @@
 #SBATCH --error=logs/hypersim_render_%j.err
 
 # Configuration
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+REPO_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
+
 SCENE_LIST="${1:-scene_list.txt}"
 # INPUT_ROOT="${2:-/cluster/scratch/ayavuz/dataset/Hypersim_params}"
 # PLANE_ROOT="${3:-/cluster/scratch/ayavuz/dataset/Hypersim_ours}"
@@ -19,8 +22,8 @@ PLANE_ROOT="${3:-/cluster/scratch/aoezkan/planeseg/hypersim/hypersim_mesh_ours}"
 # OUTPUT_ROOT="${4:-/cluster/scratch/ayavuz/dataset/Hypersim_rendered}"
 OUTPUT_ROOT="${4:-/cluster/scratch/aoezkan/planeseg/dataset/hypersim/plane_rendered}"
 FRAME_SKIP="${5:-1}"
-PYTHON_SCRIPT="${6:-/cluster/home/aoezkan/planeseg/PixelwisePlanarityCamera/gt_creation/hypersim/rendering.py}"
-METADATA_CSV="${7:-/cluster/home/aoezkan/planeseg/PixelwisePlanarityCamera/shared/datasets/metadata_camera_parameters.csv}"
+PYTHON_SCRIPT="${6:-$SCRIPT_DIR/../hypersim/rendering.py}"
+METADATA_CSV="${7:-$REPO_ROOT/shared/datasets/metadata_camera_parameters.csv}"
 
 # Activate conda environment
 source activate planeseg 2>/dev/null || conda activate planeseg 2>/dev/null || true
