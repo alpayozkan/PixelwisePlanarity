@@ -15,7 +15,7 @@ from collections import defaultdict
 
 from scipy.ndimage import distance_transform_edt
 from scipy.spatial import cKDTree
-from shared.plane_fitting import backproject_v1
+from shared.plane_fitting import backproject
 
 
 # ============================================================
@@ -41,7 +41,7 @@ def _cross_plane_distance(pts, normal, offset, percentile=20):
 def _build_point_map(depth, K, c2w, labels):
     """Backproject depth -> 3D world points. Vectorized (no Python loop)."""
     H, W = depth.shape
-    pts_world, pt_labels, valid_idx = backproject_v1(depth, K, c2w, labels)
+    pts_world, pt_labels, valid_idx = backproject(depth, K, c2w, labels)
     pts_map = np.full((H, W, 3), np.nan, dtype=np.float32)
     rows = valid_idx // W
     cols = valid_idx % W

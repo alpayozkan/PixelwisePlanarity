@@ -13,7 +13,7 @@ import matplotlib.colors as mcolors
 from typing import Optional, Tuple, List
 
 
-def visualize_top_components_v1(
+def visualize_top_components(
     segmentation: np.ndarray,
     k: int = 10,
     ignore_label: int = -1,
@@ -69,73 +69,6 @@ def visualize_top_components_v1(
     plt.axis('off')
     plt.show()
 
-
-def visualize_top_components_v2(
-    segmentation: np.ndarray,
-    k: int = 10,
-    ignore_label: int = -1,
-    cmap: str = 'tab20',
-    gray_value: int = 128,
-    return_colors: bool = False
-) -> Optional[np.ndarray]:
-    """
-    Visualize top-k largest plane segments with distinct colors.
-
-    Unlike v1, this version:
-    - Colors top-k planes with colormap
-    - Colors ignore_label as black
-    - Colors remaining (non-top-k) planes as gray
-
-    Args:
-        segmentation: (H,W) segmentation map with plane IDs
-        k: Number of top planes to show
-        ignore_label: Label to treat as background (rendered black)
-        cmap: Matplotlib colormap name
-        gray_value: Gray intensity for non-top-k planes (0-255)
-        return_colors: If True, return colored image instead of displaying
-
-    Returns:
-        colored_seg: (H,W,3) RGB image if return_colors=True, else None
-    """
-    # Find top-k largest components
-    unique_labels, counts = np.unique(segmentation, return_counts=True)
-
-    # Filter out ignore label
-    valid_mask = unique_labels != ignore_label
-    valid_labels = unique_labels[valid_mask]
-    valid_counts = counts[valid_mask]
-
-    # Sort by size and take top-k
-    sorted_indices = np.argsort(-valid_counts)
-    top_k_labels = set(valid_labels[sorted_indices[:k]])
-
-    # Create visualization - start with gray for all non-ignored pixels
-    colored_seg = np.zeros((*segmentation.shape, 3), dtype=np.uint8)
-
-    # Set non-ignored pixels to gray
-    non_ignored_mask = segmentation != ignore_label
-    colored_seg[non_ignored_mask] = gray_value
-
-    # Get colormap
-    if isinstance(cmap, str):
-        cmap_obj = plt.get_cmap(cmap)
-    else:
-        cmap_obj = cmap
-
-    # Assign colors to top-k planes
-    for i, label in enumerate(valid_labels[sorted_indices[:k]]):
-        color = np.array(cmap_obj(i / max(1, k - 1))[:3]) * 255
-        colored_seg[segmentation == label] = color.astype(np.uint8)
-
-    if return_colors:
-        return colored_seg
-
-    # Display
-    plt.figure(figsize=(10, 8))
-    plt.imshow(colored_seg)
-    plt.title(f'Top-{k} Largest Plane Segments (gray=other planes, black=ignored)')
-    plt.axis('off')
-    plt.show()
 
 
 def generate_plane_colors(

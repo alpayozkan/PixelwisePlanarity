@@ -14,7 +14,7 @@ This avoids two problems with the original V-Ray depth_meters.hdf5:
 Supports two depth types (--depth_type):
   - zdepth (default): perpendicular distance to the image plane.
       Saved to scene_{cam}_geometry_hdf5_raycast/
-      Use with backproject_v1 (pinhole K). No further conversion needed.
+      Use with backproject (pinhole K). No further conversion needed.
   - euclidean: raw Euclidean ray distance in meters (t_hit * MPAU).
       Saved to scene_{cam}_geometry_hdf5_raycast_euc/
       Use with backproject_mcam (M_cam_from_uv). No further conversion needed.

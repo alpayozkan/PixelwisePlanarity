@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from shared.utils import visualize_top_components_v1
+from shared.utils import visualize_top_components
 
 import os
 import h5py
@@ -65,7 +65,7 @@ def generate_video_from_plane_h5(scene_id, h5_path, rgb_root, save_video_path, f
             rgb_img = np.zeros((plane_img.shape[0], plane_img.shape[1], 3), dtype=np.uint8)
 
         # === Visualize plane ===
-        plane_vis = visualize_top_components_v1(plane_img, top_n=top_n, visualize=False)
+        plane_vis = visualize_top_components(plane_img, top_n=top_n, visualize=False)
 
         # === Plot RGB + Plane side-by-side ===
         fig, axs = plt.subplots(1, 2, figsize=(12, 5))

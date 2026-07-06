@@ -4,8 +4,7 @@ Plane fitting utilities for RANSAC-based plane extraction and evaluation.
 
 from .planefit import (
     set_ransac_seed,
-    backproject_v1,
-    backproject_v2,
+    backproject,
     backproject_mcam,
     refine_plane_least_squares,
     fit_planes_per_label,
@@ -23,8 +22,7 @@ from .projection import project_points_to_image, project_labels_to_image
 
 __all__ = [
     'set_ransac_seed',
-    'backproject_v1',
-    'backproject_v2',
+    'backproject',
     'backproject_mcam',
     'refine_plane_least_squares',
     'fit_planes_per_label',

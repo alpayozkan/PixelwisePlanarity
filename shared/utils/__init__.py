@@ -17,8 +17,7 @@ from .label_utils import (
     map_array
 )
 from .visualization import (
-    visualize_top_components_v1,
-    visualize_top_components_v2,
+    visualize_top_components,
     generate_plane_colors,
     visualize_segmentation_comparison,
     visualize_normals
@@ -44,8 +43,7 @@ __all__ = [
     'match_planes_by_overlap',
     'map_array',
     # visualization
-    'visualize_top_components_v1',
-    'visualize_top_components_v2',
+    'visualize_top_components',
     'generate_plane_colors',
     'visualize_segmentation_comparison',
     'visualize_normals',

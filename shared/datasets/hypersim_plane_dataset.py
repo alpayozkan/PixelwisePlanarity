@@ -245,7 +245,7 @@ class HypersimPlaneDataset(Dataset):
             have cross-terms and a non-unit z-component).  The pinhole model assumes
             every ray has z-component = 1, which is not true for M_cam_from_uv.
 
-            The approximation is *self-consistent* with ``backproject_v1/v2`` (which
+            The approximation is *self-consistent* with ``backproject/v2`` (which
             also use pinhole K), so errors partially cancel.  However, the resulting
             3D points are placed along pinhole ray directions instead of the true
             V-Ray ray directions, causing systematic position errors that grow toward

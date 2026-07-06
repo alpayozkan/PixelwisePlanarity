@@ -91,7 +91,7 @@ def _segment_plane(pcd, distance_threshold: float, ransac_n: int,
     )
 
 
-def backproject_v1(
+def backproject(
     depth: np.ndarray,
     K: np.ndarray,
     T_cw: np.ndarray,
@@ -100,7 +100,6 @@ def backproject_v1(
     """
     Backproject depth image to 3D world coordinates.
 
-    NOTE: Use backproject_v2 for better performance (~10x faster).
 
     Args:
         depth: (H,W) depth map in meters
@@ -147,80 +146,6 @@ def backproject_v1(
     return pts_world, labels, valid_idx
 
 
-def backproject_v2(
-    depth: np.ndarray,
-    K: np.ndarray,
-    T_cw: np.ndarray,
-    plane_seg: Optional[np.ndarray] = None
-) -> Tuple[np.ndarray, Optional[np.ndarray], np.ndarray]:
-    """
-    OPTIMIZED: Backproject depth image to 3D world coordinates.
-
-    ~10x faster than v1 by:
-    - Filtering valid pixels FIRST (avoid computing rays for invalid pixels)
-    - Using float32 instead of float64
-    - Avoiding full meshgrid allocation
-    - Direct intrinsic formula (no matrix inverse)
-
-    Args:
-        depth: (H,W) depth map in meters
-        K: (3,3) or (4,4) camera intrinsic matrix
-        T_cw: (4,4) camera-to-world transformation matrix
-        plane_seg: (H,W) optional plane segmentation labels
-
-    Returns:
-        pts_world: (N,3) 3D points in world coordinates
-        labels: (N,) plane labels for valid points (None if plane_seg is None)
-        valid_idx: (N,) indices into flattened H*W image that were valid
-    """
-    # Ensure contiguous arrays (important for threading safety)
-    depth = np.ascontiguousarray(depth)
-    H, W = depth.shape
-
-    # Find valid pixels FIRST (before any heavy computation)
-    depth_flat = depth.ravel().copy()  # Copy to avoid view issues with threading
-    valid = np.isfinite(depth_flat) & (depth_flat > 0)
-    valid_idx = np.flatnonzero(valid).astype(np.int64)
-
-    if valid_idx.size == 0:
-        labels = np.array([], dtype=np.int32) if plane_seg is not None else None
-        return np.zeros((0, 3), dtype=np.float32), labels, valid_idx
-
-    # Get valid depth values (copy to own memory)
-    z_valid = np.ascontiguousarray(depth_flat[valid_idx].astype(np.float32))
-
-    # Compute u, v coordinates ONLY for valid pixels
-    v_coords = (valid_idx // W).astype(np.float32)  # row
-    u_coords = (valid_idx % W).astype(np.float32)   # col
-
-    # Extract intrinsic parameters (avoid matrix inverse)
-    K_arr = np.asarray(K, dtype=np.float32)
-    fx, fy = float(K_arr[0, 0]), float(K_arr[1, 1])
-    cx, cy = float(K_arr[0, 2]), float(K_arr[1, 2])
-
-    # Backproject to camera coordinates (direct formula, no matrix multiply)
-    x_cam = (u_coords - cx) * z_valid / fx
-    y_cam = (v_coords - cy) * z_valid / fy
-
-    # Stack to (N, 3) - ensure contiguous
-    pts_cam = np.ascontiguousarray(np.column_stack([x_cam, y_cam, z_valid]))
-
-    # Transform to world coordinates
-    T_cw_arr = np.asarray(T_cw, dtype=np.float32)
-    R = np.ascontiguousarray(T_cw_arr[:3, :3])
-    t = T_cw_arr[:3, 3].copy()
-
-    # pts_world = pts_cam @ R.T + t
-    pts_world = np.ascontiguousarray(pts_cam @ R.T + t)
-
-    # Extract plane labels for valid points
-    labels = None
-    if plane_seg is not None:
-        seg_flat = np.ascontiguousarray(np.asarray(plane_seg, dtype=np.int32).ravel())
-        labels = seg_flat[valid_idx].copy()
-
-    return pts_world, labels, valid_idx
-
 
 def backproject_mcam(
     depth_euc: np.ndarray,
@@ -233,7 +158,7 @@ def backproject_mcam(
     """
     Backproject Euclidean depth to 3D using V-Ray's M_cam_from_uv camera model.
 
-    Unlike backproject_v1/v2 which use a pinhole K approximation, this function
+    Unlike backproject/v2 which use a pinhole K approximation, this function
     uses the actual V-Ray camera matrix to compute per-pixel ray directions.
     This eliminates the systematic position errors (radial artifacts) that grow
     toward image edges with the pinhole approximation.

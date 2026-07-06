@@ -29,7 +29,7 @@ import matplotlib.pyplot as plt
 
 from shared.segmentation import compute_vectorized_planar_segments
 from shared.utils.label_utils import remap_labels
-from shared.utils import visualize_top_components_v1
+from shared.utils import visualize_top_components
 from inference.planarity.moge_inference import MoGePlanarityInference
 
 
@@ -107,13 +107,13 @@ def process_scene(scene_id, image_list, inference_model, output_dir, args):
 
             n = len(np.unique(filtered_segmentation))
             n1 = min(10, n)
-            seg_vis = visualize_top_components_v1(filtered_segmentation, k=n1, return_colors=True)
+            seg_vis = visualize_top_components(filtered_segmentation, k=n1, return_colors=True)
             axs[5].imshow(seg_vis)
             axs[5].set_title(f"Seg: Top-{n1}")
             axs[5].axis('off')
 
             n2 = max(n // 2, 1)
-            seg_vis2 = visualize_top_components_v1(filtered_segmentation, k=n2, return_colors=True)
+            seg_vis2 = visualize_top_components(filtered_segmentation, k=n2, return_colors=True)
             axs[6].imshow(seg_vis2)
             axs[6].set_title(f"Seg: Top-{n2}")
             axs[6].axis('off')

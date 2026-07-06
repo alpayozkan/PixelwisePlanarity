@@ -26,7 +26,7 @@ from PIL import Image
 from natsort import natsorted
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 
-from shared.utils import visualize_top_components_v1
+from shared.utils import visualize_top_components
 
 
 def merge_plane_masks(seg_pred):
@@ -128,7 +128,7 @@ def generate_comparison_video(
         # GT
         if plane_gt_arr is not None:
             n = min(top_k, len(np.unique(plane_gt_arr)))
-            seg_vis = visualize_top_components_v1(plane_gt_arr, k=n, return_colors=True)
+            seg_vis = visualize_top_components(plane_gt_arr, k=n, return_colors=True)
             axs[1].imshow(seg_vis)
             axs[1].set_title(f"GT: Top-{n}")
         else:
@@ -139,7 +139,7 @@ def generate_comparison_video(
         # Ours (MoGe)
         if plane_ours is not None:
             n = min(top_k, len(np.unique(plane_ours)))
-            seg_vis = visualize_top_components_v1(plane_ours, k=n, return_colors=True)
+            seg_vis = visualize_top_components(plane_ours, k=n, return_colors=True)
             axs[2].imshow(seg_vis)
             axs[2].set_title(f"Ours: Top-{n}")
         else:
@@ -150,7 +150,7 @@ def generate_comparison_video(
         # PlaneRCNN
         if plane_rcnn is not None:
             n = min(top_k, len(np.unique(plane_rcnn)))
-            seg_vis = visualize_top_components_v1(plane_rcnn, k=n, return_colors=True)
+            seg_vis = visualize_top_components(plane_rcnn, k=n, return_colors=True)
             axs[3].imshow(seg_vis)
             axs[3].set_title(f"PlaneRCNN: Top-{n}")
         else:
@@ -161,7 +161,7 @@ def generate_comparison_video(
         # ZeroPlane
         if plane_zero is not None:
             n = min(top_k, len(np.unique(plane_zero)))
-            seg_vis = visualize_top_components_v1(plane_zero, k=n, return_colors=True)
+            seg_vis = visualize_top_components(plane_zero, k=n, return_colors=True)
             axs[4].imshow(seg_vis)
             axs[4].set_title(f"ZeroPlane: Top-{n}")
         else:

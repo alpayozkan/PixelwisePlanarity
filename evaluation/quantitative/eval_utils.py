@@ -243,7 +243,7 @@ def evaluate_single_frame_old(
     Returns:
         (metrics_dict, labels) where metrics_dict contains all computed metrics
     """
-    from shared.plane_fitting import backproject_v1 as backproject
+    from shared.plane_fitting import backproject
 
     set_ransac_seed(ransac_seed)
     metric_thr = {}
@@ -617,7 +617,7 @@ def evaluate_single_frame_multigates(
     Returns:
         (metrics_dict, labels) where metrics_dict contains all computed metrics
     """
-    from shared.plane_fitting import backproject_v1 as backproject
+    from shared.plane_fitting import backproject
 
     set_ransac_seed(ransac_seed)
     metric_thr = {}
@@ -702,7 +702,7 @@ def evaluate_single_frame(
     Returns:
         (metrics_dict, labels) where metrics_dict contains all computed metrics
     """
-    from shared.plane_fitting import backproject_v1 as backproject
+    from shared.plane_fitting import backproject
 
     set_ransac_seed(ransac_seed)
     metric_thr = {}
