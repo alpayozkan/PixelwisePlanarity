@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 *.egg-info/
+build/
 
 # OS
 .DS_Store
@@ -19,4 +20,4 @@ submit_*.sh
 **/submit_*.sh
 batch_*.sh
 **/batch_*.sh
-evaluation/scripts/gt_fast/
+pxwplanar/evaluation/scripts/gt_fast/

@@ -1,5 +1,5 @@
 [project]
-name = "planeseg"
+name = "pxwplanar"
 version = "0.1.0"
 description = "Pixel-wise planarity: planar surface detection and segmentation from single RGB images"
 requires-python = ">=3.8"
@@ -12,9 +12,6 @@ dependencies = [
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools]
-py-modules = ["paths"]
-
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["shared*", "evaluation*", "inference*", "gt_creation*"]
+include = ["pxwplanar*"]

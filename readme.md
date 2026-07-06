@@ -8,70 +8,71 @@ H5-based evaluation suite. Includes the full ground-truth generation pipeline (s
 ## Pipeline overview
 
 ```
-RGB → MoGe 4-head model → planarity, metric depth, normals, mask     (inference/planarity/)
+RGB → MoGe 4-head model → planarity, metric depth, normals, mask     (pxwplanar/inference/planarity/)
         ↓
-   8-connected region growing on planarity + normal + depth          (shared/segmentation/)
+   8-connected region growing on planarity + normal + depth          (pxwplanar/shared/segmentation/)
         ↓
-   per-segment RANSAC plane fitting                                  (shared/plane_fitting/)
+   per-segment RANSAC plane fitting                                  (pxwplanar/shared/plane_fitting/)
         ↓
-   2D metrics (SC, RI, VOI) + 3D precision/recall @ thresholds       (evaluation/quantitative/)
+   2D metrics (SC, RI, VOI) + 3D precision/recall @ thresholds       (pxwplanar/evaluation/quantitative/)
 ```
 
 ## Repository structure
 
 ```
-├── shared/               # Core library used by everything else
-│   ├── plane_fitting/    #   RANSAC fitting, metrics, projection
-│   ├── segmentation/     #   Region growing, merging, postprocessing
-│   ├── rendering/        #   Open3D mesh rendering and raycasting
-│   ├── datasets/         #   Loaders: ScanNet++, Hypersim, NYU-v2, 7-Scenes, SYNTHIA, VKITTI2
-│   ├── outdoor/          #   Outdoor-specific plane fitting
-│   └── utils/            #   Depth/normal processing, visualization, labels, I/O
-├── gt_creation/          # Semantic mesh → 2D plane-label GT (HDF5)
-│   ├── scannetpp/  hypersim/  synthia/  vkitti2/
-│   ├── configs/          #   YAML configs per dataset
-│   └── scripts/          #   SLURM batch scripts (README in each scripts/ dir)
-├── inference/            # RGB → signals → plane labels
-│   ├── planarity/        #   MoGe wrapper, signal export, segmentation from H5
-│   └── segmentation/     #   On-the-fly prediction pipeline
-├── evaluation/           # Metrics + visualization
-│   ├── quantitative/     #   evaluate_all_baselines.py + outdoor variants
-│   └── qualitative/      #   Comparison videos, 3D visualization
+├── pxwplanar/            # The Python package (pip-installed editable)
+│   ├── shared/           #   Core library used by everything else
+│   │   ├── plane_fitting/    # RANSAC fitting, metrics, projection
+│   │   ├── segmentation/     # Region growing, merging, postprocessing
+│   │   ├── rendering/        # Open3D mesh rendering and raycasting
+│   │   ├── datasets/         # Loaders: ScanNet++, Hypersim, NYU-v2, 7-Scenes, SYNTHIA, VKITTI2
+│   │   ├── outdoor/          # Outdoor-specific plane fitting
+│   │   └── utils/            # Depth/normal processing, visualization, labels, I/O
+│   ├── gt_creation/      #   Semantic mesh → 2D plane-label GT (HDF5)
+│   │   ├── scannetpp/  hypersim/  synthia/  vkitti2/
+│   │   ├── configs/          # YAML configs per dataset
+│   │   └── scripts/          # SLURM batch scripts (README in each scripts/ dir)
+│   ├── inference/        #   RGB → signals → plane labels
+│   │   ├── planarity/        # MoGe wrapper, signal export, segmentation from H5
+│   │   └── segmentation/     # On-the-fly prediction pipeline
+│   ├── evaluation/       #   Metrics + visualization
+│   │   ├── quantitative/     # evaluate_all_baselines.py + outdoor variants
+│   │   └── qualitative/      # Comparison videos, 3D visualization
+│   └── paths.py          #   ALL dataset/checkpoint/output paths — edit before running anything
 ├── splits/               # Train/val/test scene lists per dataset
 ├── env/                  # Conda environment + setup script
-├── MoGe/                 # Git submodule: MoGe fork with 4-head training code
-└── paths.py              # ALL dataset/checkpoint/output paths — edit before running anything
+└── MoGe/                 # Git submodule: MoGe fork with 4-head training code
 ```
 
 ## Environment setup
 
 ```bash
-bash env/create_env.sh    # conda env `planeseg` from env/environment.yml,
+bash env/create_env.sh    # conda env `pxwplanar` from env/environment.yml,
                           # `pip install -e .`, MoGe submodule init
-conda activate planeseg
+conda activate pxwplanar
 ```
 
-**Before running anything**: edit `paths.py` (repo root). Every dataset root, checkpoint path,
+**Before running anything**: edit `pxwplanar/paths.py`. Every dataset root, checkpoint path,
 and output root resolves through it.
 
 ## Main pipeline (H5-based, three stages)
 
 ```bash
 # 1. RGB → planarity/depth/normal signals (one moge_signals.h5 per scene)
-python inference/planarity/save_moge_signals_planarity.py \
+python pxwplanar/inference/planarity/save_moge_signals_planarity.py \
     --dataset scannetpp --scenes splits/scannetpp/test.txt \
     --model_path <checkpoint.pt> --output_root <signals_root> \
     --frame_step 25 --batch_size 8 --num_tokens 1600
 # --dataset also accepts nyuv2 / sevenscenes (ZeroPlane "_d2" NPZ) and hypersim
 
 # 2. Signals → plane labels (one planes.h5 per scene); shardable across SLURM jobs
-python inference/planarity/segment_signals_to_planes.py \
+python pxwplanar/inference/planarity/segment_signals_to_planes.py \
     --input_root <signals_root> --output_root <planes_root> \
     [--part_id 0 --num_parts 15]
 
 # 3. Evaluate methods against GT
-python evaluation/quantitative/evaluate_all_baselines.py --methods gt ours --max-scenes 5
-python evaluation/quantitative/evaluate_all_baselines.py --aggregate-only   # summary tables
+python pxwplanar/evaluation/quantitative/evaluate_all_baselines.py --methods gt ours --max-scenes 5
+python pxwplanar/evaluation/quantitative/evaluate_all_baselines.py --aggregate-only   # summary tables
 ```
 
 The method registry is the `METHODS` dict at the top of `evaluate_all_baselines.py` and ships
@@ -99,7 +100,7 @@ comparing methods.
 
 ## Ground truth generation
 
-From `gt_creation/<dataset>/` (scannetpp, hypersim, synthia, vkitti2):
+From `pxwplanar/gt_creation/<dataset>/` (scannetpp, hypersim, synthia, vkitti2):
 
 ```bash
 python scene_runner.py <scene_id> --config ../configs/<dataset>_default.yml
@@ -109,11 +110,11 @@ Rendering to 2D labels (ScanNet++): `render_scene.py` raycasts the extracted pla
 every Nth iPhone frame and writes the per-scene `rendered.h5` consumed by training and
 evaluation; `rendering.py` produces PNG label previews (`<scene>/rendered/`).
 
-Batch SLURM scripts (arguments documented in `gt_creation/scripts/README.md`):
+Batch SLURM scripts (arguments documented in `pxwplanar/gt_creation/scripts/README.md`):
 
 ```bash
-bash gt_creation/scripts/scannetpp_plane_extraction.sh <scene_list> [config]
-bash gt_creation/scripts/scannetpp_render_planes.sh <scene_list>   # -> rendered.h5 per scene
+bash pxwplanar/gt_creation/scripts/scannetpp_plane_extraction.sh <scene_list> [config]
+bash pxwplanar/gt_creation/scripts/scannetpp_render_planes.sh <scene_list>   # -> rendered.h5 per scene
 # hypersim_*, synthia_*, vkitti2_* analogues; hypersim_raycast_depth.sh for raycast z-depth
 ```
 
@@ -126,7 +127,7 @@ Key YAML parameters: `rg_theta_deg`/`rg_dist_m` (region growing), `min_faces_pat
 
 ## Training
 
-Entry points live in the `MoGe/` submodule; run from the repo root with `planeseg` active:
+Entry points live in the `MoGe/` submodule; run from the repo root with `pxwplanar` active:
 
 ```bash
 python MoGe/train_moge_4heads_planarity_scannetpp.py   # ScanNet++ (rendered plane GT)
@@ -134,8 +135,8 @@ python MoGe/train_moge_4heads_planarity_hypersim.py    # Hypersim
 python MoGe/train_moge_4heads_planarity_mixed.py       # Mixed datasets
 ```
 
-Training consumes the rendered plane-GT H5s from `gt_creation/` plus the split lists in
-`splits/`; dataset roots resolve through `paths.py` or the trainers' `--dataset_dir` arguments.
+Training consumes the rendered plane-GT H5s from `pxwplanar/gt_creation/` plus the split lists in
+`splits/`; dataset roots resolve through `pxwplanar/paths.py` or the trainers' `--dataset_dir` arguments.
 
 ## Evaluation metrics
 
