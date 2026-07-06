@@ -5,8 +5,12 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 
-SYNTHIA_TRAIN = '/cluster/scratch/aoezkan/planeseg/synthia/raw/train'
-SYNTHIA_TEST = '/cluster/scratch/aoezkan/planeseg/synthia/raw/test'
+import os, sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+from paths import synthia_raw_path, synthia_path
+
+SYNTHIA_TRAIN = os.path.join(synthia_raw_path, 'train')
+SYNTHIA_TEST = os.path.join(synthia_raw_path, 'test')
 PLANAR = {1, 2, 3, 20}  # Ground, Sidewalk, Building, Lanemarking
 
 
@@ -17,7 +21,7 @@ def decode_depth(depth_png):
     return (5000.0 * (R + G * 256 + B * 256 * 256) / (256**3 - 1)).astype(np.float32)
 
 
-OUT_FILE = '/cluster/scratch/aoezkan/planeseg/synthia/synthia_planes/scenes_to_rerun.txt'
+OUT_FILE = os.path.join(synthia_path, 'scenes_to_rerun.txt')
 affected = []
 
 for data_root, split in [(SYNTHIA_TRAIN, 'train'), (SYNTHIA_TEST, 'test')]:

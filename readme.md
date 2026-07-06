@@ -164,3 +164,21 @@ list; all parts share one output root safely).
 
 `numpy`, `opencv-python`, `torch`, `pandas`, `open3d`, `trimesh`, `plyfile`, `h5py`,
 `pyyaml`, `tqdm`, `natsort`, `matplotlib`, `scipy`, `cc3d` — pinned in `env/environment.yml`.
+
+## Citation
+
+If you use this code, please cite:
+
+```bibtex
+@inproceedings{pixelwiseplanarity2026,
+  title     = {Pixel-wise Planarity for High-Precision Monocular Plane Segmentation},
+  author    = {Yavuz, Ahmetcan and Ozkan, Alpay and Pautrat, R{\'e}mi and Liu, Shaohui and Pollefeys, Marc},
+  booktitle = {Proceedings of the European Conference on Computer Vision (ECCV)},
+  year      = {2026}
+}
+```
+
+## License
+
+MIT (see `LICENSE`). The `MoGe/` submodule is a fork of Microsoft's
+[MoGe](https://github.com/microsoft/MoGe) (MIT licensed).

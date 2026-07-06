@@ -25,6 +25,7 @@ hypersim_params_path = '/cluster/scratch/aoezkan/planeseg/hypersim/Hypersim_para
 
 # ============ ScanNet++ rendered data ============
 # Local copy of ayavuz's SCANNETPP_BACKUP (populate via scripts/copy_ayavuz_assets.sh)
+scannetpp_merged_path = '/cluster/scratch/aoezkan/planeseg/dataset/scannetpp'
 scannetpp_rend_plane_path = '/cluster/scratch/aoezkan/planeseg/scannetpp/plane_gt_rendered'
 
 # ============ NYU-v2 and 7-Scenes (ZeroPlane "_d2" NPZ format) ============
@@ -47,6 +48,12 @@ moge_cache_dir = '/cluster/scratch/aoezkan/cache/huggingface'
 
 # ============ Evaluation / inference output roots ============
 eval_root = '/cluster/scratch/aoezkan/planeseg/scannetpp/eval'
+synthia_eval_root = '/cluster/scratch/aoezkan/planeseg/synthia/eval'
+synthia_h5_root = '/cluster/scratch/aoezkan/planeseg/synthia/inference'
+vkitti2_eval_root = '/cluster/scratch/aoezkan/planeseg/vkitti2/eval'
+vkitti2_h5_root = '/cluster/scratch/aoezkan/planeseg/vkitti2/inference'
+# 3D qualitative comparison renders
+vis3d_root = '/cluster/scratch/aoezkan/planeseg/3d_vis/scannetpp'
 inference_h5_root = '/cluster/scratch/aoezkan/planeseg/scannetpp/inference'
 # Our method's predicted plane labels (per-scene planes.h5) evaluated as "ours"
 # by evaluate_all_baselines.py; produced by the signals->planes pipeline

@@ -13,10 +13,10 @@
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Configuration - Original cluster paths as defaults
-RGB_ROOT="${1:-/cluster/scratch/aoezkan/dataset/scannet_new/scans}"
-RESULTS_ROOT="${2:-/cluster/scratch/aoezkan/results/scannet}"
-GT_ROOT="${3:-/cluster/scratch/aoezkan/dataset/planercnn/scannet_planeseg}"
-OUTPUT_ROOT="${4:-/cluster/scratch/aoezkan/results/scannet}"
+RGB_ROOT="${1:?usage: run_qualitative.sh <rgb_root> <results_root> <gt_root> <output_root> [frame_skip] [max_scenes]}"
+RESULTS_ROOT="${2:?results_root required}"
+GT_ROOT="${3:?gt_root required}"
+OUTPUT_ROOT="${4:?output_root required}"
 FRAME_SKIP="${5:-50}"
 MAX_SCENES="${6:-}"
 

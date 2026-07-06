@@ -33,7 +33,7 @@ from joblib import Parallel, delayed
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from shared.datasets.vkitti2_plane_dataset import VKITTI2PlaneDataset
-from paths import repo_path, vkitti2_path
+from paths import repo_path, vkitti2_path, vkitti2_eval_root as _eval_root, vkitti2_h5_root as _h5_root
 
 from evaluation.quantitative.eval_utils import (
     Timer,
@@ -56,8 +56,8 @@ BATCH_SIZE = 32
 N_JOBS = min(16, os.cpu_count())
 
 # Paths
-EVAL_ROOT = Path("/cluster/scratch/aoezkan/planeseg/vkitti2/eval")
-H5_ROOT = Path("/cluster/scratch/aoezkan/planeseg/vkitti2/inference")
+EVAL_ROOT = Path(_eval_root)
+H5_ROOT = Path(_h5_root)
 VKITTI2_ROOT = vkitti2_path
 
 # Experiment version

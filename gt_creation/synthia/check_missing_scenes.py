@@ -6,11 +6,15 @@ Scenes with scene_data.h5 but no planes.json are flagged as incomplete.
 """
 import os
 
-SYNTHIA_TRAIN = '/cluster/scratch/aoezkan/planeseg/synthia/raw/train'
-SYNTHIA_TEST = '/cluster/scratch/aoezkan/planeseg/synthia/raw/test'
-PLANES_TRAIN = '/cluster/scratch/aoezkan/planeseg/synthia/synthia_planes/train'
-PLANES_TEST = '/cluster/scratch/aoezkan/planeseg/synthia/synthia_planes/test'
-OUT_FILE = '/cluster/scratch/aoezkan/planeseg/synthia/synthia_planes/scenes_to_rerun.txt'
+import os, sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+from paths import synthia_raw_path, synthia_path
+
+SYNTHIA_TRAIN = os.path.join(synthia_raw_path, 'train')
+SYNTHIA_TEST = os.path.join(synthia_raw_path, 'test')
+PLANES_TRAIN = os.path.join(synthia_path, 'train')
+PLANES_TEST = os.path.join(synthia_path, 'test')
+OUT_FILE = os.path.join(synthia_path, 'scenes_to_rerun.txt')
 
 missing = []
 

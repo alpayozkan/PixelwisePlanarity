@@ -16,8 +16,8 @@ REPO_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
 # Configuration - checkpoint/cache defaults resolve from paths.py
 MODEL_PATH="${1:-$(python -c "import sys; sys.path.insert(0, '$REPO_ROOT'); from paths import planarity_model_path; print(planarity_model_path)")}"
-INPUT_ROOT="${2:-/cluster/scratch/aoezkan/dataset/scannet_new/scans}"
-OUTPUT_ROOT="${3:-/cluster/scratch/aoezkan/results/scannet/moge}"
+INPUT_ROOT="${2:?usage: run_segmentation.sh <model_path> <input_root> <output_root> [model_size] [cache_dir] [frame_skip]}"
+OUTPUT_ROOT="${3:?output_root required}"
 MODEL_SIZE="${4:-large}"
 CACHE_DIR="${5:-$(python -c "import sys; sys.path.insert(0, '$REPO_ROOT'); from paths import moge_cache_dir; print(moge_cache_dir)")}"
 FRAME_SKIP="${6:-50}"

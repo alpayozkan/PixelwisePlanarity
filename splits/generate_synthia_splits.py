@@ -8,16 +8,20 @@ Test scenes come from synthia_planes/test (kept as-is).
 
 import os
 import argparse
+import os
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from paths import synthia_path
 import random
 
 
 def main():
     parser = argparse.ArgumentParser(description="Generate SYNTHIA train/val/test splits")
     parser.add_argument("--train_root", type=str,
-                        default="/cluster/scratch/ayavuz/dataset/synthia_planes/train",
+                        default=os.path.join(synthia_path, "train"),
                         help="Path to synthia_planes/train with scene_data.h5 per scene")
     parser.add_argument("--test_root", type=str,
-                        default="/cluster/scratch/ayavuz/dataset/synthia_planes/test",
+                        default=os.path.join(synthia_path, "test"),
                         help="Path to synthia_planes/test with scene_data.h5 per scene")
     parser.add_argument("--output_dir", type=str,
                         default=os.path.join(os.path.dirname(__file__), "synthia"),

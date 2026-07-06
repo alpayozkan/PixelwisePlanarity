@@ -13,8 +13,8 @@ REPO_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 
 # Defaults
 CONFIG="$SCRIPT_DIR/../configs/synthia_default.yml"
-SYNTHIA_TRAIN="/cluster/scratch/aoezkan/planeseg/synthia/raw/train"
-SYNTHIA_TEST="/cluster/scratch/aoezkan/planeseg/synthia/raw/test"
+SYNTHIA_TRAIN="$SYNTHIA_RAW/train"
+SYNTHIA_TEST="$SYNTHIA_RAW/test"
 TEST_RUN="false"
 
 # Parse named arguments

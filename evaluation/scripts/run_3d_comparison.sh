@@ -19,7 +19,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
 SCENE_LIST="${1:-$REPO_ROOT/evaluation/qualitative/scannetpp_vis_scenes.txt}"
-OUTPUT_ROOT="${2:-/cluster/scratch/aoezkan/planeseg/3d_vis/scannetpp}"
+OUTPUT_ROOT="${2:-$(python -c "import sys; sys.path.insert(0, '$REPO_ROOT'); from paths import vis3d_root; print(vis3d_root)")}"
 CHECKPOINT="${3:-$(python -c "import sys; sys.path.insert(0, '$REPO_ROOT'); from paths import planarity_model_path; print(planarity_model_path)")}"
 
 python "$REPO_ROOT/evaluation/qualitative/generate_3d_comparison.py" \

@@ -17,7 +17,7 @@ Output structure:
 Usage:
     python evaluation/qualitative/generate_3d_comparison.py \
         --scene_list scenes.txt \
-        --output_root /cluster/scratch/ayavuz/3d_vis/scannetpp
+        --output_root <output_root>   # default: paths.vis3d_root
 
 scenes.txt format (one per line):
     0d2ee665be 0
@@ -40,6 +40,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from MoGe.moge.model.v2 import MoGeModel
 from shared.segmentation.plan2seg import compute_vectorized_planar_segments
+from paths import (scannetpp_path, scannetpp_merged_path, inference_h5_root,
+                   planarity_model_path, vis3d_root)
 
 
 # ── Geometry helpers ──────────────────────────────────────────────────────────
@@ -540,15 +542,15 @@ def main():
 
     # Paths
     p.add_argument("--output_root", type=str,
-                   default="/cluster/scratch/ayavuz/3d_vis/scannetpp")
+                   default=vis3d_root)
     p.add_argument("--rgb_root", type=str,
-                   default="/cluster/project/cvg/Shared_datasets/scannet++/data")
+                   default=os.path.join(scannetpp_path, "data"))
     p.add_argument("--gt_root", type=str,
-                   default="/cluster/scratch/aoezkan/planeseg/dataset/scannetpp")
+                   default=scannetpp_merged_path)
     p.add_argument("--zeroplane_root", type=str,
-                   default="/cluster/scratch/aoezkan/planeseg/scannetpp/inference/zeroplane_default_dust3r_released")
+                   default=os.path.join(inference_h5_root, "zeroplane_default_dust3r_released"))
     p.add_argument("--checkpoint", type=str,
-                   default="/cluster/scratch/ayavuz/moge_HIRES_4datasets/model_epoch2.pt")
+                   default=planarity_model_path)
 
     # MoGe inference
     p.add_argument("--device", type=str, default="cuda")

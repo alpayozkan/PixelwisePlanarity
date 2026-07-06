@@ -9,8 +9,8 @@
 #   1. conda env create from env/environment.yml (name defaults to planeseg)
 #   2. pip install -e <repo root>  (packages: shared, evaluation, inference,
 #      gt_creation + paths module — importable from anywhere)
-#   3. git submodule update --init (MoGe; needs SSH access to
-#      github.com:Ahmetcanyvz/MoGe-private — skipped with a warning if it fails)
+#   3. git submodule update --init (MoGe fork; skipped with a warning if the
+#      repository is not accessible)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,8 +20,6 @@ ENV_NAME="${1:-planeseg}"
 # Locate conda
 if command -v conda >/dev/null 2>&1; then
     CONDA_BASE="$(conda info --base)"
-elif [ -f /cluster/scratch/aoezkan/miniconda3/etc/profile.d/conda.sh ]; then
-    CONDA_BASE=/cluster/scratch/aoezkan/miniconda3
 else
     echo "[ERROR] conda not found" >&2
     exit 1
@@ -42,8 +40,8 @@ echo "[3/3] Initializing MoGe submodule ..."
 if git -C "$REPO_ROOT" submodule update --init MoGe 2>/dev/null; then
     echo "      MoGe submodule initialized"
 else
-    echo "[WARN] Could not initialize MoGe submodule (needs SSH access to"
-    echo "       github.com:Ahmetcanyvz/MoGe-private). Inference will not run"
+    echo "[WARN] Could not initialize MoGe submodule (repository not accessible)."
+    echo "       Inference and training will not run"
     echo "       until MoGe/ is populated. Evaluation (evaluate_all_baselines.py)"
     echo "       works without it."
 fi

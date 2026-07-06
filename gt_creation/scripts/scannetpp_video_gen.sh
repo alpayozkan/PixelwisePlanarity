@@ -11,12 +11,13 @@
 
 # Get script directory (works from any location)
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+REPO_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
 # Configuration - Original cluster paths as defaults
 SCENE_LIST="${1:-scene_list.txt}"
-H5_ROOT="${2:-/cluster/scratch/aoezkan/dataset/scannetpp/plane_ours_gt}"
+H5_ROOT="${2:-$(python -c "import sys; sys.path.insert(0, '$REPO_ROOT'); from paths import scannetpp_rend_plane_path; print(scannetpp_rend_plane_path)")}"
 RGB_ROOT="${3:-/cluster/project/cvg/Shared_datasets/scannet++/data}"
-OUTPUT_ROOT="${4:-/cluster/scratch/aoezkan/planeseg/scannetpp/visual}"
+OUTPUT_ROOT="${4:-$REPO_ROOT/visualizations/scannetpp}"
 FPS="${5:-5}"
 
 # Validate inputs

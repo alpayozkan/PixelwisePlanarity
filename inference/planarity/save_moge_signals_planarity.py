@@ -94,7 +94,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-os.environ.setdefault("HF_HOME", "/cluster/scratch/aoezkan/cache/huggingface")
+from paths import moge_cache_dir as _moge_cache_dir  # noqa: E402
+os.environ.setdefault("HF_HOME", _moge_cache_dir)
 
 from MoGe.moge.utils.geometry_torch import recover_focal_shift  # noqa: E402
 from inference.planarity.moge_inference import MoGePlanarityInference  # noqa: E402

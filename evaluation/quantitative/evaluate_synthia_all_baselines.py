@@ -33,7 +33,7 @@ from joblib import Parallel, delayed
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from shared.datasets.synthia_plane_dataset import SynthiaPlaneDataset
-from paths import repo_path, synthia_path
+from paths import repo_path, synthia_path, synthia_eval_root as _eval_root, synthia_h5_root as _h5_root
 
 from evaluation.quantitative.eval_utils import (
     Timer,
@@ -56,8 +56,8 @@ BATCH_SIZE = 32
 N_JOBS = min(16, os.cpu_count())
 
 # Paths
-EVAL_ROOT = Path("/cluster/scratch/aoezkan/planeseg/synthia/eval")
-H5_ROOT = Path("/cluster/scratch/aoezkan/planeseg/synthia/inference")
+EVAL_ROOT = Path(_eval_root)
+H5_ROOT = Path(_h5_root)
 SYNTHIA_ROOT = synthia_path
 
 # Experiment version
