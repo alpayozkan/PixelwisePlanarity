@@ -5,25 +5,24 @@ All shell scripts are organized in `scripts/` directories within each module.
 ## Directory Structure
 
 ```
-clean_structure/
 ├── gt_creation/scripts/           # Ground truth generation
 │   ├── scannetpp_plane_extraction.sh
 │   ├── scannetpp_render_planes.sh
 │   ├── scannetpp_video_gen.sh
 │   ├── hypersim_plane_extraction.sh
 │   ├── hypersim_render_planes.sh
-│   └── batch_submit.sh
+│   ├── hypersim_raycast_depth.sh
+│   ├── synthia_plane_extraction.sh
+│   └── vkitti2_plane_extraction.sh
 │
 ├── inference/scripts/             # Model inference
 │   ├── run_planarity_inference.sh
 │   └── run_segmentation.sh
 │
-├── evaluation/scripts/            # Evaluation
-│   ├── run_evaluation.sh
-│   ├── run_qualitative.sh
-│   └── batch_evaluate.sh
-│
-└── run_tests.sh                   # Tests
+└── evaluation/scripts/            # Evaluation
+    ├── run_evaluation.sh
+    ├── run_qualitative.sh
+    └── run_3d_comparison.sh
 ```
 
 ---
@@ -88,6 +87,24 @@ Render planes to HDF5 files.
 - `plane_root`: `/cluster/scratch/ayavuz/dataset/Hypersim_ours`
 - `output_root`: `/cluster/scratch/ayavuz/dataset/Hypersim_rendered`
 - `frame_skip`: `25`
+
+#### 3. Raycasted Depth
+Raycast the plane mesh to per-frame depth (z-depth to `*_raycast/`, or
+Euclidean ray distance to `*_raycast_euc/` via `DEPTH_TYPE` arg 8).
+```bash
+./hypersim_raycast_depth.sh <scene_list> [...] [depth_type]
+```
+
+---
+
+### SYNTHIA / VKITTI2 (outdoor)
+
+Plane extraction from depth + semantic segmentation; scene lists and all
+roots come from the dataset config (`output_root` is read from the YAML).
+```bash
+./synthia_plane_extraction.sh [--config ../configs/synthia_default.yml]
+./vkitti2_plane_extraction.sh [--config ../configs/vkitti2_default.yml]
+```
 
 ---
 
@@ -173,6 +190,18 @@ Generate side-by-side comparison videos.
 
 ---
 
+### 3. 3D Plane Comparison
+Render 3D GT-vs-prediction plane comparisons for ScanNet++ scenes.
+```bash
+./run_3d_comparison.sh [scene_list] [output_root] [checkpoint]
+```
+
+**Defaults:**
+- `scene_list`: `evaluation/qualitative/scannetpp_vis_scenes.txt`
+- `checkpoint`: `paths.planarity_model_path`
+
+---
+
 ## SLURM Configuration
 
 All scripts include SLURM directives (commented by default):
@@ -215,10 +244,14 @@ scene_id_4
 | Generate videos | `scannetpp_video_gen.sh` | scene_list, fps |
 | Extract Hypersim planes | `hypersim_plane_extraction.sh` | scene_list, config |
 | Render Hypersim planes | `hypersim_render_planes.sh` | scene_list, frame_skip |
+| Hypersim raycast depth | `hypersim_raycast_depth.sh` | scene_list, depth_type |
+| Extract SYNTHIA planes | `synthia_plane_extraction.sh` | --config |
+| Extract VKITTI2 planes | `vkitti2_plane_extraction.sh` | --config |
 | Planarity inference | `run_planarity_inference.sh` | model_path, input_dir |
 | Segmentation | `run_segmentation.sh` | model_path, input_root |
 | Evaluate metrics | `run_evaluation.sh` | method, model_path |
 | Comparison videos | `run_qualitative.sh` | rgb_root, results_root |
+| 3D plane comparison | `run_3d_comparison.sh` | scene_list, checkpoint |
 
 ---
 
