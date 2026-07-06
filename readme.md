@@ -133,12 +133,15 @@ Entry points live in the `MoGe/` submodule; run from the repo root with `pxwplan
 
 ```bash
 python MoGe/train_moge_4heads_planarity_scannetpp.py   # ScanNet++ (rendered plane GT)
-python MoGe/train_moge_4heads_planarity_hypersim.py    # Hypersim
-python MoGe/train_moge_4heads_planarity_mixed.py       # Mixed datasets
+python MoGe/train_moge_4heads_planarity_hypersim.py \
+    --hypersim_root <raw_hypersim> --hypersim_planes <plane_gt> --hypersim_split_csv <csv>
+python MoGe/train_moge_4heads_planarity_mixed.py \
+    --hypersim_root <raw_hypersim> --hypersim_planes <plane_gt> --hypersim_split_csv <csv>
 ```
 
 Training consumes the rendered plane-GT H5s from `pxwplanar/gt_creation/` plus the split lists in
-`splits/`; dataset roots resolve through `pxwplanar/paths.py` or the trainers' `--dataset_dir` arguments.
+`splits/`. ScanNet++ roots default from `pxwplanar/paths.py` (override with `--rgb_root` /
+`--plane_gt_root`); Hypersim roots are passed explicitly.
 
 ## Evaluation metrics
 
