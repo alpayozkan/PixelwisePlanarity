@@ -10,13 +10,13 @@ build/
 # Logs and run outputs
 logs/
 table_*.csv
+demo/outputs/
 
 # Site-specific path overrides
 pxwplanar/paths_local.py
 
 # Cluster-internal (not part of the public repo)
 CLAUDE.md
-alpay_scripts.md
 restructure_check.md
 /scripts/
 submit_*.sh

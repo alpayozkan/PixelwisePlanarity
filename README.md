@@ -39,6 +39,7 @@ RGB → MoGe 4-head model → planarity, metric depth, normals, mask     (pxwpla
 │   │   ├── quantitative/     # evaluate_all_baselines.py + outdoor variants
 │   │   └── qualitative/      # Comparison videos, 3D visualization
 │   └── paths.py          #   ALL dataset/checkpoint/output paths — configure before running
+├── demo/                 # Example frames + run_demo.py (depth/normal/planarity/planeseg figures)
 ├── splits/               # Train/val/test scene lists per dataset
 ├── env/                  # Conda environment + setup script
 └── MoGe/                 # Git submodule: MoGe fork with 4-head training code
@@ -56,6 +57,22 @@ conda activate pxwplanar
 checkpoint path, and output root resolves through it from a single data root — either set the
 `PXWPLANAR_DATA_ROOT` environment variable (default: `<repo>/data`), or create
 `pxwplanar/paths_local.py` (gitignored) overriding any subset of the variables.
+
+## Demo
+
+```bash
+python demo/run_demo.py        # runs on the example frames in demo/inputs/
+```
+
+For each input image the script runs the full pipeline (MoGe 4-head inference +
+plane segmentation with the canonical parameters) and writes
+`demo/outputs/<frame>/{depth,normal,planarity,planeseg}.png` plus a combined
+side-by-side figure (`combined.png`):
+
+![Demo output](demo/assets/demo_example.jpg)
+
+The checkpoint and HuggingFace cache default from `pxwplanar/paths.py`
+(`planarity_model_path`, `moge_cache_dir`); pass `--model_path` to override.
 
 ## Main pipeline (H5-based, three stages)
 
