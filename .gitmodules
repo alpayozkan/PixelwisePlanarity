@@ -1,3 +1,4 @@
 [submodule "MoGe"]
 	path = MoGe
-	url = https://github.com/Ahmetcanyvz/MoGe-planarity.git
+	url = https://github.com/Ahmetcanyvz/MoGe.git
+	branch = planarity
