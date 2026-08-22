@@ -112,16 +112,17 @@ def filter_small_segments(
     Remove small segments and relabel remaining ones.
 
     Args:
-        segmentation: (H,W) segment labels (>=0 for valid, <0 for background)
+        segmentation: (H,W) segment labels (> 0 for valid, 0 = background,
+            matching compute_vectorized_planar_segments)
         min_size: Minimum number of pixels for a valid segment
 
     Returns:
-        new_seg: (H,W) filtered and relabeled segmentation
+        new_seg: (H,W) filtered and relabeled segmentation (0 = background)
     """
     seg = segmentation.copy()
-    unique_labels = np.unique(seg[seg >= 0])
-    new_seg = np.full_like(seg, -1)
-    next_label = 0
+    unique_labels = np.unique(seg[seg > 0])
+    new_seg = np.zeros_like(seg)
+    next_label = 1
 
     for label_val in unique_labels:
         mask = seg == label_val

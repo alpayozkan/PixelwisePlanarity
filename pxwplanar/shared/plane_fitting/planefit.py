@@ -416,6 +416,10 @@ def filter_planes_by_inlier_ratio(
         filtered_results: Results with only planes meeting threshold
         filtered_df: Corresponding filtered DataFrame
     """
+    # No fitted planes: the empty DataFrame has no columns to index
+    if plane_df.empty:
+        return results, plane_df
+
     # Find planes that meet the threshold
     valid_plane_ids = plane_df[
         plane_df["inlier_ratio_refined"] >= inlier_ratio_threshold
@@ -454,6 +458,10 @@ def mark_planes_below_threshold_as_outliers(
         updated_results: Results with low-quality planes marked as outliers
         updated_df: Updated DataFrame with is_below_threshold column
     """
+    # No fitted planes: the empty DataFrame has no columns to index
+    if plane_df.empty:
+        return copy.deepcopy(results), plane_df.copy()
+
     updated_results = copy.deepcopy(results)
     updated_df = plane_df.copy()
 

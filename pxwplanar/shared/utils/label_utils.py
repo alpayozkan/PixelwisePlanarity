@@ -45,27 +45,17 @@ def keep_top_k_planes(
 
 def remap_labels(
     seg: np.ndarray,
-    start: int = 0
 ) -> Tuple[np.ndarray, Dict[int, int]]:
     """
-    Remap segmentation labels to compact range [start..start+N-1].
+    Remap planar labels (> 0) to the compact range [1..N]; 0 stays background.
 
     Args:
         seg: (H,W) segmentation map with arbitrary integer labels
-        start: Starting label index (default=0)
 
     Returns:
         seg_remapped: (H,W) remapped segmentation
         mapping: Dict mapping old labels -> new labels
     """
-    # unique_labels = np.unique(seg)
-    # mapping = {old: new for new, old in enumerate(unique_labels, start=start)}
-    # seg_remapped = np.full_like(seg, fill_value=-1)
-
-    # for old, new in mapping.items():
-    #     seg_remapped[seg == old] = new
-
-    # return seg_remapped, mapping
     unique_labels = np.unique(seg)
     planar_labels = unique_labels[unique_labels > 0]
 

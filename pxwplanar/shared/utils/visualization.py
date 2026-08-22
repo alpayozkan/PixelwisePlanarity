@@ -16,7 +16,7 @@ from typing import Optional, Tuple, List
 def visualize_top_components(
     segmentation: np.ndarray,
     k: int = 10,
-    ignore_label: int = -1,
+    ignore_label: int = 0,
     cmap: str = 'tab20',
     return_colors: bool = False
 ) -> Optional[np.ndarray]:
@@ -85,7 +85,7 @@ def generate_plane_colors(
     Returns:
         colors: (n_planes,3) RGB colors in range [0,255]
     """
-    np.random.seed(seed)
+    rng = np.random.default_rng(seed)
 
     if n_planes <= 20:
         # Use matplotlib tab20 for small numbers
@@ -93,7 +93,7 @@ def generate_plane_colors(
         colors = np.array([cmap(i / 20)[:3] for i in range(n_planes)]) * 255
     else:
         # Generate random distinct colors
-        colors = np.random.randint(0, 256, size=(n_planes, 3))
+        colors = rng.integers(0, 256, size=(n_planes, 3))
 
     return colors.astype(np.uint8)
 

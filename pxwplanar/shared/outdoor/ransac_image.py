@@ -1,7 +1,7 @@
 """
 Image-based LO-RANSAC plane extraction for outdoor synthetic datasets (SYNTHIA, VKITTI2).
 
-Key differences from pxwplanar/shared/plane_fitting/ransac_image.py (used by ScanNet++/Hypersim):
+Key differences from the RANSAC in pxwplanar/shared/plane_fitting/planefit.py (used by ScanNet++/Hypersim):
   - Depth-adaptive distance threshold (scales with depth beyond z_ref)
   - Degenerate normal handling (skips normal check when norm < 0.5)
   - More LO iterations (10 vs 5)
@@ -77,7 +77,7 @@ def local_optimize(n, d, points, nrm, dist_thresh, normal_cos, lo_iters=10):
 def ransac_with_removal(points, nrm, indices,
                         ransac_iters=500, dist_thresh=0.05,
                         normal_cos=0.94, min_inliers=50,
-                        max_planes=50, lo_iters=10):
+                        max_planes=50, lo_iters=10, seed=0):
     """
     LO-RANSAC with sequential plane removal.
 
@@ -91,10 +91,12 @@ def ransac_with_removal(points, nrm, indices,
         min_inliers: minimum inlier count to accept a plane
         max_planes: maximum number of planes to extract
         lo_iters: local optimization iterations
+        seed: seed for the local RNG (None = non-deterministic)
 
     Returns:
         list of plane dicts with keys: n, d, pixel_indices, num_pixels, p95
     """
+    rng = np.random.default_rng(seed)
     alive = np.ones(len(points), dtype=bool)
     planes = []
 
@@ -112,7 +114,7 @@ def ransac_with_removal(points, nrm, indices,
         best_inlier = None
 
         for _ in range(ransac_iters):
-            idx3 = np.random.choice(len(pts), 3, replace=False)
+            idx3 = rng.choice(len(pts), 3, replace=False)
             p0, p1, p2 = pts[idx3]
 
             n = np.cross(p1 - p0, p2 - p0)
@@ -264,7 +266,7 @@ def extract_planes_from_frame(depth, class_ids, valid, xyz, normals,
                               normal_cos=0.985, min_inliers=50,
                               max_planes=50, merge_normal=0.985,
                               merge_rel_dist=0.02,
-                              abs_merge_dist=0.1):
+                              abs_merge_dist=0.1, seed=0):
     """
     Full plane extraction pipeline for a single frame.
 
@@ -280,6 +282,7 @@ def extract_planes_from_frame(depth, class_ids, valid, xyz, normals,
         ransac_iters, dist_thresh, normal_cos, min_inliers, max_planes:
             RANSAC hyperparameters
         merge_normal, merge_rel_dist: merge thresholds
+        seed: RANSAC RNG seed for reproducible GT (None = non-deterministic)
 
     Returns:
         plane_map: (H, W) int32 array, 0 = non-planar, 1+ = plane ID
@@ -307,6 +310,7 @@ def extract_planes_from_frame(depth, class_ids, valid, xyz, normals,
             normal_cos=normal_cos,
             min_inliers=min_inliers,
             max_planes=max_planes,
+            seed=seed,
         )
         for p in planes:
             p['class_id'] = int(label)
