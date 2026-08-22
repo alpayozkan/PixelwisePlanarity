@@ -11,7 +11,8 @@
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 REPO_ROOT="$( cd "$SCRIPT_DIR/../../.." && pwd )"
 
-# Defaults
+# Defaults — raw SYNTHIA root from paths.py unless SYNTHIA_RAW is exported
+SYNTHIA_RAW="${SYNTHIA_RAW:-$(python -c "import sys; sys.path.insert(0, '$REPO_ROOT'); from pxwplanar.paths import synthia_raw_path; print(synthia_raw_path)")}"
 CONFIG="$SCRIPT_DIR/../configs/synthia_default.yml"
 SYNTHIA_TRAIN="$SYNTHIA_RAW/train"
 SYNTHIA_TEST="$SYNTHIA_RAW/test"
@@ -27,6 +28,13 @@ while [[ $# -gt 0 ]]; do
         *) echo "[WARN] Unknown arg: $1"; shift ;;
     esac
 done
+
+# Fail fast instead of silently matching zero scenes
+if [[ ! -d "$SYNTHIA_TRAIN" && ! -d "$SYNTHIA_TEST" ]]; then
+    echo "[ERROR] Neither $SYNTHIA_TRAIN nor $SYNTHIA_TEST exists."
+    echo "        Set --train_root/--test_root, export SYNTHIA_RAW, or configure paths.synthia_raw_path."
+    exit 1
+fi
 
 export PYTHONPATH="$REPO_ROOT:${PYTHONPATH:-}"
 

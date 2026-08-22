@@ -146,11 +146,6 @@ post_min_faces_patch: 30
 post_min_area_m2: 7.5
 post_ransac_max_planes_per_comp: 8
 
-# === Area histogram ===
-save_area_hist: 0
-area_hist_bins: 120
-area_hist_png_name: face_area_hist_abs.png
-
 # === HDF5 pipeline control ===
 normalize_group_names: 1
 h5_palette_seed: 42

@@ -15,8 +15,16 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # Configuration
 SCENE_LIST="${1:-scene_list.txt}"
 CONFIG="${2:-../configs/hypersim_default.yml}"
-INPUT_ROOT="${3:-/path/to/hypersim/dataset}"
-OUTPUT_ROOT="${4:-/path/to/output}"
+INPUT_ROOT="${3:-}"
+OUTPUT_ROOT="${4:-}"
+
+# Resolve a relative config against the script directory (absolute paths pass through)
+[[ "$CONFIG" = /* ]] || CONFIG="$SCRIPT_DIR/$CONFIG"
+
+# Roots are optional — when omitted the runner uses input_root/output_root from the config
+ROOT_ARGS=()
+[[ -n "$INPUT_ROOT" ]] && ROOT_ARGS+=(--input_root "$INPUT_ROOT")
+[[ -n "$OUTPUT_ROOT" ]] && ROOT_ARGS+=(--output_root "$OUTPUT_ROOT")
 
 # Validate inputs
 if [[ ! -f "$SCENE_LIST" ]]; then
@@ -37,9 +45,7 @@ while IFS= read -r scene_id; do
     echo "================================================================"
     echo "[INFO] Processing scene: $scene_id"
     python "$SCRIPT_DIR/../hypersim/scene_runner.py" "$scene_id" \
-        --config "$SCRIPT_DIR/$CONFIG" \
-        --input_root "$INPUT_ROOT" \
-        --output_root "$OUTPUT_ROOT"
+        --config "$CONFIG" "${ROOT_ARGS[@]}"
 
     if [[ $? -eq 0 ]]; then
         echo "[SUCCESS] Completed: $scene_id"

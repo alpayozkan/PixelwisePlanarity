@@ -95,6 +95,15 @@ def build_args(scene_id, config_path, input_root, output_root):
 
     cfg = cast_config_types(cfg)
 
+    # CLI roots override the config; fall back to input_root/output_root from
+    # the YAML when not given on the command line
+    input_root = input_root or cfg.get("input_root")
+    output_root = output_root or cfg.get("output_root")
+    if not input_root or not output_root:
+        print("[ERROR] input_root/output_root not set (pass --input_root/--output_root "
+              "or define them in the config)")
+        sys.exit(1)
+
     # Scene-specific paths
     root_dir = os.path.join(input_root, scene_id, "scans")
     out_dir = os.path.join(output_root, scene_id)
@@ -127,12 +136,12 @@ if __name__ == "__main__":
     parser.add_argument("--config", type=str,
                        default="../configs/scannetpp_default.yml",
                        help="Path to config YAML file")
-    parser.add_argument("--input_root", type=str,
-                       default="/path/to/scannetpp/data",
-                       help="Root directory of ScanNet++ dataset")
-    parser.add_argument("--output_root", type=str,
-                       default="/path/to/output",
-                       help="Root directory for output")
+    parser.add_argument("--input_root", type=str, default=None,
+                       help="Root directory of ScanNet++ dataset "
+                            "(default: input_root from the config)")
+    parser.add_argument("--output_root", type=str, default=None,
+                       help="Root directory for output "
+                            "(default: output_root from the config)")
 
     args_cli = parser.parse_args()
 

@@ -16,7 +16,7 @@ REPO_ROOT="$(dirname "$(dirname "$(dirname "$SCRIPT_DIR")")")"
 # Configuration - defaults resolve from pxwplanar/paths.py
 SCENE_LIST="${1:-scene_list.txt}"
 H5_ROOT="${2:-$(python -c "import sys; sys.path.insert(0, '$REPO_ROOT'); from pxwplanar.paths import scannetpp_rend_plane_path; print(scannetpp_rend_plane_path)")}"
-RGB_ROOT="${3:-$(python -c "import sys; sys.path.insert(0, '$REPO_ROOT'); from pxwplanar.paths import scannetpp_path; print(scannetpp_path)")/data}"
+RGB_ROOT="${3:-$(python -c "import sys; sys.path.insert(0, '$REPO_ROOT'); from pxwplanar.paths import scannetppv2_path; print(scannetppv2_path)")/data}"
 OUTPUT_ROOT="${4:-$REPO_ROOT/visualizations/scannetpp}"
 FPS="${5:-5}"
 

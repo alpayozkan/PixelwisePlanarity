@@ -1790,10 +1790,6 @@ def main(args):
     # Hypersim labels (from colors)
     labels_f, int2raw = _labels_from_face_colors(mesh, legend_csv_path)
 
-    # histogram (uses scaled area thresholds)
-    if args.save_area_hist:
-        save_face_area_histogram(FA, labels_f, args)
-
     # smooth normals for early gates
     def smooth_face_normals(FN_: np.ndarray, FA_: np.ndarray, adj: List[np.ndarray], iters=1, lam=0.5):
         N = FN_.copy()

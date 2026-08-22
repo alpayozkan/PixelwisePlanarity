@@ -7,11 +7,11 @@ LO-RANSAC per semantic label, and saves everything (RGB, depth, semantics,
 planes, calibration) to a single HDF5 file per scene+variant.
 
 Usage:
-    python -m gt_creation.vkitti2.scene_runner \
+    python -m pxwplanar.gt_creation.vkitti2.scene_runner \
         --scene Scene01 --variant clone \
         --config pxwplanar/gt_creation/configs/vkitti2_default.yml
 
-    python -m gt_creation.vkitti2.scene_runner \
+    python -m pxwplanar.gt_creation.vkitti2.scene_runner \
         --scene Scene01 --variant clone \
         --rgb_root /path/to/vkitti_2.0.3_rgb \
         --depth_root /path/to/vkitti_2.0.3_depth \

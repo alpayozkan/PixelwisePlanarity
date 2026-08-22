@@ -7,11 +7,11 @@ LO-RANSAC per semantic label, and saves everything (RGB, depth, semantics,
 planes, calibration) to a single HDF5 file per scene.
 
 Usage:
-    python -m gt_creation.synthia.scene_runner \
+    python -m pxwplanar.gt_creation.synthia.scene_runner \
         --scene_dir /path/to/test/test5_10segs_weather_0_.../DD-MM-YYYY_HH-MM-SS \
         --output_root /path/to/output
 
-    python -m gt_creation.synthia.scene_runner \
+    python -m pxwplanar.gt_creation.synthia.scene_runner \
         --scene_dir /path/to/scene_dir \
         --config pxwplanar/gt_creation/configs/synthia_default.yml
 """
