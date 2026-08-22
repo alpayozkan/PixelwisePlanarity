@@ -10,8 +10,9 @@ for each frame, demo/outputs/<frame>/:
     planeseg.png    plane segmentation (region growing on planarity+normal+depth)
     combined.png    RGB | depth | normal | planarity | planeseg montage (equal panel sizes)
 
-The checkpoint defaults to paths.planarity_model_path; MoGe base weights come
-from HuggingFace (cache via HF_HOME, defaulted to paths.moge_cache_dir).
+The checkpoint defaults to paths.planarity_model_path; MoGe base weights are
+pulled from HuggingFace into the standard cache (~/.cache/huggingface;
+override via HF_HOME).
 
 Usage (from the repo root, `pxwplanar` env, GPU recommended):
     python demo/run_demo.py [--model_path <ckpt.pt>]
@@ -33,9 +34,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from PIL import Image
 
-from pxwplanar.paths import planarity_model_path, moge_cache_dir  # noqa: E402
-os.environ.setdefault("HF_HOME", moge_cache_dir)
-
+from pxwplanar.paths import planarity_model_path  # noqa: E402
 from pxwplanar.shared.segmentation import compute_vectorized_planar_segments  # noqa: E402
 from pxwplanar.shared.utils.label_utils import remap_labels  # noqa: E402
 from pxwplanar.shared.utils import visualize_top_components  # noqa: E402

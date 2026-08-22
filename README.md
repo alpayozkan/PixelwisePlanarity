@@ -54,9 +54,10 @@ For each input image the script runs the full pipeline (MoGe 4-head inference +
 plane segmentation with the canonical parameters) and writes
 `demo/outputs/<frame>/{depth,normal,planarity,planeseg}.png` plus a combined
 montage (`combined.png` — RGB | depth | normal | planarity | planes,
-top-20 planes shown). The checkpoint and HuggingFace cache default from
-`pxwplanar/paths.py` (`planarity_model_path`, `moge_cache_dir`); pass
-`--model_path` to override.
+top-20 planes shown). The checkpoint defaults from `pxwplanar/paths.py`
+(`planarity_model_path`); pass `--model_path` to override. MoGe base weights
+are pulled from HuggingFace into the standard cache (`~/.cache/huggingface`;
+override via `HF_HOME`).
 
 Minimal API usage:
 

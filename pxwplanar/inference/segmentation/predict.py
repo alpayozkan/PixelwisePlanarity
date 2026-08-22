@@ -139,8 +139,6 @@ def main():
 
     # Model configuration
     parser.add_argument("--device", type=str, default="cuda")
-    parser.add_argument("--cache_dir", type=str, default=None,
-                        help="HuggingFace cache dir for MoGe base weights (sets HF_HOME)")
 
     # Processing parameters
     parser.add_argument("--frame_skip", type=int, default=50,
@@ -182,9 +180,7 @@ def main():
     print(f"Frame skip: {args.frame_skip}")
     print("-" * 60)
 
-    # Load model (base MoGe weights come from HuggingFace; cache via HF_HOME)
-    if args.cache_dir:
-        os.environ["HF_HOME"] = args.cache_dir
+    # Load model (base MoGe weights come from the standard HuggingFace cache)
     print("[INFO] Loading model...")
     inference_model = MoGePlanarityInference(
         model_path=args.model_path,

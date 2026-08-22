@@ -14,17 +14,15 @@
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 REPO_ROOT="$(dirname "$(dirname "$(dirname "$SCRIPT_DIR")")")"
 
-# Configuration - checkpoint/cache defaults resolve from paths.py
+# Configuration - checkpoint default resolves from paths.py
 MODEL_PATH="${1:-$(python -c "import sys; sys.path.insert(0, '$REPO_ROOT'); from pxwplanar.paths import planarity_model_path; print(planarity_model_path)")}"
-INPUT_DIR="${2:-/path/to/input/images}"
-OUTPUT_DIR="${3:-/path/to/output}"
-MODEL_SIZE="${4:-large}"
-CACHE_DIR="${5:-$(python -c "import sys; sys.path.insert(0, '$REPO_ROOT'); from pxwplanar.paths import moge_cache_dir; print(moge_cache_dir)")}"
+INPUT_DIR="${2:?usage: run_planarity_inference.sh <model_path> <input_dir> <output_dir>}"
+OUTPUT_DIR="${3:?output_dir required}"
 
 # Validate inputs
 if [[ ! -f "$MODEL_PATH" ]]; then
     echo "[ERROR] Model checkpoint not found: $MODEL_PATH"
-    echo "Usage: $0 <model_path> <input_dir> <output_dir> [model_size] [cache_dir]"
+    echo "Usage: $0 <model_path> <input_dir> <output_dir>"
     exit 1
 fi
 
@@ -33,15 +31,10 @@ if [[ ! -d "$INPUT_DIR" ]]; then
     exit 1
 fi
 
-# Export environment variables for the Python script
-export MOGE_CACHE_DIR="$CACHE_DIR"
-
 echo "[INFO] Starting MoGe planarity inference on: $(hostname)"
 echo "[INFO] Model: $MODEL_PATH"
-echo "[INFO] Model size: $MODEL_SIZE"
 echo "[INFO] Input: $INPUT_DIR"
 echo "[INFO] Output: $OUTPUT_DIR"
-echo "[INFO] Cache dir: $CACHE_DIR"
 
 # Create output directory
 mkdir -p "$OUTPUT_DIR"
@@ -51,8 +44,8 @@ python "$SCRIPT_DIR/../planarity/run_inference.py" \
     --model_path "$MODEL_PATH" \
     --input_dir "$INPUT_DIR" \
     --output_dir "$OUTPUT_DIR" \
-    --model_size "$MODEL_SIZE" \
     --save_raw \
+    --save_binary \
     --save_visualization
 
 if [[ $? -eq 0 ]]; then

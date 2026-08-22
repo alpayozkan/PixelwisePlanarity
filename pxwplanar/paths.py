@@ -45,8 +45,8 @@ synthia_raw_path = os.path.join(data_root, 'synthia', 'raw')
 # ============ Models / checkpoints ============
 # Trained MoGe 4-head planarity checkpoint (HIRES, 4 datasets, epoch 1 — production)
 planarity_model_path = os.path.join(data_root, 'checkpoints', 'moge_HIRES_4datasets', 'model_epoch1.pt')
-# HuggingFace cache for MoGe base weights (exported as HF_HOME)
-moge_cache_dir = os.path.join(data_root, 'cache', 'huggingface')
+# MoGe base weights are pulled from HuggingFace into the standard cache
+# (~/.cache/huggingface; override via HF_HOME).
 
 # ============ Evaluation / inference output roots ============
 eval_root = os.path.join(data_root, 'eval', 'scannetpp')

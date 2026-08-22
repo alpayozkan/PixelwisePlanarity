@@ -7,9 +7,8 @@ Runs planarity prediction on a directory of images using the MoGe 4-head model.
 Usage:
     python run_inference.py --model_path /path/to/model.pt --input_dir /path/to/images --output_dir /path/to/output
 
-Environment Variables:
-    MOGE_PATH: Path to MoGe repository
-    MOGE_CACHE_DIR: Directory for caching pretrained models
+MoGe base weights are pulled from HuggingFace into the standard cache
+(~/.cache/huggingface; override via HF_HOME).
 """
 import sys
 from pathlib import Path
@@ -35,16 +34,6 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Basic usage
-  python run_inference.py --model_path model.pt --input_dir ./images --output_dir ./results
-
-  # With custom MoGe path
-  python run_inference.py --model_path model.pt --input_dir ./images --output_dir ./results \\
-      --moge_path /path/to/MoGe --cache_dir /path/to/cache
-
-  # Using environment variables
-  export MOGE_PATH=/path/to/MoGe
-  export MOGE_CACHE_DIR=/path/to/cache
   python run_inference.py --model_path model.pt --input_dir ./images --output_dir ./results
         """
     )
@@ -60,8 +49,6 @@ Examples:
     # Model configuration
     parser.add_argument("--device", type=str, default="cuda",
                         help="Device for inference (default: cuda)")
-    parser.add_argument("--cache_dir", type=str, default=None,
-                        help="HuggingFace cache dir for MoGe base weights (sets HF_HOME)")
 
     # Output options
     parser.add_argument("--save_raw", action="store_true",
@@ -102,9 +89,7 @@ Examples:
     print(f"Device: {args.device}")
     print("-" * 60)
 
-    # Initialize model (base MoGe weights come from HuggingFace; cache via HF_HOME)
-    if args.cache_dir:
-        os.environ["HF_HOME"] = args.cache_dir
+    # Initialize model (base MoGe weights come from the standard HuggingFace cache)
     print("[INFO] Loading model...")
     model = MoGePlanarityInference(
         model_path=args.model_path,
