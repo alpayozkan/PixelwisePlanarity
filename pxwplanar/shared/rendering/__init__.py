@@ -5,6 +5,7 @@ Mesh rendering and raycasting utilities.
 from .render import (
     render_rgb,
     render_rgb_depth,
+    raycast_depth,
     raycast_semantic,
     raycast_semantic_face_labels,
     raycast_semantic_face_labels_mcam
@@ -19,6 +20,7 @@ from .mesh_io import (
 __all__ = [
     'render_rgb',
     'render_rgb_depth',
+    'raycast_depth',
     'raycast_semantic',
     'raycast_semantic_face_labels',
     'raycast_semantic_face_labels_mcam',

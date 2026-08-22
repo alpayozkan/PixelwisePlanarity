@@ -240,6 +240,64 @@ def raycast_semantic_face_labels(
 
     return semantic_img
 
+
+def raycast_depth(
+    mesh: o3d.geometry.TriangleMesh,
+    K: np.ndarray,
+    img_res: Tuple[int, int],
+    c2w: np.ndarray
+) -> np.ndarray:
+    """
+    Raycast view-space Z-depth from mesh, using the same camera model and ray
+    generation as raycast_semantic_face_labels so depth and label renders stay
+    pixel-aligned. CPU-only (RaycastingScene) — no GL context required.
+
+    Args:
+        mesh: Open3D TriangleMesh
+        K: (3,3) camera intrinsic matrix
+        img_res: (width, height) tuple
+        c2w: (4,4) camera-to-world transformation
+
+    Returns:
+        depth_img: (H,W) float32 Z-depth in meters, 0 where no surface is hit
+    """
+    W, H = img_res
+    scene = o3d.t.geometry.RaycastingScene()
+    scene.add_triangles(o3d.t.geometry.TriangleMesh.from_legacy(mesh))
+
+    cx, cy = K[0, 2], K[1, 2]
+    fx, fy = K[0, 0], K[1, 1]
+
+    # Transform to OpenGL convention
+    flip_yz = np.diag([1, -1, -1, 1])
+    c2w_gl = c2w @ flip_yz
+    R = c2w_gl[:3, :3]
+    cam_origin = c2w_gl[:3, 3]
+
+    # Generate rays (identical to raycast_semantic_face_labels)
+    u, v = np.meshgrid(np.arange(W), np.arange(H))
+    v = H - 1 - v
+    dirs = np.stack([(u - cx) / fx, (v - cy) / fy, -np.ones_like(u)], axis=-1)
+    norms = np.linalg.norm(dirs, axis=-1, keepdims=True)
+    dirs = dirs / norms
+    dirs_world = dirs @ R.T
+    rays_o = np.tile(cam_origin, (H, W, 1))
+
+    # Raycast
+    rays = np.concatenate([rays_o, dirs_world], axis=-1).astype(np.float32)
+    rays_o3d = o3d.core.Tensor(rays.reshape(-1, 6), dtype=o3d.core.Dtype.Float32)
+    ans = scene.cast_rays(rays_o3d)
+
+    t_hit = ans['t_hit'].numpy().reshape(H, W)
+    hit_mask = np.isfinite(t_hit)
+
+    # t_hit is euclidean distance along the unit ray; view-space Z-depth is its
+    # projection onto the camera forward axis: t / ||dir_unnormalized||
+    depth_img = np.zeros((H, W), dtype=np.float32)
+    depth_img[hit_mask] = (t_hit[hit_mask] / norms[..., 0][hit_mask]).astype(np.float32)
+
+    return depth_img
+
 def raycast_semantic_face_labels_mcam(sem_mesh, face_labels, M_cam_from_uv,
                                       R_world_from_cam, cam_position, width, height):
     """Raycast per-face semantic labels using Hypersim's M_cam_from_uv convention.

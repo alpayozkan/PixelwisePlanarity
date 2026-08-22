@@ -31,7 +31,23 @@ Calls `../scannetpp/render_scene.py`: raycasts `planes.ply` into every Nth iPhon
 frame and writes `<scene>/rendered.h5` (`planes (N,H,W) uint16`, 0 = non-planar;
 `frame_ids`) — the GT consumed by training and evaluation.
 
-### 3. Video generation
+### 3. GT depth rendering (mesh → rendered_depth.h5)
+
+```bash
+./scannetpp_render_depth.sh <scene_list> [input_root] [output_root] [frame_skip]
+# input_root  default: <scannetppv2_path>/data
+# output_root default: paths.scannetpp_rend_plane_path
+# frame_skip  default: 25 (keep equal to step 2 so the H5s stay index-aligned)
+```
+
+Calls `../scannetpp/render_depth.py`: raycasts Z-depth from the full scene mesh
+(`mesh_aligned_0.05.ply`) into the same frames as step 2 — with the same camera
+model as the label raycast, so the two H5s stay pixel-aligned — and writes
+`<scene>/rendered_depth.h5` (`depth (N,H,W) uint16` millimeters; `frame_ids`) —
+the GT depth the 3D metrics in `evaluate_all_baselines.py` backproject.
+CPU-only, no GL required.
+
+### 4. Video generation
 
 ```bash
 ./scannetpp_video_gen.sh <scene_list> [h5_root] [rgb_root] [output_root] [fps]

@@ -197,7 +197,9 @@ python scene_runner.py --scene <Scene01> --variant clone --config ../configs/vki
 
 Rendering to 2D labels (ScanNet++): `render_scene.py` raycasts the extracted plane mesh into
 every Nth iPhone frame and writes the per-scene `rendered.h5` consumed by training and
-evaluation; `rendering.py` produces PNG label previews (`<scene>/rendered/`).
+evaluation; `render_depth.py` renders the matching GT depth from the full scene mesh into
+`rendered_depth.h5` (required by the 3D evaluation metrics); `rendering.py` produces PNG
+label previews (`<scene>/rendered/`).
 
 Batch SLURM scripts (arguments documented in `pxwplanar/gt_creation/scripts/README.md`):
 
