@@ -8,12 +8,9 @@ This directory contains scene lists and train/validation/test splits for ScanNet
 splits/
 ├── scannetpp/
 │   ├── all_scenes.txt           # All 1006 ScanNet++ scenes
-│   ├── train.txt                # Training split (666 scenes) — used by the release pipeline
+│   ├── train.txt                # Training split (666 scenes)
 │   ├── val.txt                  # Validation split (36 scenes)
-│   ├── test.txt                 # Test split (42 scenes) — the benchmark split
-│   ├── train_full.txt           # Original random 70/15/15 partition (704 scenes)
-│   ├── val_full.txt             #   (150 scenes) — kept for reference; NOT the
-│   └── test_full.txt            #   (152 scenes) — partition used by the release
+│   └── test.txt                 # Test split (42 scenes) — the benchmark split
 ├── hypersim/
 │   ├── all_scenes.txt           # All 457 Hypersim scenes
 │   ├── train.txt                # Training split (319 scenes, 70%)
@@ -37,10 +34,8 @@ splits/
 - **Test**: 42 scenes (`test.txt`) — the split every benchmark command uses
 - **Scene ID format**: `0a7cc12c0e`, `0a5c013435`, etc. (10-character hex)
 
-The `*_full.txt` files are the original random 70/15/15 partition
-(704/150/152) kept for reference. The two families are independent partitions
-of the same 1,006 scenes and must not be mixed: a scene in `test.txt` may
-appear in `train_full.txt` and vice versa.
+The split covers the 744 scenes with processed data (out of the 1,006 in
+`all_scenes.txt`); the remaining scenes are unused.
 
 ### Hypersim
 - **Total scenes**: 457
