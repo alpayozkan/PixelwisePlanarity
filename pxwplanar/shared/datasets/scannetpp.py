@@ -63,9 +63,10 @@ class ScanNetPPPlaneDataset(Dataset):
             if not (os.path.isdir(rgb_dir) and os.path.exists(pose_file)):
                 print(f"[SKIP] Missing RGB or pose file for scene: {scene_id}")
                 continue
-            # Rendered GT files are required only when require_gt=True
+            # Rendered GT files are required only when require_gt=True.
+            # rendered_sem.h5 is optional — nothing downstream consumes the sem
+            # tensor and __getitem__ zero-fills it when the file is absent.
             if require_gt and not (os.path.exists(plane_h5)
-                                   and os.path.exists(sem_h5)
                                    and os.path.exists(depth_h5)):
                 print(f"[SKIP] Missing rendered GT files for scene: {scene_id}")
                 continue
@@ -138,14 +139,16 @@ class ScanNetPPPlaneDataset(Dataset):
                 H, W = self.image_height, self.image_width
                 plane = torch.zeros((1, H, W), dtype=torch.float32)
 
-            # --- Semantic label ---
-            try:
-                with h5py.File(sem_h5, "r") as f:
-                    # sem = f["rendered_sem"][frame_idx]
-                    sem = f["sem"][frame_idx]
-                sem = torch.from_numpy(sem.astype(np.int64)).unsqueeze(0)  # [1, H, W]
-            except Exception as e:
-                print(f"[WARN] Failed semantic label from {sem_h5} [{frame_idx}]: {e}")
+            # --- Semantic label (optional; zero-filled when the file is absent) ---
+            if os.path.exists(sem_h5):
+                try:
+                    with h5py.File(sem_h5, "r") as f:
+                        sem = f["sem"][frame_idx]
+                    sem = torch.from_numpy(sem.astype(np.int64)).unsqueeze(0)  # [1, H, W]
+                except Exception as e:
+                    print(f"[WARN] Failed semantic label from {sem_h5} [{frame_idx}]: {e}")
+                    sem = torch.zeros((1, H, W), dtype=torch.int64)
+            else:
                 sem = torch.zeros((1, H, W), dtype=torch.int64)
 
             # --- Depth ---
