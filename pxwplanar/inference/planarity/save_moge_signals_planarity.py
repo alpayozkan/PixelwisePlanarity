@@ -42,8 +42,8 @@ For NPZ-based datasets, frame_ids are zero-padded NPZ-sample indices
 corresponding ``<dataset>PlaneDataset.valid_pairs``.
 
 The depth pipeline replicates ``MoGeModel.infer()`` manually (forward → recover
-focal & shift → apply metric_scale) to bypass the cluster's older
-``utils3d 0.1.1`` which is missing ``utils3d.torch.intrinsics_from_focal_center``.
+focal & shift → apply metric_scale), building the intrinsics matrix explicitly
+to keep the pixel-space convention independent of the utils3d version.
 
 Examples
 --------
@@ -51,29 +51,29 @@ ScanNet++ test split:
     python save_moge_signals_planarity.py \\
         --dataset scannetpp \\
         --scenes splits/scannetpp/test.txt \\
-        --model_path .../moge_HIRES_4datasets/model_epoch1.pt \\
-        --output_root /scratch/.../moge_signals_4ds_ep1/scannetpp \\
+        --model_path <checkpoint.pt> \\
+        --output_root <signals_root>/scannetpp \\
         --frame_step 25 --batch_size 8 --num_tokens 1600
 
 NYU-v2 (auto-discovers samples):
     python save_moge_signals_planarity.py \\
         --dataset nyuv2 \\
-        --model_path .../moge_HIRES_4datasets/model_epoch1.pt \\
-        --output_root /scratch/.../moge_signals_4ds_ep1/nyuv2 \\
+        --model_path <checkpoint.pt> \\
+        --output_root <signals_root>/nyuv2 \\
         --batch_size 16 --num_tokens 1600
 
 7-Scenes (one H5 per scene; --scenes optional comma filter):
     python save_moge_signals_planarity.py \\
         --dataset sevenscenes \\
-        --model_path .../moge_HIRES_4datasets/model_epoch1.pt \\
-        --output_root /scratch/.../moge_signals_4ds_ep1/sevenscenes \\
+        --model_path <checkpoint.pt> \\
+        --output_root <signals_root>/sevenscenes \\
         --batch_size 16 --num_tokens 1600
 
 Hypersim test split (one H5 per scene/cam; --scenes optional scene filter):
     python save_moge_signals_planarity.py \\
         --dataset hypersim \\
-        --model_path .../moge_HIRES_4datasets/model_epoch1.pt \\
-        --output_root /scratch/.../moge_signals_4ds_ep1/hypersim \\
+        --model_path <checkpoint.pt> \\
+        --output_root <signals_root>/hypersim \\
         --batch_size 8 --num_tokens 1600
 """
 import argparse
@@ -467,7 +467,10 @@ def process_scene(
     os.makedirs(out_dir, exist_ok=True)
 
     # Pre-allocate datasets in the H5 (chunked + gzip) so memory stays bounded.
-    with h5py.File(out_h5, "w") as f:
+    # Write to a temp name and rename on success so a failed run cannot leave a
+    # truncated moge_signals.h5 behind (which a rerun would skip as complete).
+    tmp_h5 = out_h5 + ".tmp"
+    with h5py.File(tmp_h5, "w") as f:
         f.attrs["dataset"] = adapter.name
         if adapter.split is not None:
             f.attrs["split"] = adapter.split
@@ -514,6 +517,7 @@ def process_scene(
             for j, fs in enumerate(chunk):
                 d_fids[i + j] = fs.frame_id
 
+    os.replace(tmp_h5, out_h5)
     return N
 
 
@@ -536,8 +540,6 @@ def main():
                          "nyuv2 default: paths.nyuv2_path; "
                          "sevenscenes default: paths.sevenscenes_path; "
                          "hypersim default: paths.hypersim_path.")
-    ap.add_argument("--rgb_root", dest="data_root_legacy", default=None,
-                    help="Deprecated alias for --data_root (legacy scannetpp callers).")
     ap.add_argument("--scenes", type=str, default=None,
                     help="scannetpp: REQUIRED — txt path or comma-separated scene list. "
                          "sevenscenes: OPTIONAL — comma-separated scene-name filter "
@@ -562,10 +564,6 @@ def main():
     ap.add_argument("--overwrite", action="store_true",
                     help="If set, re-process scenes whose moge_signals.h5 already exists.")
     args = ap.parse_args()
-
-    # Reconcile --data_root / --rgb_root
-    if args.data_root is None and args.data_root_legacy is not None:
-        args.data_root = args.data_root_legacy
 
     H, W = (int(x) for x in args.resolution.lower().split("x"))
 

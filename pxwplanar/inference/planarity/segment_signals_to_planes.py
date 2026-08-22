@@ -11,7 +11,7 @@ Segmentation = OUR method: compute_vectorized_planar_segments with
     normal_threshold_rad       deg2rad(5.0)
     depth_threshold            0.025 (relative, 2.5% of center depth)
     neighbor_match_count_thresh 8
-This is identical to the segmentation run inside evaluate_gt_moge_zeroplane_benchmark.py.
+These are the canonical parameters used across the benchmark (see evaluate_all_baselines.py).
 
 Scene sharding via --part_id / --num_parts (contiguous slices of the sorted scene list),
 so this can be fanned out across SLURM jobs. All parts write to the same --output_root
@@ -109,7 +109,7 @@ def main():
 
     part = split_scenes(scenes, args.part_id, args.num_parts)
     print(f"[INFO] part {args.part_id}/{args.num_parts}: {len(part)}/{len(scenes)} scenes "
-          f"(seg=v5_relative plan>{THRESHOLD_PLANARITY} n<{NORMAL_THRESHOLD_DEG}° "
+          f"(seg=compute_vectorized_planar_segments plan>{THRESHOLD_PLANARITY} n<{NORMAL_THRESHOLD_DEG}° "
           f"d_rel<{DEPTH_THRESHOLD_REL} match≥{NEIGHBOR_MATCH_COUNT}, device={args.device})")
 
     t0 = time.perf_counter()

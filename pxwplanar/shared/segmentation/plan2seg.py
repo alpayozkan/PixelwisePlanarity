@@ -1,7 +1,7 @@
 """
 Planar segmentation via region growing on normal and depth consistency.
 
-`compute_vectorized_planar_segments` (formerly v5_relative in planamono) is the
+`compute_vectorized_planar_segments` is the
 single region-growing algorithm kept in this repo. It is GPU-accelerated
 (PyTorch) and uses a Sobel-based normal-similarity gate combined with a
 relative depth gate, followed by connected-component labeling.
