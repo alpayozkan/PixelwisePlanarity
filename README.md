@@ -178,10 +178,21 @@ raycast to 2D (HDF5).
 <details>
 <summary><b>Commands and parameters</b></summary>
 
-From `pxwplanar/gt_creation/<dataset>/` (scannetpp, hypersim, synthia, vkitti2):
+From `pxwplanar/gt_creation/<dataset>/` — mesh datasets take a positional scene id:
 
 ```bash
+# scannetpp, hypersim
 python scene_runner.py <scene_id> --config ../configs/<dataset>_default.yml
+```
+
+The outdoor datasets extract from depth + semantics instead of meshes and use
+named arguments:
+
+```bash
+# synthia
+python scene_runner.py --scene_dir <scene_dir> --config ../configs/synthia_default.yml
+# vkitti2
+python scene_runner.py --scene <Scene01> --variant clone --config ../configs/vkitti2_default.yml
 ```
 
 Rendering to 2D labels (ScanNet++): `render_scene.py` raycasts the extracted plane mesh into
@@ -244,7 +255,8 @@ list; all parts share one output root safely).
 ## Dependencies
 
 `numpy`, `opencv-python`, `torch`, `pandas`, `open3d`, `trimesh`, `plyfile`, `h5py`,
-`pyyaml`, `tqdm`, `natsort`, `matplotlib`, `scipy`, `cc3d` — pinned in `env/environment.yml`.
+`pyyaml`, `tqdm`, `natsort`, `matplotlib`, `scipy`, `scikit-image`, `joblib`,
+`connected-components-3d` (imported as `cc3d`), `utils3d` — pinned in `env/environment.yml`.
 
 ## Citation
 

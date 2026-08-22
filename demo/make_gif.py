@@ -9,7 +9,6 @@ import glob
 import argparse
 from pathlib import Path
 
-import numpy as np
 from PIL import Image
 
 DEMO_DIR = Path(__file__).resolve().parent

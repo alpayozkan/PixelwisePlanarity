@@ -8,9 +8,12 @@ This directory contains scene lists and train/validation/test splits for ScanNet
 splits/
 ├── scannetpp/
 │   ├── all_scenes.txt           # All 1006 ScanNet++ scenes
-│   ├── train.txt                # Training split (704 scenes, 70%)
-│   ├── val.txt                  # Validation split (150 scenes, 15%)
-│   └── test.txt                 # Test split (152 scenes, 15%)
+│   ├── train.txt                # Training split (666 scenes) — used by the release pipeline
+│   ├── val.txt                  # Validation split (36 scenes)
+│   ├── test.txt                 # Test split (42 scenes) — the benchmark split
+│   ├── train_full.txt           # Original random 70/15/15 partition (704 scenes)
+│   ├── val_full.txt             #   (150 scenes) — kept for reference; NOT the
+│   └── test_full.txt            #   (152 scenes) — partition used by the release
 ├── hypersim/
 │   ├── all_scenes.txt           # All 457 Hypersim scenes
 │   ├── train.txt                # Training split (319 scenes, 70%)
@@ -18,11 +21,10 @@ splits/
 │   ├── test.txt                 # Test split (70 scenes, 15%)
 │   ├── split_scenes.py          # Script to create batch processing splits
 │   └── scene_splits/            # 100 splits for parallel processing
-│       ├── split_0/
-│       │   └── scene_list_0.txt
-│       ├── split_1/
-│       │   └── scene_list_1.txt
-│       └── ...
+├── synthia/                     # SYNTHIA train/val/test scene lists
+├── vkitti2/                     # VKITTI2 train/val/test scene lists
+├── generate_synthia_splits.py   # Script to regenerate the SYNTHIA splits
+├── SPLITS_SUMMARY.txt           # Plain-text summary of the splits
 └── create_train_val_test_splits.py  # Script to regenerate splits
 ```
 
@@ -30,10 +32,15 @@ splits/
 
 ### ScanNet++
 - **Total scenes**: 1,006
-- **Train**: 704 scenes (70.0%)
-- **Validation**: 150 scenes (14.9%)
-- **Test**: 152 scenes (15.1%)
+- **Train**: 666 scenes (`train.txt`)
+- **Validation**: 36 scenes (`val.txt`)
+- **Test**: 42 scenes (`test.txt`) — the split every benchmark command uses
 - **Scene ID format**: `0a7cc12c0e`, `0a5c013435`, etc. (10-character hex)
+
+The `*_full.txt` files are the original random 70/15/15 partition
+(704/150/152) kept for reference. The two families are independent partitions
+of the same 1,006 scenes and must not be mixed: a scene in `test.txt` may
+appear in `train_full.txt` and vice versa.
 
 ### Hypersim
 - **Total scenes**: 457
@@ -63,7 +70,7 @@ val_scenes = split_file.read_text().strip().split('\n')
 ### Using with PyTorch Datasets
 
 ```python
-from shared.datasets import ScanNetPPPlaneDataset, HypersimPlanarityDataset
+from pxwplanar.shared.datasets import ScanNetPPPlaneDataset, HypersimPlanarityDataset
 
 # Load ScanNet++ training data
 with open('splits/scannetpp/train.txt', 'r') as f:
@@ -89,14 +96,14 @@ val_dataset = HypersimPlanarityDataset(
 For parallel GT generation or processing, use the 100-way splits:
 
 ```bash
-# Process split 0
-python gt_creation/hypersim/scene_runner.py \
-    --scene_list splits/hypersim/scene_splits/split_0/scene_list_0.txt \
-    --config configs/hypersim_default.yml
+# Process one batch (the wrapper takes a scene list; roots come from the config)
+bash pxwplanar/gt_creation/scripts/hypersim_plane_extraction.sh \
+    splits/hypersim/scene_splits/split_0/scene_list_0.txt
 
-# Submit all splits to SLURM
+# Submit all batches to SLURM
 for i in {0..99}; do
-    sbatch --export=SPLIT_ID=$i gt_creation/scripts/hypersim_plane_extraction.sh
+    sbatch pxwplanar/gt_creation/scripts/hypersim_plane_extraction.sh \
+        splits/hypersim/scene_splits/split_$i/scene_list_$i.txt
 done
 ```
 
@@ -104,7 +111,7 @@ done
 
 To regenerate train/val/test splits with different ratios or seed:
 
-```python
+```bash
 python create_train_val_test_splits.py
 ```
 
@@ -118,7 +125,7 @@ Edit the script to modify:
 
 To create custom batch splits for parallel processing:
 
-```python
+```bash
 cd hypersim
 python split_scenes.py
 

@@ -8,9 +8,12 @@ SCANNET++ DATASET
 -----------------
 Total Scenes: 1,006
 
-  train.txt:  704 scenes (70.0%)
-  val.txt:    150 scenes (14.9%)
-  test.txt:   152 scenes (15.1%)
+  train.txt:       666 scenes   (release partition)
+  val.txt:          36 scenes
+  test.txt:         42 scenes   (benchmark split)
+  train_full.txt:  704 scenes   (original 70/15/15 partition,
+  val_full.txt:    150 scenes    kept for reference — independent
+  test_full.txt:   152 scenes    of the release partition)
 
 Scene ID Format: 10-character hex (e.g., 0a7cc12c0e)
 
@@ -30,9 +33,10 @@ Batch Processing Splits: 100 splits in scene_splits/
 FILES
 -----
 scannetpp/all_scenes.txt     - Full scene list (1006 scenes)
-scannetpp/train.txt          - Training scenes (704)
-scannetpp/val.txt            - Validation scenes (150)
-scannetpp/test.txt           - Test scenes (152)
+scannetpp/train.txt          - Training scenes (666)
+scannetpp/val.txt            - Validation scenes (36)
+scannetpp/test.txt           - Test scenes (42)
+scannetpp/*_full.txt         - Original 70/15/15 partition (704/150/152)
 
 hypersim/all_scenes.txt      - Full scene list (457 scenes)
 hypersim/train.txt           - Training scenes (319)

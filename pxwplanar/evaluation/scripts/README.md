@@ -12,7 +12,8 @@ python pxwplanar/evaluation/quantitative/evaluate_all_baselines.py --methods gt 
 Side-by-side method comparison videos:
 
 ```bash
-./run_qualitative.sh [rgb_root] [results_root] [gt_root] [output_root] [frame_skip] [max_scenes]
+./run_qualitative.sh <rgb_root> <results_root> <gt_root> <output_root> [frame_skip] [max_scenes]
+# frame_skip default: 50
 ```
 
 Output: `comparison_videos/{scene_id}_baseline.mp4`
@@ -26,7 +27,7 @@ GT-vs-prediction 3D plane renders for ScanNet++ scenes:
 ```
 
 Defaults: `scene_list = pxwplanar/evaluation/qualitative/scannetpp_vis_scenes.txt`,
-`checkpoint = paths.planarity_model_path`.
+`output_root = paths.vis3d_root`, `checkpoint = paths.planarity_model_path`.
 
 ## SLURM
 
