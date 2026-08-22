@@ -49,10 +49,11 @@ def process_scene(scene_id, image_list, inference_model, output_dir, args):
         img_np = np.array(img)
         H, W = img_np.shape[:2]
 
-        # Run MoGe inference
-        res = inference_model.predict(image_path, num_tokens=args.num_tokens, return_all_heads=True)
+        # Run MoGe inference (metric variant: focal/shift recovery + metric scale,
+        # same as the benchmark pipeline)
+        res = inference_model.predict_metric(image_path, num_tokens=args.num_tokens, return_all_heads=True)
 
-        depth = res['points'][:, :, 2]
+        depth = res['depth']
         normal = res['normal']  # (H, W, 3)
         planarity = res['planarity_probability']
 
@@ -69,7 +70,8 @@ def process_scene(scene_id, image_list, inference_model, output_dir, args):
         labels, n_components = compute_vectorized_planar_segments(
             planarity_mask, normal, depth,
             normal_threshold_rad, args.depth_threshold,
-            neighbor_match_count_thresh=args.neighbor_match_count_thresh
+            neighbor_match_count_thresh=args.neighbor_match_count_thresh,
+            device=args.device
         )
         filtered_segmentation = labels.copy()
         filtered_segmentation, _ = remap_labels(filtered_segmentation)
@@ -93,7 +95,7 @@ def process_scene(scene_id, image_list, inference_model, output_dir, args):
             axs[1].set_title("Depth")
             axs[1].axis('off')
 
-            axs[2].imshow(np.transpose(normal, (1, 2, 0)) * 0.5 + 0.5)
+            axs[2].imshow(normal * 0.5 + 0.5)
             axs[2].set_title("Normal")
             axs[2].axis('off')
 
@@ -105,8 +107,8 @@ def process_scene(scene_id, image_list, inference_model, output_dir, args):
             axs[4].set_title("Planarity Mask")
             axs[4].axis('off')
 
-            n = len(np.unique(filtered_segmentation))
-            n1 = min(10, n)
+            n = len(np.unique(filtered_segmentation)) - (1 if (filtered_segmentation == 0).any() else 0)
+            n1 = min(10, max(n, 1))
             seg_vis = visualize_top_components(filtered_segmentation, k=n1, return_colors=True)
             axs[5].imshow(seg_vis)
             axs[5].set_title(f"Seg: Top-{n1}")

@@ -44,7 +44,9 @@ class MoGePlanarityInference:
 
         # Load the trained model
         print(f"Loading model from: {model_path}")
-        checkpoint = torch.load(model_path, map_location=self.device)
+        # weights_only=False: torch >= 2.6 defaults to weights_only=True, which
+        # rejects the non-tensor objects stored in the training checkpoint
+        checkpoint = torch.load(model_path, map_location=self.device, weights_only=False)
 
         # Initialize model - need to use the same base model that was used for training
         self.model = MoGeModel.from_pretrained("Ruicheng/moge-2-vitl-normal").to(self.device)
@@ -454,10 +456,13 @@ class MoGePlanarityInference:
         # Load original image
         original_image = cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
 
-        # Determine number of subplots
-        num_cols = 4 if return_all_heads else 3
+        # Determine number of subplots: image + probability + binary,
+        # plus overlay, plus mask + normal when all heads are requested
+        num_cols = 3
         if show_overlay:
             num_cols += 1
+        if return_all_heads:
+            num_cols += 2
 
         fig, axes = plt.subplots(1, num_cols, figsize=(5*num_cols, 5))
         if num_cols == 1:

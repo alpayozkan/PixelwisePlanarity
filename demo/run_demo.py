@@ -86,6 +86,7 @@ def process_image(image_path, model, output_root, args):
         planarity_mask, normal, depth,
         np.deg2rad(args.normal_threshold_deg), args.depth_threshold,
         neighbor_match_count_thresh=args.neighbor_match_count_thresh,
+        device=args.device,
     )
     labels, _ = remap_labels(labels)
     n_planes = len(np.unique(labels)) - (1 if (labels == 0).any() else 0)
