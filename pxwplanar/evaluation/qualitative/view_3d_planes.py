@@ -30,6 +30,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
+from pxwplanar.paths import planarity_model_path  # noqa: E402
+
 
 def fit_plane_svd(pts):
     c = pts.mean(axis=0)
@@ -444,14 +446,13 @@ def main():
     # Mode 2: MoGe inference
     parser.add_argument("--moge", type=str, default=None,
                         help="Path to RGB image for MoGe inference")
-    parser.add_argument("--checkpoint", type=str,
-                        default=os.path.expanduser(
-                            "~/Desktop/checkpoints/moge_HIRES_4datasets/model_epoch1.pt"))
-    parser.add_argument("--device", type=str, default="mps")
+    parser.add_argument("--checkpoint", type=str, default=planarity_model_path,
+                        help="4-head MoGe checkpoint; default: paths.planarity_model_path")
+    parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--num_tokens", type=int, default=1024)
     parser.add_argument("--height", type=int, default=480)
     parser.add_argument("--width", type=int, default=640)
-    parser.add_argument("--planarity_threshold", type=float, default=0.5)
+    parser.add_argument("--planarity_threshold", type=float, default=0.3)
     parser.add_argument("--normal_threshold_rad", type=float, default=0.087)
     parser.add_argument("--depth_threshold", type=float, default=0.025)
     parser.add_argument("--neighbor_match_count", type=int, default=8)

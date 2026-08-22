@@ -25,6 +25,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from MoGe.moge.model.v2 import MoGeModel
+from pxwplanar.paths import planarity_model_path
 from pxwplanar.shared.segmentation.plan2seg import compute_vectorized_planar_segments
 from pxwplanar.shared.plane_fitting.planefit import refine_plane_least_squares
 
@@ -239,16 +240,15 @@ def process_image(model, image_path, output_dir, device, args):
 def parse_args():
     p = argparse.ArgumentParser(description="3D visualization of reconstructed planar surfaces")
     p.add_argument("--image", type=str, required=True)
-    p.add_argument("--checkpoint", type=str,
-                   default=os.path.expanduser(
-                       "~/Desktop/checkpoints/moge_HIRES_4datasets/model_epoch1.pt"))
+    p.add_argument("--checkpoint", type=str, default=planarity_model_path,
+                   help="4-head MoGe checkpoint; default: paths.planarity_model_path")
     p.add_argument("--output_dir", type=str, default="3d_plane_vis")
-    p.add_argument("--device", type=str, default="mps")
+    p.add_argument("--device", type=str, default="cuda")
     p.add_argument("--num_tokens", type=int, default=1024)
     p.add_argument("--height", type=int, default=480)
     p.add_argument("--width", type=int, default=640)
 
-    p.add_argument("--planarity_threshold", type=float, default=0.5)
+    p.add_argument("--planarity_threshold", type=float, default=0.3)
     p.add_argument("--normal_threshold_rad", type=float, default=0.087)
     p.add_argument("--depth_threshold", type=float, default=0.025)
     p.add_argument("--neighbor_match_count", type=int, default=8)

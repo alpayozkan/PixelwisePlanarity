@@ -11,7 +11,7 @@ proper camera intrinsics. Note: c2w is identity (no camera motion in Synthia).
 
 Usage:
     python evaluate_synthia_all_baselines.py                    # Evaluate all methods
-    python evaluate_synthia_all_baselines.py --methods ours zeroplane  # Evaluate specific methods
+    python evaluate_synthia_all_baselines.py --methods gt ours  # Evaluate specific methods
     python evaluate_synthia_all_baselines.py --aggregate-only   # Only aggregate existing results
 """
 
@@ -33,7 +33,7 @@ from joblib import Parallel, delayed
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from pxwplanar.shared.datasets.synthia_plane_dataset import SynthiaPlaneDataset
-from pxwplanar.paths import repo_path, synthia_path, synthia_eval_root as _eval_root, synthia_h5_root as _h5_root
+from pxwplanar.paths import synthia_path, synthia_eval_root as _eval_root, synthia_h5_root as _h5_root
 
 from pxwplanar.evaluation.quantitative.eval_utils import (
     Timer,
@@ -133,7 +133,7 @@ class LazyH5SceneLoader:
 
         # Build ordinal map: dataset frame IDs -> pred ordinal index.
         # Used when the H5 uses sequential IDs (0, 1, 2, ...) instead of actual
-        # frame numbers. E.g. pseudo_planamono stores '0000','0001',... while the
+        # frame numbers. E.g. an H5 that stores '0000','0001',... while the
         # dataset has '000101','000106',... The i-th dataset frame maps to
         # pred index i regardless of the actual frame number.
         if self.dataset_root is not None:
@@ -183,7 +183,7 @@ class LazyH5SceneLoader:
             idx = self._frame_id_to_idx[frame_idx]
             return self._apply_postproc(self._current_planes[idx].copy(), target_shape)
 
-        # Fallback: ordinal map (for sequential-ID H5s like pseudo_planamono).
+        # Fallback: ordinal map (for sequential-ID H5s).
         # The i-th frame in the dataset corresponds to pred index i.
         if self._ordinal_map:
             ordinal = self._ordinal_map.get(frame_idx)

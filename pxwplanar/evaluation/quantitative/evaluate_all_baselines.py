@@ -63,7 +63,6 @@ INLIER_RATIO_GATE = 0.9
 # (residual cross-machine variance stays ~1e-3 at the tightest threshold).
 # 0 = reproducible (default); --ransac-seed -1 = legacy non-deterministic.
 RANSAC_SEED = 0
-# THRESHOLDS = (0.01, 0.02, 0.05)
 THRESHOLDS = (0.001, 0.005, 0.01)
 BATCH_SIZE = 32
 N_JOBS = min(16, os.cpu_count())

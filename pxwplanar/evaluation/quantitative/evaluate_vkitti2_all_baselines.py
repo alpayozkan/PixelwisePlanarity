@@ -11,7 +11,7 @@ proper camera intrinsics and poses.
 
 Usage:
     python evaluate_vkitti2_all_baselines.py                    # Evaluate all methods
-    python evaluate_vkitti2_all_baselines.py --methods ours zeroplane  # Evaluate specific methods
+    python evaluate_vkitti2_all_baselines.py --methods gt ours  # Evaluate specific methods
     python evaluate_vkitti2_all_baselines.py --aggregate-only   # Only aggregate existing results
 """
 
@@ -145,7 +145,7 @@ class LazyH5SceneLoader:
 
         # Build ordinal map: dataset frame IDs -> pred ordinal index.
         # Used when the H5 uses sequential IDs (0, 1, 2, ...) instead of actual
-        # frame numbers. E.g. pseudo_planamono stores '0000','0001',... while the
+        # frame numbers. E.g. an H5 that stores '0000','0001',... while the
         # dataset has '00000','00005','00010',... The i-th dataset frame maps to
         # pred index i regardless of the actual frame number.
         if self.dataset_root is not None:
@@ -198,7 +198,7 @@ class LazyH5SceneLoader:
             idx = self._frame_id_to_idx[lookup]
             return self._apply_postproc(self._current_planes[idx].copy(), target_shape)
 
-        # Fallback: ordinal map (for sequential-ID H5s like pseudo_planamono).
+        # Fallback: ordinal map (for sequential-ID H5s).
         # The i-th frame in the dataset corresponds to pred index i.
         if self._ordinal_map:
             ordinal = self._ordinal_map.get(frame_idx)

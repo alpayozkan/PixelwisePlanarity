@@ -174,8 +174,8 @@ def generate_comparison_video(
         # Render to video frame
         canvas = FigureCanvas(fig)
         canvas.draw()
-        fig_img = np.frombuffer(canvas.tostring_rgb(), dtype='uint8')
-        fig_img = fig_img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+        # buffer_rgba: canvas.tostring_rgb() was removed in matplotlib 3.10
+        fig_img = np.asarray(canvas.buffer_rgba())[..., :3].copy()
 
         plt.close(fig)
 

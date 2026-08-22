@@ -40,7 +40,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from MoGe.moge.model.v2 import MoGeModel
 from pxwplanar.shared.segmentation.plan2seg import compute_vectorized_planar_segments
-from pxwplanar.paths import (scannetpp_path, scannetpp_merged_path, inference_h5_root,
+from pxwplanar.paths import (scannetpp_path, scannetpp_rend_plane_path, inference_h5_root,
                    planarity_model_path, vis3d_root)
 
 
@@ -546,7 +546,8 @@ def main():
     p.add_argument("--rgb_root", type=str,
                    default=os.path.join(scannetpp_path, "data"))
     p.add_argument("--gt_root", type=str,
-                   default=scannetpp_merged_path)
+                   default=scannetpp_rend_plane_path,
+                   help="Root of the rendered plane GT (<scene>/rendered*.h5)")
     p.add_argument("--zeroplane_root", type=str,
                    default=os.path.join(inference_h5_root, "zeroplane_default_dust3r_released"))
     p.add_argument("--checkpoint", type=str,
@@ -559,7 +560,7 @@ def main():
     p.add_argument("--width", type=int, default=640)
 
     # Segmentation
-    p.add_argument("--planarity_threshold", type=float, default=0.5)
+    p.add_argument("--planarity_threshold", type=float, default=0.3)
     p.add_argument("--normal_threshold_rad", type=float, default=0.087)
     p.add_argument("--depth_threshold", type=float, default=0.025)
     p.add_argument("--neighbor_match_count", type=int, default=8)
