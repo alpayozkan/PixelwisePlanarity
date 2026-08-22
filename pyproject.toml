@@ -2,10 +2,34 @@
 name = "pxwplanar"
 version = "0.1.0"
 description = "Pixel-wise planarity: planar surface detection and segmentation from single RGB images"
-requires-python = ">=3.8"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "Ahmetcan Yavuz" },
+    { name = "Alpay Ozkan" },
+]
+requires-python = ">=3.10"
+# Version pins live in env/environment.yml (the supported way to install is
+# env/create_env.sh); this list keeps a plain `pip install -e .` functional.
 dependencies = [
     "numpy",
+    "torch",
+    "torchvision",
+    "opencv-python",
+    "pillow",
+    "matplotlib",
+    "h5py",
+    "scipy",
+    "scikit-image",
     "open3d",
+    "trimesh",
+    "plyfile",
+    "pandas",
+    "pyyaml",
+    "tqdm",
+    "natsort",
+    "joblib",
+    "connected-components-3d",
 ]
 
 [build-system]
@@ -15,3 +39,11 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["pxwplanar*"]
+
+[tool.setuptools.package-data]
+pxwplanar = [
+    "gt_creation/configs/*.yml",
+    "gt_creation/scripts/*.sh",
+    "shared/datasets/*.csv",
+    "evaluation/qualitative/*.txt",
+]

@@ -12,6 +12,9 @@ logs/
 table_*.csv
 demo/outputs/
 
+# Default data root (datasets, checkpoints, eval outputs)
+/data/
+
 # Site-specific path overrides
 pxwplanar/paths_local.py
 

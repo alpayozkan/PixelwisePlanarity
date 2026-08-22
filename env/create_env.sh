@@ -37,10 +37,10 @@ echo "[2/3] Installing repo as editable library ..."
 conda run -n "$ENV_NAME" pip install -e "$REPO_ROOT" --no-deps
 
 echo "[3/3] Initializing MoGe submodule ..."
-if git -C "$REPO_ROOT" submodule update --init MoGe 2>/dev/null; then
+if git -C "$REPO_ROOT" submodule update --init MoGe; then
     echo "      MoGe submodule initialized"
 else
-    echo "[WARN] Could not initialize MoGe submodule (repository not accessible)."
+    echo "[WARN] Could not initialize MoGe submodule (see the git error above)."
     echo "       Inference and training will not run"
     echo "       until MoGe/ is populated. Evaluation (evaluate_all_baselines.py)"
     echo "       works without it."
