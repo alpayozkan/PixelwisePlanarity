@@ -21,6 +21,8 @@ dependencies = [
     "h5py",
     "scipy",
     "scikit-image",
+    "scikit-learn",
+    "imageio",
     "open3d",
     "trimesh",
     "plyfile",
@@ -30,6 +32,9 @@ dependencies = [
     "natsort",
     "joblib",
     "connected-components-3d",
+    # required by the MoGe submodule (imported by every inference entry point)
+    "huggingface_hub",
+    "utils3d @ git+https://github.com/EasternJournalist/utils3d.git@3fab839f0be9931dac7c8488eb0e1600c236e183",
 ]
 
 [build-system]

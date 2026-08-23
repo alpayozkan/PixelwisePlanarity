@@ -1,9 +1,10 @@
+# All conda pins below are conda-forge builds; the anaconda.com default
+# channels are excluded (modern conda gates them behind a ToS prompt that
+# fails in non-interactive installs).
 name: pxwplanar
 channels:
   - https://conda.anaconda.org/conda-forge
-  - https://repo.anaconda.com/pkgs/r
-  - https://repo.anaconda.com/pkgs/main
-  - defaults
+  - nodefaults
 dependencies:
   - _libgcc_mutex=0.1
   - _openmp_mutex=4.5
