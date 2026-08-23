@@ -60,6 +60,9 @@ def process_scene(scene_id, image_list, inference_model, output_dir, args):
         # Resize to original resolution
         depth = cv2.resize(depth.astype(np.float32), (W, H), interpolation=cv2.INTER_LINEAR)
         normal = cv2.resize(normal.astype(np.float32), (W, H), interpolation=cv2.INTER_LINEAR)
+        # bilinear resize denormalizes unit vectors; renormalize before the
+        # normal-similarity gate (which assumes unit normals)
+        normal /= np.linalg.norm(normal, axis=-1, keepdims=True) + 1e-8
         planarity = cv2.resize(planarity.astype(np.float32), (W, H), interpolation=cv2.INTER_LINEAR)
 
         # Create planarity mask
@@ -145,7 +148,8 @@ def main():
     # Processing parameters
     parser.add_argument("--frame_skip", type=int, default=50,
                         help="Process every Nth frame (default: 50)")
-    parser.add_argument("--num_tokens", type=int, default=1024)
+    parser.add_argument("--num_tokens", type=int, default=1600,
+                        help="MoGe token budget (default 1600, matching the benchmark)")
     parser.add_argument("--max_scenes", type=int, default=None,
                         help="Limit number of scenes to process")
 

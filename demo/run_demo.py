@@ -143,6 +143,12 @@ def main():
     if not os.path.isfile(args.model_path):
         sys.exit(f"Checkpoint not found: {args.model_path}")
 
+    if args.device.startswith("cuda"):
+        import torch
+        if not torch.cuda.is_available():
+            print("[WARN] CUDA not available — falling back to --device cpu")
+            args.device = "cpu"
+
     print(f"Loading 4-head checkpoint {args.model_path} ...")
     model = MoGePlanarityInference(args.model_path, device=args.device)
 

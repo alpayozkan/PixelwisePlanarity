@@ -619,6 +619,13 @@ def main():
             )
         except Exception as e:
             tqdm.write(f"[fail] {sid}: {e}")
+            # clean up the partial temp file so it does not accumulate
+            tmp = os.path.join(args.output_root, sid, "moge_signals.h5.tmp")
+            if os.path.isfile(tmp):
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
             continue
         if n == -1:
             skipped += 1
@@ -630,6 +637,11 @@ def main():
 
     print(f"\nDone. Wrote {total_frames} frames "
           f"({skipped} scene(s) skipped) to {args.output_root}")
+    # A run that wrote nothing and skipped nothing found no data at all —
+    # fail loudly instead of exiting 0 (matters in SLURM arrays)
+    if total_frames == 0 and skipped == 0:
+        sys.exit("[ERROR] 0 frames written and 0 scenes skipped — "
+                 "check the dataset root and --scenes list")
 
 
 if __name__ == "__main__":

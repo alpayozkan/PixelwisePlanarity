@@ -6,8 +6,10 @@ repo readme (`save_moge_signals_planarity.py`, `segment_signals_to_planes.py`).
 
 Both scripts carry commented `#SBATCH` directives — uncomment, `mkdir -p logs`,
 `sbatch <script> [args]`. The checkpoint default resolves from `paths.py`
-(`planarity_model_path`); MoGe base weights come from the standard HuggingFace
-cache (`~/.cache/huggingface`; override via `HF_HOME`).
+(`planarity_model_path`) — since it is the first positional argument, pass an
+empty string (`""`) to use the default while still supplying the later
+arguments. MoGe base weights come from the standard HuggingFace cache
+(`~/.cache/huggingface`; override via `HF_HOME`).
 
 ## 1. Planarity inference
 

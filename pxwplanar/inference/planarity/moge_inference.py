@@ -295,7 +295,10 @@ class MoGePlanarityInference:
           - normal: (H, W, 3) float32, unit normals (0 where masked)
           - points: (H, W, 3) float32, metric 3D points (0 where masked)
           - mask: (H, W) bool, valid pixel mask
-          - intrinsics: (3, 3) float32, recovered camera intrinsics
+          - intrinsics: (3, 3) float32, recovered camera intrinsics in MoGe's
+            NORMALIZED convention (cx = cy = 0.5, focals in units of image
+            width/height — multiply row 0 by W and row 1 by H for pixel-space K;
+            note save_moge_signals_planarity.py stores pixel-space K instead)
         """
         with torch.no_grad():
             image_tensor, original_size = self.preprocess_image(image_path)

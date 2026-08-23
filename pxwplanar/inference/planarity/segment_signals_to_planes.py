@@ -78,12 +78,20 @@ def segment_scene(sig_h5_path, out_h5_path, device):
             if hasattr(labels, "cpu"):
                 labels = labels.cpu().numpy()
             labels, _ = remap_labels(labels)
+            if labels.max() >= 65536:
+                raise ValueError(f"{sig_h5_path} frame {i}: {labels.max()} labels "
+                                 "exceed the uint16 planes schema")
             planes[i] = labels.astype(np.uint16)
 
+    # Write to a temp name and rename on success so a killed run cannot leave a
+    # truncated planes.h5 that a rerun skips as complete (same pattern as the
+    # signals exporter).
     os.makedirs(os.path.dirname(out_h5_path), exist_ok=True)
-    with h5py.File(out_h5_path, "w") as f:
+    tmp_h5 = out_h5_path + ".tmp"
+    with h5py.File(tmp_h5, "w") as f:
         f.create_dataset("planes", data=planes, compression="gzip", compression_opts=4)
         f.create_dataset("frame_ids", data=np.array(frame_ids, dtype="S"))
+    os.replace(tmp_h5, out_h5_path)
     return N
 
 
@@ -99,6 +107,15 @@ def main():
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--overwrite", action="store_true")
     args = ap.parse_args()
+
+    if args.num_parts < 1 or not (0 <= args.part_id < args.num_parts):
+        ap.error(f"--part_id {args.part_id} / --num_parts {args.num_parts}: "
+                 "need num_parts >= 1 and 0 <= part_id < num_parts")
+    if args.device.startswith("cuda"):
+        import torch
+        if not torch.cuda.is_available():
+            print("[WARN] CUDA not available — falling back to --device cpu")
+            args.device = "cpu"
 
     scenes = sorted([
         d for d in os.listdir(args.input_root)

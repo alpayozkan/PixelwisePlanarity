@@ -61,8 +61,8 @@ Examples:
                         help="Threshold for binary mask (default: 0.5)")
 
     # Processing options
-    parser.add_argument("--num_tokens", type=int, default=1024,
-                        help="Number of tokens for the model (default: 1024)")
+    parser.add_argument("--num_tokens", type=int, default=1600,
+                        help="Number of tokens for the model (default 1600, matching the benchmark)")
     parser.add_argument("--extensions", type=str, default="jpg,jpeg,png",
                         help="Comma-separated image extensions to process (default: jpg,jpeg,png)")
 
