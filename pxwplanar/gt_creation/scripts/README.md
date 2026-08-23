@@ -70,7 +70,7 @@ Visualization videos from the rendered plane H5s.
 ```bash
 ./hypersim_render_planes.sh <scene_list> [params_root] [plane_root] [output_root] \
                             [frame_skip] [python_script] [metadata_csv]
-# python_script default: ../hypersim/rendering.py (repo-relative)
+# python_script default: ../hypersim/rendering.py (relative to the scripts dir); frame_skip default: 1
 # metadata_csv  default: pxwplanar/shared/datasets/metadata_camera_parameters.csv
 ```
 
@@ -86,8 +86,10 @@ Outputs per scene: `rendered_planes_<cam>.h5` (one per camera).
 
 ## SYNTHIA / VKITTI2 (outdoor)
 
-Plane extraction from depth + semantic segmentation; scene lists and roots come
-from the dataset config (`output_root` is read from the YAML):
+Plane extraction from depth + semantic segmentation. `output_root` is read from
+the dataset YAML; the raw input roots come from `paths.py` (SYNTHIA:
+`synthia_raw_path`, overridable via `SYNTHIA_RAW` or `--train_root`/`--test_root`).
+Both scripts also accept `--config` and `--test_run` (process a small subset):
 
 ```bash
 ./synthia_plane_extraction.sh [--config ../configs/synthia_default.yml]

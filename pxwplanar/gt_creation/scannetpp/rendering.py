@@ -53,7 +53,7 @@ if __name__ == "__main__":
     parser.add_argument("--input_root", type=str, required=True,
                         help="Root directory of ScanNet++ dataset")
     parser.add_argument("--plane_root", type=str, required=True,
-                        help="Root directory containing extracted planes (planes_v2.ply)")
+                        help="Root directory containing extracted planes (planes_v2.ply, falling back to planes.ply)")
     parser.add_argument("--output_root", type=str, required=True,
                         help="Root directory to save rendered plane images")
     parser.add_argument("--frame_skip", type=int, default=25,

@@ -302,8 +302,9 @@ def raycast_semantic_face_labels_mcam(sem_mesh, face_labels, M_cam_from_uv,
                                       R_world_from_cam, cam_position, width, height):
     """Raycast per-face semantic labels using Hypersim's M_cam_from_uv convention.
 
-    This matches V-Ray's pixel sampling exactly, avoiding the ~0.5px error
-    of the pinhole-from-M_proj approach. See hypersim_intrinsics_bug.md for details.
+    This matches V-Ray's pixel sampling exactly, avoiding the ~0.5px error of
+    approximating a pinhole K from Hypersim's M_proj (whose principal point is
+    not exactly centered), by driving the rays directly from M_cam_from_uv.
 
     Args:
         sem_mesh: Open3D legacy TriangleMesh with plane geometry.

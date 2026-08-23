@@ -23,6 +23,8 @@ H5-based evaluation suite. Includes the full ground-truth generation pipeline (s
 ## Setup
 
 ```bash
+git clone https://github.com/alpayozkan/PixelwisePlanarity.git
+cd PixelwisePlanarity
 bash env/create_env.sh    # conda env `pxwplanar` from env/environment.yml,
                           # `pip install -e .`, MoGe submodule init
 conda activate pxwplanar
@@ -106,10 +108,12 @@ RGB → MoGe 4-head model → planarity, metric depth, normals, mask     (pxwpla
 │   │   └── scripts/          # SLURM batch scripts (README in each scripts/ dir)
 │   ├── inference/        #   RGB → signals → plane labels
 │   │   ├── planarity/        # MoGe wrapper, signal export, segmentation from H5
-│   │   └── segmentation/     # On-the-fly prediction pipeline
+│   │   ├── segmentation/     # On-the-fly prediction pipeline
+│   │   └── scripts/          # Shell wrappers (see its README)
 │   ├── evaluation/       #   Metrics + visualization
 │   │   ├── quantitative/     # evaluate_all_baselines.py + outdoor variants
-│   │   └── qualitative/      # Comparison videos, 3D visualization
+│   │   ├── qualitative/      # Comparison videos, 3D visualization
+│   │   └── scripts/          # Shell wrappers (see its README)
 │   └── paths.py          #   ALL dataset/checkpoint/output paths — configure before running
 ├── demo/                 # Example frames + run_demo.py + make_gif.py
 ├── splits/               # Train/val/test scene lists per dataset
@@ -121,6 +125,17 @@ RGB → MoGe 4-head model → planarity, metric depth, normals, mask     (pxwpla
 
 ## Evaluation
 
+**Data prerequisites.** The ScanNet++ benchmark needs (a) the
+[ScanNet++](https://kaldir.vc.in.tum.de/scannetpp/) dataset (gated; per-scene
+`iphone/rgb/` frames and `iphone/pose_intrinsic_imu.json` under
+`paths.scannetpp_path`), and (b) the rendered plane GT
+(`<scene>/rendered.h5` + `rendered_depth.h5` under
+`paths.scannetpp_rend_plane_path`), which is **not distributed** — generate it
+with the Ground-truth generation section below (it additionally needs the
+ScanNet++ semantic meshes; the renderers read the raw data from
+`paths.scannetppv2_path`, which may point to the same download as
+`scannetpp_path`).
+
 The benchmark runs in three H5-based stages:
 
 ```bash
@@ -128,10 +143,14 @@ The benchmark runs in three H5-based stages:
 python pxwplanar/inference/planarity/save_moge_signals_planarity.py \
     --dataset scannetpp --scenes splits/scannetpp/test.txt \
     --model_path <checkpoint.pt> --output_root <signals_root> \
-    --frame_step 25 --batch_size 8 --num_tokens 1600
-# --dataset also accepts nyuv2 / sevenscenes (ZeroPlane "_d2" NPZ) and hypersim
+    --resolution 1440x1920 --frame_step 25 --batch_size 8 --num_tokens 1600
+# --resolution 1440x1920 reproduces the released "ours" configuration
+# (the flag defaults to 480x640). --dataset also accepts hypersim, and
+# nyuv2 / sevenscenes in the NPZ format of the ZeroPlane (CVPR 2025) release.
 
 # 2. Signals → plane labels (one planes.h5 per scene); shardable across SLURM jobs
+# NOTE: point --output_root at paths.ours_planes_root — that is where stage 3
+# looks for the "ours" predictions
 python pxwplanar/inference/planarity/segment_signals_to_planes.py \
     --input_root <signals_root> --output_root <planes_root> \
     [--part_id 0 --num_parts 15]
@@ -148,9 +167,9 @@ checkpoint, read from `paths.ours_planes_root`). Add new baselines to the dict a
 there. Outdoor variants: `evaluate_synthia_all_baselines.py`, `evaluate_vkitti2_all_baselines.py`.
 
 Metrics: **2D segmentation** — Segmentation Covering (SC), Rand Index (RI), Variation of
-Information (VOI); **3D geometry** — precision/recall @ distance thresholds (RANSAC-fitted
-planes vs GT); **depth** — REL, RMSE, δ < 1.25ⁿ; **normals** — mean angle error,
-<11.25°/22.5°/30°.
+Information (VOI); **3D geometry** — precision/recall @ distance thresholds 1/5/10 mm
+(RANSAC-fitted planes vs GT); **binary planarity** — accuracy/precision/recall/F1/IoU of
+the planar-vs-non-planar mask (`bp_*` columns).
 
 ### Canonical segmentation parameters
 
@@ -177,6 +196,9 @@ raycast to 2D (HDF5).
 
 <details>
 <summary><b>Commands and parameters</b></summary>
+
+The shipped YAML configs carry `/path/to/...` placeholders for `input_root`/`output_root` —
+edit them (or pass `--input_root`/`--output_root`) before running.
 
 From `pxwplanar/gt_creation/<dataset>/` — mesh datasets take a positional scene id:
 
@@ -206,7 +228,9 @@ Batch SLURM scripts (arguments documented in `pxwplanar/gt_creation/scripts/READ
 ```bash
 bash pxwplanar/gt_creation/scripts/scannetpp_plane_extraction.sh <scene_list> [config]
 bash pxwplanar/gt_creation/scripts/scannetpp_render_planes.sh <scene_list>   # -> rendered.h5 per scene
-# hypersim_*, synthia_*, vkitti2_* analogues; hypersim_raycast_depth.sh for raycast z-depth
+bash pxwplanar/gt_creation/scripts/scannetpp_render_depth.sh <scene_list>    # -> rendered_depth.h5 per scene
+# hypersim_* analogues plus hypersim_raycast_depth.sh; the outdoor datasets
+# (synthia_*, vkitti2_*) have extraction scripts only (they write their H5 directly)
 ```
 
 Key YAML parameters: `rg_theta_deg`/`rg_dist_m` (region growing), `min_faces_patch`/
@@ -256,8 +280,9 @@ list; all parts share one output root safely).
 
 ## Dependencies
 
-`numpy`, `opencv-python`, `torch`, `pandas`, `open3d`, `trimesh`, `plyfile`, `h5py`,
-`pyyaml`, `tqdm`, `natsort`, `matplotlib`, `scipy`, `scikit-image`, `joblib`,
+`numpy`, `opencv-python`, `torch`, `torchvision`, `pandas`, `open3d`, `trimesh`,
+`plyfile`, `h5py`, `pillow`, `pyyaml`, `tqdm`, `natsort`, `matplotlib`, `scipy`,
+`scikit-image`, `scikit-learn`, `imageio`, `joblib`,
 `connected-components-3d` (imported as `cc3d`), `utils3d` — pinned in `env/environment.yml`.
 
 ## Citation
