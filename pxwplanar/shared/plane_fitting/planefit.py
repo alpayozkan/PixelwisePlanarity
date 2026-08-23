@@ -460,7 +460,9 @@ def mark_planes_below_threshold_as_outliers(
     """
     # No fitted planes: the empty DataFrame has no columns to index
     if plane_df.empty:
-        return copy.deepcopy(results), plane_df.copy()
+        updated_df = plane_df.copy()
+        updated_df["is_below_threshold"] = pd.Series(dtype=bool)
+        return copy.deepcopy(results), updated_df
 
     updated_results = copy.deepcopy(results)
     updated_df = plane_df.copy()

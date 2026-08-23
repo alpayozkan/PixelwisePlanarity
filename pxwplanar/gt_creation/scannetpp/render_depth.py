@@ -12,8 +12,8 @@ writing one HDF5 per scene next to the plane labels from render_scene.py:
 This is the GT depth consumed by ScanNetPPPlaneDataset / the 3D metrics in
 evaluate_all_baselines.py (which read depth[idx] / 1000.0). Frame selection
 matches render_scene.py (same pose file iteration and frame_skip), and the
-depth is raycast with the same camera model as the plane labels
-(raycast_semantic_face_labels), so the two H5s stay pixel- and index-aligned.
+depth is raycast with the same camera model as the label raycast used by
+render_scene.py, so the two H5s stay pixel- and index-aligned.
 CPU-only — no GL context required.
 
 Usage:
@@ -92,8 +92,9 @@ def main():
         c2w = np.array(frame_data["aligned_pose"])
         depth = raycast_depth(mesh, K_scaled, (W, H), c2w)
 
-        # uint16 millimeters (the loaders read depth / 1000.0)
-        depth_mm = (depth * 1000.0).astype(np.uint16)
+        # uint16 millimeters (the loaders read depth / 1000.0); clip so hits
+        # beyond 65.535 m saturate instead of wrapping
+        depth_mm = np.clip(depth * 1000.0, 0, 65535).astype(np.uint16)
 
         frame_ids.append(frame_id)
         depth_list.append(depth_mm)

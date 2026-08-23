@@ -39,7 +39,7 @@ def generate_video_from_plane_h5(scene_id, h5_path, rgb_root, save_video_path, f
     """
     # === Load HDF5 ===
     with h5py.File(h5_path, "r") as f:
-        planes = f["rendered_planes"][:]  # (N, H, W), dtype=uint16
+        planes = f["planes"][:]  # (N, H, W), dtype=uint16
         frame_ids = [fid.decode("utf-8") for fid in f["frame_ids"][:]]  # (N,)
 
     print(f"[INFO] Loaded {len(planes)} frames from {scene_id}")
