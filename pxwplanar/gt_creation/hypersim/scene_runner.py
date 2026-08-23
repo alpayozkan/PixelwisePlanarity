@@ -142,11 +142,11 @@ def build_args(scene_id, config_path, input_root=None, output_root=None):
     else:
         cfg.pop("output_root", None)
 
-    # Scene-specific paths
+    # Scene-specific paths (out_dir is created after input validation below,
+    # so a placeholder input_root fails with a clear message)
     scene_dir = os.path.join(input_root, scene_id)
     mesh_dir = os.path.join(scene_dir, "_detail", "mesh")
     out_dir = os.path.join(output_root, scene_id)
-    os.makedirs(out_dir, exist_ok=True)
 
     # Expected Hypersim HDF5 files
     h5_verts = os.path.join(mesh_dir, "mesh_vertices.hdf5")
@@ -170,6 +170,8 @@ def build_args(scene_id, config_path, input_root=None, output_root=None):
         print(f"   - mesh_faces_gi.hdf5")
         print(f"   - metadata_groups.csv")
         sys.exit(1)
+
+    os.makedirs(out_dir, exist_ok=True)
 
     # Set mesh to empty string (Hypersim uses HDF5, not PLY)
     cfg["mesh"] = ""

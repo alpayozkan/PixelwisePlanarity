@@ -107,17 +107,19 @@ def build_args(scene_id, config_path, input_root, output_root):
     # Scene-specific paths
     root_dir = os.path.join(input_root, scene_id, "scans")
     out_dir = os.path.join(output_root, scene_id)
-    os.makedirs(out_dir, exist_ok=True)
 
     mesh_path = os.path.join(root_dir, "mesh_aligned_0.05_semantic.ply")
     segments_json_path = os.path.join(root_dir, "segments.json")
     segments_anno_path = os.path.join(root_dir, "segments_anno.json")
 
-    # Validate inputs
+    # Validate inputs before creating anything (a bad input_root — e.g. the
+    # config placeholder — should fail with this message, not a makedirs error)
     for f in [mesh_path, segments_json_path, segments_anno_path]:
         if not os.path.isfile(f):
             print(f"[WARN] Missing file: {f}")
             sys.exit(1)
+
+    os.makedirs(out_dir, exist_ok=True)
 
     # Add scene-specific paths to config
     cfg.update({
