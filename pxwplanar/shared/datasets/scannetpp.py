@@ -90,6 +90,22 @@ class ScanNetPPPlaneDataset(Dataset):
                 frame_ids = natsorted(pose_data.keys())
                 print(f"[INFO] Using {len(frame_ids)} frame_ids from pose JSON for {scene_id}")
 
+            # rendered_depth.h5 is indexed positionally against rendered.h5's
+            # frame order below — verify the two files were rendered over the
+            # same frames (e.g. same --frame_skip), else depth pairs with the
+            # wrong frame and the 3D metrics silently degrade.
+            if require_gt and frame_ids is not None and os.path.exists(depth_h5):
+                try:
+                    with h5py.File(depth_h5, "r") as f:
+                        depth_fids = [fid.decode("utf-8") for fid in f["frame_ids"][:]]
+                    if depth_fids != frame_ids:
+                        print(f"[SKIP] {scene_id}: rendered_depth.h5 frame_ids do not "
+                              f"match rendered.h5 ({len(depth_fids)} vs {len(frame_ids)} "
+                              "frames) — re-render with the same frame_skip")
+                        continue
+                except KeyError:
+                    pass  # legacy depth H5 without frame_ids: keep positional indexing
+
             scene_frame_count = 0
             for idx, fid in enumerate(frame_ids):
                 rgb_path = os.path.join(rgb_dir, f"{fid}.jpg")

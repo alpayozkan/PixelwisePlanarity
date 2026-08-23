@@ -94,7 +94,7 @@ def main():
 
         # uint16 millimeters (the loaders read depth / 1000.0); clip so hits
         # beyond 65.535 m saturate instead of wrapping
-        depth_mm = np.clip(depth * 1000.0, 0, 65535).astype(np.uint16)
+        depth_mm = np.clip(np.rint(depth * 1000.0), 0, 65535).astype(np.uint16)
 
         frame_ids.append(frame_id)
         depth_list.append(depth_mm)

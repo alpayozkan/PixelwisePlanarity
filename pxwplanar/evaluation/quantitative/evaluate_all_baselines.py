@@ -266,7 +266,7 @@ def evaluate_method(
 
     # Evaluation wrapper (uses threshold-consistent RANSAC).
     # Capture RANSAC_SEED into a closure local so the value (incl. any
-    # --ransac_seed override) travels to loky workers — workers re-import the
+    # --ransac-seed override) travels to loky workers — workers re-import the
     # module and would otherwise see the unmodified module-level default.
     _ransac_seed = RANSAC_SEED
 
@@ -395,6 +395,15 @@ def _merge_shards(exp_dir: Path):
     shard_files = sorted(glob_mod.glob(str(exp_dir / "results_shard_*.csv")))
     if not shard_files:
         return False
+
+    # Do not let stale shards from an older sharded run clobber a newer full run
+    results_csv = exp_dir / "results.csv"
+    if results_csv.exists():
+        newest_shard = max(os.path.getmtime(f) for f in shard_files)
+        if os.path.getmtime(results_csv) > newest_shard:
+            print(f"[MERGE] Skipping {len(shard_files)} shard files older than "
+                  f"results.csv in {exp_dir} (delete them to force a re-merge)")
+            return False
 
     print(f"[MERGE] Found {len(shard_files)} shard files in {exp_dir}")
     dfs = [pd.read_csv(f) for f in shard_files]
@@ -630,10 +639,11 @@ def main():
             pin_memory=True
         )
 
-        # Derive shard_id from scene_start (for distributed eval)
+        # Derive shard_id for distributed eval — any scene-range slicing makes
+        # this a partial run that must not overwrite the full results.csv
         shard_id = None
-        if args.scene_start is not None:
-            shard_id = args.scene_start
+        if args.scene_start is not None or args.scene_end is not None:
+            shard_id = args.scene_start or 0
 
         # Evaluate each method
         for method_key in methods_to_eval:
@@ -642,7 +652,7 @@ def main():
 
     # Aggregate results (merge shards if needed)
     # Skip aggregation when running as a shard job — let the dedicated --aggregate-only job handle it
-    if args.scene_start is None:
+    if args.scene_start is None and args.scene_end is None:
         aggregate_results(methods_to_eval, Path(args.output_dir))
 
     print("\n[DONE] All evaluations complete!")
