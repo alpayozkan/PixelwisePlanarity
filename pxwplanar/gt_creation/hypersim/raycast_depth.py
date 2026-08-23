@@ -154,7 +154,7 @@ def raycast_depth(rc_scene, M_cam_from_uv, R_world_from_cam,
     )
 
     t_hit = ans['t_hit'].numpy().reshape(H, W)
-    hit_mask = t_hit != np.inf
+    hit_mask = np.isfinite(t_hit)
 
     depth = np.zeros((H, W), dtype=np.float32)
     if depth_type == "euclidean":

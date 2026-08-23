@@ -178,6 +178,10 @@ if __name__ == "__main__":
             planes_list.append(semantic_img)
 
         # === Save HDF5 for this camera ===
+        if not planes_list:
+            print(f"[WARN] No frames rendered for {scene_id}/{cam_name} — skipping H5")
+            continue
+
         h5_save_dir = os.path.join(output_root, scene_id)
         os.makedirs(h5_save_dir, exist_ok=True)
         h5_save_path = os.path.join(h5_save_dir, f"rendered_planes_{cam_name}.h5")

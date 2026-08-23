@@ -43,12 +43,11 @@ def cast_config_types(cfg):
         "last_enable", "last_rg_iters",
         "large_split_enable", "large_split_recursive",
         "large_split_verts", "large_split_max_parts", "large_split_min_faces",
-        "big_ransac_enable", "big_ransac_max_iters", "big_min_faces_patch",
+        "big_ransac_enable", "big_ransac_max_iters", "big_ransac_max_planes_per_comp", "big_min_faces_patch",
         "post_ransac_enable", "post_ransac_max_iters", "post_min_faces_patch",
         "post_ransac_max_planes_per_comp",
         "small_claim_enable", "small_claim_require_adjacent", "small_claim_refit",
-        "normalize_group_names", "h5_palette_seed", "generate_legend_if_missing",
-        "save_area_hist", "area_hist_bins"
+        "normalize_group_names", "h5_palette_seed", "generate_legend_if_missing"
     ]
 
     # --- Float parameters ---
@@ -80,7 +79,7 @@ def cast_config_types(cfg):
     str_keys = [
         "backend", "rg_gate_mode", "gate_mode",
         "policy_single_plane_labels", "large_split_mode",
-        "out_json_name", "out_ply_name", "area_hist_png_name"
+        "out_json_name", "out_ply_name"
     ]
 
     # --- List parameters ---

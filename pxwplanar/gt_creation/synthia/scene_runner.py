@@ -254,7 +254,7 @@ def process_scene(args):
         json.dump(all_planes_json, f, indent=2)
 
     # Print summary
-    total_planes = sum(pm.max() for pm in planes_list)
+    total_planes = sum(int(pm.max()) for pm in planes_list)
     print(f"[DONE] {scene_name}: {len(planes_list)} frames, "
           f"avg {total_planes / len(planes_list):.1f} planes/frame")
 

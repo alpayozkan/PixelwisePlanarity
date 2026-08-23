@@ -165,7 +165,12 @@ class VKITTI2PlaneDataset(Dataset):
             sem = torch.from_numpy(sem.astype(np.int64)).unsqueeze(0)  # (1, H, W)
 
             # --- Camera-to-world pose ---
-            c2w = f["c2w"][frame_idx]  # (4, 4) float32
+            # identity fallback: scene_data.h5 omits c2w when the extraction
+            # ran without extrinsic.txt (per-frame fitting is pose-invariant)
+            if "c2w" in f:
+                c2w = f["c2w"][frame_idx]  # (4, 4) float32
+            else:
+                c2w = np.eye(4, dtype=np.float32)
             c2w = torch.from_numpy(c2w.astype(np.float32))
 
         # Resize if target dimensions specified

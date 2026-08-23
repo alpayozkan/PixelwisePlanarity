@@ -111,6 +111,7 @@ tier_big_hi_m2: 60.0
 # === Big-RANSAC ===
 big_ransac_enable: 1
 big_ransac_max_iters: 300
+big_ransac_max_planes_per_comp: 16
 big_ransac_dist_m: 0.010
 big_ransac_normal_deg: 10.0
 big_ransac_min_inlier_frac: 0.50

@@ -1094,7 +1094,7 @@ def _write_ply_with_face_pid_binary(vertices, faces, face_pid, labels_f, out_pat
                 header.append(f'comment plane_id {pid_i} label_int {lab} label_raw "{labraw}" '
                               f'n {n[0]} {n[1]} {n[2]} d {d} area {area} color {col[0]} {col[1]} {col[2]}')
         header.append("end_header\n")
-        f.write(("\n".join(header)).encode("ascii"))
+        f.write(("\n".join(header)).encode("ascii", errors="replace"))
 
         f.write(V.astype("<f4").tobytes(order="C"))
         pack_u8 = struct.Struct("<B"); pack_i3 = struct.Struct("<iii"); pack_i  = struct.Struct("<i")
@@ -1825,12 +1825,17 @@ def main(args):
         print(f"[MESH] Labels={len(label_stats)}")
 
     # Policies
-    def parse_label_list(expr: str, int2raw: Dict[int, str]) -> set:
+    def parse_label_list(expr, int2raw: Dict[int, str]) -> set:
+        # Accepts a comma/semicolon-separated string or a list (YAML configs
+        # deliver lists via cast_config_types)
         if not expr: return set()
-        tokens = []
-        for part in expr.replace(";", ",").split(","):
-            t = part.strip()
-            if t: tokens.append(t)
+        if isinstance(expr, (list, tuple)):
+            tokens = [str(t).strip() for t in expr if str(t).strip()]
+        else:
+            tokens = []
+            for part in expr.replace(";", ",").split(","):
+                t = part.strip()
+                if t: tokens.append(t)
         if not tokens: return set()
         lower_map = {i: (str(name).lower()) for i, name in int2raw.items()}
         out = set()

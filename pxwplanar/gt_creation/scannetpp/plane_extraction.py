@@ -529,7 +529,7 @@ def _write_ply_with_face_pid_binary(vertices, faces, face_pid, labels_f, out_pat
                 header.append(f'comment plane_id {pid_i} label_int {lab} label_raw "{labraw}" '
                               f'n {n[0]} {n[1]} {n[2]} d {d} area {area} color {col[0]} {col[1]} {col[2]}')
         header.append("end_header\n")
-        f.write(("\n".join(header)).encode("ascii"))
+        f.write(("\n".join(header)).encode("ascii", errors="replace"))
 
         f.write(V.astype("<f4").tobytes(order="C"))
         pack_u8 = struct.Struct("<B")
@@ -569,13 +569,19 @@ def save_planes_mesh_and_json(mesh, face_pid, labels_f, planes_meta, out_dir,
     print(f"[OUT] {ply_name} (binary)")
 
 # -------------------- utilities: label parsing + stats --------------------
-def parse_label_list(expr: str, int2raw: Dict[int, str]) -> set:
-    """Parse a comma/semicolon-separated list of label ids or raw names → set of int ids."""
+def parse_label_list(expr, int2raw: Dict[int, str]) -> set:
+    """Parse label ids/raw names into a set of int ids.
+
+    Accepts a comma/semicolon-separated string or a list (the YAML configs
+    deliver lists via cast_config_types)."""
     if not expr: return set()
-    tokens = []
-    for part in expr.replace(";", ",").split(","):
-        t = part.strip()
-        if t: tokens.append(t)
+    if isinstance(expr, (list, tuple)):
+        tokens = [str(t).strip() for t in expr if str(t).strip()]
+    else:
+        tokens = []
+        for part in expr.replace(";", ",").split(","):
+            t = part.strip()
+            if t: tokens.append(t)
     if not tokens: return set()
     lower_map = {i: (str(name).lower()) for i, name in int2raw.items()}
     out = set()
@@ -1420,7 +1426,7 @@ def main():
         ))
 
     # ----- LAST STAGE (relaxed RG within label) -----
-    if args.last_enable and (np.max(face_pid) >= 0):
+    if args.last_enable and face_pid.size and (np.max(face_pid) >= 0):
         face_pid, planes_meta = last_stage_relaxed_rg(
             face_pid, planes_meta,
             F, V, FA, labels_f,
@@ -1745,7 +1751,7 @@ def run(args):
         ))
 
     # ----- LAST STAGE (relaxed RG within label) -----
-    if args.last_enable and (np.max(face_pid) >= 0):
+    if args.last_enable and face_pid.size and (np.max(face_pid) >= 0):
         face_pid, planes_meta = last_stage_relaxed_rg(
             face_pid, planes_meta,
             F, V, FA, labels_f,
