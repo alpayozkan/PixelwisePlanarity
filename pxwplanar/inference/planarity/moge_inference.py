@@ -30,13 +30,44 @@ sys.path.insert(0, str(project_root))
 from MoGe.moge.model.v2 import MoGeModel
 from MoGe.moge.model.v2 import normalized_view_plane_uv
 
+# Released 4-head checkpoint on the Hugging Face Hub (MoGe-native format).
+DEFAULT_HF_REPO = "alpayozkan/pxwplanar-moge2-planarity"
+
+
 class MoGePlanarityInference:
     """Class for performing inference with trained MoGe 4-head planarity model."""
+
+    @classmethod
+    def from_pretrained(cls, pretrained_model_name_or_path=DEFAULT_HF_REPO,
+                        device='cuda', **hf_kwargs):
+        """Load from a local checkpoint path or a Hugging Face repo id.
+
+        Args:
+            pretrained_model_name_or_path: local .pt path (either format
+                accepted by ``__init__``) or a HF repo id containing a
+                MoGe-native ``model.pt`` (default: the released checkpoint).
+            device: Device for inference.
+            hf_kwargs: forwarded to ``hf_hub_download`` for repo ids.
+        """
+        if os.path.exists(pretrained_model_name_or_path):
+            model_path = pretrained_model_name_or_path
+        else:
+            from huggingface_hub import hf_hub_download
+            model_path = hf_hub_download(repo_id=pretrained_model_name_or_path,
+                                         repo_type="model", filename="model.pt",
+                                         **hf_kwargs)
+        return cls(model_path, device=device)
 
     def __init__(self, model_path, device='cuda'):
         """
         Args:
-            model_path: Path to trained model checkpoint (.pt file)
+            model_path: Path to a model checkpoint (.pt file), in either
+                MoGe's native format ({'model_config', 'model'} — the HF
+                release, built by
+                export_hf_checkpoint.py in this directory) or the
+                legacy training format ({'model_state_dict', ...}, which
+                additionally downloads the MoGe-2 base to rebuild the
+                module tree).
             device: Device for inference
         """
         self.device = torch.device(device if torch.cuda.is_available() else 'cpu')
@@ -44,16 +75,19 @@ class MoGePlanarityInference:
 
         # Load the trained model
         print(f"Loading model from: {model_path}")
-        # weights_only=False: torch >= 2.6 defaults to weights_only=True, which
-        # rejects the non-tensor objects stored in the training checkpoint
-        checkpoint = torch.load(model_path, map_location=self.device, weights_only=False)
+        checkpoint = torch.load(model_path, map_location=self.device, weights_only=True)
 
-        # Initialize model - need to use the same base model that was used for training
-        self.model = MoGeModel.from_pretrained("Ruicheng/moge-2-vitl-normal").to(self.device)
-        self._add_planarity_head()
-
-        # Load the state dict (this should include the planarity head)
-        self.model.load_state_dict(checkpoint['model_state_dict'])
+        if 'model_config' in checkpoint:
+            # Native MoGe format: config travels with the weights, so the
+            # 4-head module tree (planarity_head included) builds directly.
+            self.model = MoGeModel(**checkpoint['model_config']).to(self.device)
+            self.model.load_state_dict(checkpoint['model'])
+        else:
+            # Legacy training checkpoint: rebuild the module tree from the
+            # MoGe-2 base weights and graft the planarity head onto it.
+            self.model = MoGeModel.from_pretrained("Ruicheng/moge-2-vitl-normal").to(self.device)
+            self._add_planarity_head()
+            self.model.load_state_dict(checkpoint['model_state_dict'])
         self.model = self.model.float()
         self.model = self.model.to(self.device, dtype=torch.float32)
         self.model.eval()

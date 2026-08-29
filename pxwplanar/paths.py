@@ -45,6 +45,9 @@ synthia_raw_path = os.path.join(data_root, 'synthia', 'raw')
 # ============ Models / checkpoints ============
 # Trained MoGe 4-head planarity checkpoint (HIRES, 4 datasets, epoch 1 — production)
 planarity_model_path = os.path.join(data_root, 'checkpoints', 'moge_HIRES_4datasets', 'model_epoch1.pt')
+# Hugging Face release of the same checkpoint (MoGe-native format); entry
+# points fall back to it when planarity_model_path does not exist locally.
+planarity_hf_repo = 'alpayozkan/pxwplanar-moge2-planarity'
 # MoGe base weights are pulled from HuggingFace into the standard cache
 # (~/.cache/huggingface; override via HF_HOME).
 

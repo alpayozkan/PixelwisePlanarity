@@ -1,8 +1,9 @@
 <h1 align="center">Pixel-wise Planarity for High-Precision<br>Monocular Plane Segmentation</h1>
 
 <p align="center">
-  Ahmetcan Yavuz &middot; Alpay Ozkan &middot; R&eacute;mi Pautrat &middot; Shaohui Liu &middot; Marc Pollefeys
+  Ahmetcan Yavuz<sup>*</sup> &middot; Alpay Ozkan<sup>*</sup> &middot; R&eacute;mi Pautrat &middot; Shaohui Liu &middot; Marc Pollefeys
 </p>
+<p align="center"><sub><sup>*</sup> equal contribution</sub></p>
 
 <p align="center"><b>ECCV 2026</b></p>
 
@@ -37,13 +38,16 @@ checkpoint path, and output root resolves through it from a single data root —
 
 ### Pretrained checkpoint
 
-Download the 4-head planarity checkpoint (`model_epoch1.pt`) from
+The 4-head planarity checkpoint is released on the Hugging Face Hub as
+[`alpayozkan/pxwplanar-moge2-planarity`](https://huggingface.co/alpayozkan/pxwplanar-moge2-planarity)
+and is downloaded automatically (into the standard HF cache) whenever the
+local checkpoint configured in `pxwplanar/paths.py` (`planarity_model_path`)
+is absent — a fresh clone needs no checkpoint setup. `--model_path` accepts a
+local `.pt` or a HF repo id. The same weights are mirrored on
 [Google Drive](https://drive.google.com/drive/folders/1SqsAtNbKMO6YPAQPFuzwn-Y2hhEufF83?usp=sharing)
-and place it at the location configured in `pxwplanar/paths.py`
-(`planarity_model_path`, default:
-`<data_root>/checkpoints/moge_HIRES_4datasets/model_epoch1.pt`) — or pass
-`--model_path` to the scripts directly. The MoGe-2 base weights
-(`Ruicheng/moge-2-vitl-normal`) are pulled from HuggingFace automatically.
+as `model_epoch1.pt` (legacy training format; also loadable — it additionally
+pulls the MoGe-2 base weights `Ruicheng/moge-2-vitl-normal` to rebuild the
+module tree).
 
 ## Demo
 
@@ -57,9 +61,10 @@ plane segmentation with the canonical parameters) and writes
 `demo/outputs/<frame>/{depth,normal,planarity,planeseg}.png` plus a combined
 montage (`combined.png` — RGB | depth | normal | planarity | planes,
 top-20 planes shown). The checkpoint defaults from `pxwplanar/paths.py`
-(`planarity_model_path`); pass `--model_path` to override. MoGe base weights
-are pulled from HuggingFace into the standard cache (`~/.cache/huggingface`;
-override via `HF_HOME`).
+(`planarity_model_path`), falling back to the [HF release](https://huggingface.co/alpayozkan/pxwplanar-moge2-planarity)
+when absent; pass `--model_path` (local `.pt` or HF repo id) to override.
+Downloads land in the standard HF cache (`~/.cache/huggingface`; override via
+`HF_HOME`).
 
 Minimal API usage:
 
@@ -68,7 +73,7 @@ from pxwplanar.inference.planarity.moge_inference import MoGePlanarityInference
 from pxwplanar.shared.segmentation import compute_planar_segments
 import numpy as np
 
-model = MoGePlanarityInference("<checkpoint.pt>")
+model = MoGePlanarityInference.from_pretrained("alpayozkan/pxwplanar-moge2-planarity")
 res = model.predict_metric("image.jpg", num_tokens=1600, return_all_heads=True)
 # res: planarity_probability, depth (m), normal, points, mask, intrinsics
 

@@ -34,7 +34,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from PIL import Image
 
-from pxwplanar.paths import planarity_model_path  # noqa: E402
+from pxwplanar.paths import planarity_model_path, planarity_hf_repo  # noqa: E402
 from pxwplanar.shared.segmentation import compute_planar_segments  # noqa: E402
 from pxwplanar.shared.utils.label_utils import remap_labels  # noqa: E402
 from pxwplanar.shared.utils import visualize_top_components  # noqa: E402
@@ -122,7 +122,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--model_path", type=str, default=planarity_model_path,
-                        help="4-head MoGe checkpoint (.pt); default: paths.planarity_model_path")
+                        help="4-head MoGe checkpoint (.pt) or HF repo id; default: "
+                             "paths.planarity_model_path, falling back to the HF release")
     parser.add_argument("--input_dir", type=str, default=str(REPO_ROOT / "demo" / "inputs"))
     parser.add_argument("--output_dir", type=str, default=str(REPO_ROOT / "demo" / "outputs"))
     parser.add_argument("--device", type=str, default="cuda")
@@ -141,7 +142,14 @@ def main():
     if not images:
         sys.exit(f"No images found in {args.input_dir}")
     if not os.path.isfile(args.model_path):
-        sys.exit(f"Checkpoint not found: {args.model_path}")
+        if args.model_path == planarity_model_path:
+            # Default path not present locally: fall back to the HF release.
+            print(f"[INFO] {args.model_path} not found — using HF checkpoint {planarity_hf_repo}")
+            args.model_path = planarity_hf_repo
+        elif args.model_path.endswith(".pt") or args.model_path.count("/") != 1:
+            # Explicit checkpoint file (or not shaped like a HF repo id)
+            sys.exit(f"Checkpoint not found: {args.model_path}")
+        # else: exactly one slash, no .pt — a HF repo id for from_pretrained
 
     if args.device.startswith("cuda"):
         import torch
@@ -150,7 +158,7 @@ def main():
             args.device = "cpu"
 
     print(f"Loading 4-head checkpoint {args.model_path} ...")
-    model = MoGePlanarityInference(args.model_path, device=args.device)
+    model = MoGePlanarityInference.from_pretrained(args.model_path, device=args.device)
 
     print(f"Processing {len(images)} image(s) -> {args.output_dir}")
     for image_path in images:

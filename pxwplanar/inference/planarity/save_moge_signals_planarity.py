@@ -525,7 +525,8 @@ def process_scene(
 # CLI
 # ---------------------------------------------------------------------------
 
-from pxwplanar.paths import planarity_model_path as DEFAULT_MODEL_PATH
+from pxwplanar.paths import planarity_model_path as DEFAULT_MODEL_PATH  # noqa: E402
+from pxwplanar.paths import planarity_hf_repo  # noqa: E402
 
 
 def main():
@@ -550,7 +551,9 @@ def main():
                          "hypersim default 'test' — resolved via splits/hypersim/<split>.txt).")
     ap.add_argument("--output_root", type=str, required=True)
     ap.add_argument("--model_path", type=str, default=DEFAULT_MODEL_PATH,
-                    help="Path to a 4-head MoGe checkpoint (.pt). Must include planarity_head.")
+                    help="Path to a 4-head MoGe checkpoint (.pt) or HF repo id; must "
+                         "include planarity_head. Default falls back to the HF release "
+                         "when the local file is absent.")
     ap.add_argument("--base_model", type=str, default="Ruicheng/moge-2-vitl-normal",
                     help="HuggingFace base model id used to seed the architecture before "
                          "loading the .pt checkpoint.")
@@ -568,7 +571,14 @@ def main():
     H, W = (int(x) for x in args.resolution.lower().split("x"))
 
     if not os.path.isfile(args.model_path):
-        ap.error(f"--model_path does not exist: {args.model_path}")
+        if args.model_path == DEFAULT_MODEL_PATH:
+            # Default path not present locally: fall back to the HF release.
+            print(f"[INFO] {args.model_path} not found — using HF checkpoint {planarity_hf_repo}")
+            args.model_path = planarity_hf_repo
+        elif args.model_path.endswith(".pt") or args.model_path.count("/") != 1:
+            # Explicit checkpoint file (or not shaped like a HF repo id)
+            ap.error(f"--model_path does not exist: {args.model_path}")
+        # else: exactly one slash, no .pt — a HF repo id for from_pretrained
 
     # Build adapter (errors out on missing args).
     adapter = _build_adapter(args, target_hw=(H, W))
@@ -578,7 +588,7 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Loading 4-head checkpoint {args.model_path} ...")
-    inference = MoGePlanarityInference(args.model_path, device=device.type)
+    inference = MoGePlanarityInference.from_pretrained(args.model_path, device=device.type)
     inference.model.encoder.use_memory_efficient_attention = False
     torch.set_grad_enabled(False)
     inference.model.eval()
