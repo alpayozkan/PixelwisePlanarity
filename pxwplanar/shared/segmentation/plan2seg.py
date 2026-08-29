@@ -1,10 +1,10 @@
 """
 Planar segmentation via region growing on normal and depth consistency.
 
-`compute_vectorized_planar_segments` is the
-single region-growing algorithm kept in this repo. It is GPU-accelerated
-(PyTorch) and uses a Sobel-based normal-similarity gate combined with a
-relative depth gate, followed by connected-component labeling.
+`compute_planar_segments` is the single region-growing algorithm kept in this
+repo. It is GPU-accelerated (PyTorch) and uses a Sobel-based normal-similarity
+gate combined with a relative depth gate, followed by connected-component
+labeling.
 
 Canonical parameters (used across inference and evaluation):
     normal_threshold_rad = np.deg2rad(5.0)
@@ -21,7 +21,7 @@ import torch.nn.functional as F
 import cc3d
 
 
-def compute_vectorized_planar_segments(
+def compute_planar_segments(
     planarity_mask: np.ndarray,
     normal: np.ndarray,
     depth: np.ndarray,
@@ -113,7 +113,7 @@ def filter_small_segments(
 
     Args:
         segmentation: (H,W) segment labels (> 0 for valid, 0 = background,
-            matching compute_vectorized_planar_segments)
+            matching compute_planar_segments)
         min_size: Minimum number of pixels for a valid segment
 
     Returns:

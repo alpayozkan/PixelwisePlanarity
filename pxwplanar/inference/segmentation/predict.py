@@ -27,7 +27,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-from pxwplanar.shared.segmentation import compute_vectorized_planar_segments
+from pxwplanar.shared.segmentation import compute_planar_segments
 from pxwplanar.shared.utils.label_utils import remap_labels
 from pxwplanar.shared.utils import visualize_top_components
 from pxwplanar.inference.planarity.moge_inference import MoGePlanarityInference
@@ -70,7 +70,7 @@ def process_scene(scene_id, image_list, inference_model, output_dir, args):
 
         # Compute segmentation
         normal_threshold_rad = np.deg2rad(args.normal_threshold_deg)
-        labels, n_components = compute_vectorized_planar_segments(
+        labels, n_components = compute_planar_segments(
             planarity_mask, normal, depth,
             normal_threshold_rad, args.depth_threshold,
             neighbor_match_count_thresh=args.neighbor_match_count_thresh,

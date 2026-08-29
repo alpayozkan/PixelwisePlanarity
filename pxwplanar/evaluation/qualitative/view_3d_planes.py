@@ -363,7 +363,7 @@ def load_moge_data(args):
     import torch
     import torch.nn as nn
     from MoGe.moge.model.v2 import MoGeModel
-    from pxwplanar.shared.segmentation.plan2seg import compute_vectorized_planar_segments
+    from pxwplanar.shared.segmentation.plan2seg import compute_planar_segments
 
     image_path = args.moge
     print(f"[MoGe] Image: {image_path}")
@@ -420,7 +420,7 @@ def load_moge_data(args):
 
     planarity_binary = (planarity_r > args.planarity_threshold).astype(np.uint8)
     seg_device = "cpu" if device.type == "mps" else str(device)
-    labels, num_planes = compute_vectorized_planar_segments(
+    labels, num_planes = compute_planar_segments(
         planarity_mask=planarity_binary,
         normal=normals_r,
         depth=depth_r,

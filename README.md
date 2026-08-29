@@ -65,14 +65,14 @@ Minimal API usage:
 
 ```python
 from pxwplanar.inference.planarity.moge_inference import MoGePlanarityInference
-from pxwplanar.shared.segmentation import compute_vectorized_planar_segments
+from pxwplanar.shared.segmentation import compute_planar_segments
 import numpy as np
 
 model = MoGePlanarityInference("<checkpoint.pt>")
 res = model.predict_metric("image.jpg", num_tokens=1600, return_all_heads=True)
 # res: planarity_probability, depth (m), normal, points, mask, intrinsics
 
-labels, n = compute_vectorized_planar_segments(
+labels, n = compute_planar_segments(
     (res["planarity_probability"] > 0.3).astype(np.int16),
     res["normal"], res["depth"],
     np.deg2rad(5.0), 0.025, neighbor_match_count_thresh=8)

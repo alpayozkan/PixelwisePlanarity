@@ -6,7 +6,7 @@ Reads per-scene moge_signals.h5 (keys: planarity, normal, depth_metric) produced
 save_moge_signals_planarity.py and writes per-scene planes.h5 with the schema
 evaluate_all_baselines.py consumes (key "planes" uint16, 0 = non-planar; "frame_ids").
 
-Segmentation = OUR method: compute_vectorized_planar_segments with
+Segmentation = OUR method: compute_planar_segments with
     threshold_planarity        0.3   (planarity mask cutoff)
     normal_threshold_rad       deg2rad(5.0)
     depth_threshold            0.025 (relative, 2.5% of center depth)
@@ -37,7 +37,7 @@ from pathlib import Path
 # Add project root to path for imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from pxwplanar.shared.segmentation import compute_vectorized_planar_segments
+from pxwplanar.shared.segmentation import compute_planar_segments
 from pxwplanar.shared.utils.label_utils import remap_labels
 
 # ── OUR-method segmentation params (match the benchmark's internal segmentation) ──
@@ -68,7 +68,7 @@ def segment_scene(sig_h5_path, out_h5_path, device):
             normal = f["normal"][i].astype(np.float32)
             depth = f["depth_metric"][i].astype(np.float32)
             mask = (planarity > THRESHOLD_PLANARITY).astype(np.int32)
-            labels, _ = compute_vectorized_planar_segments(
+            labels, _ = compute_planar_segments(
                 mask, normal, depth,
                 np.deg2rad(NORMAL_THRESHOLD_DEG),
                 DEPTH_THRESHOLD_REL,
@@ -126,7 +126,7 @@ def main():
 
     part = split_scenes(scenes, args.part_id, args.num_parts)
     print(f"[INFO] part {args.part_id}/{args.num_parts}: {len(part)}/{len(scenes)} scenes "
-          f"(seg=compute_vectorized_planar_segments plan>{THRESHOLD_PLANARITY} n<{NORMAL_THRESHOLD_DEG}° "
+          f"(seg=compute_planar_segments plan>{THRESHOLD_PLANARITY} n<{NORMAL_THRESHOLD_DEG}° "
           f"d_rel<{DEPTH_THRESHOLD_REL} match≥{NEIGHBOR_MATCH_COUNT}, device={args.device})")
 
     t0 = time.perf_counter()

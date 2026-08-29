@@ -39,7 +39,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from MoGe.moge.model.v2 import MoGeModel
-from pxwplanar.shared.segmentation.plan2seg import compute_vectorized_planar_segments
+from pxwplanar.shared.segmentation.plan2seg import compute_planar_segments
 from pxwplanar.paths import (scannetpp_path, scannetpp_rend_plane_path, inference_h5_root,
                    planarity_model_path, vis3d_root)
 
@@ -412,7 +412,7 @@ def run_moge_inference(model, rgb, device, args):
 
     planarity_binary = (planarity_r > args.planarity_threshold).astype(np.uint8)
     seg_device = "cpu" if device.type == "mps" else str(device)
-    labels, num_planes = compute_vectorized_planar_segments(
+    labels, num_planes = compute_planar_segments(
         planarity_mask=planarity_binary,
         normal=normals_r,
         depth=depth_r,

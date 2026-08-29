@@ -35,7 +35,7 @@ import matplotlib.pyplot as plt
 from PIL import Image
 
 from pxwplanar.paths import planarity_model_path  # noqa: E402
-from pxwplanar.shared.segmentation import compute_vectorized_planar_segments  # noqa: E402
+from pxwplanar.shared.segmentation import compute_planar_segments  # noqa: E402
 from pxwplanar.shared.utils.label_utils import remap_labels  # noqa: E402
 from pxwplanar.shared.utils import visualize_top_components  # noqa: E402
 from pxwplanar.inference.planarity.moge_inference import MoGePlanarityInference  # noqa: E402
@@ -82,7 +82,7 @@ def process_image(image_path, model, output_root, args):
 
     # Plane segmentation with the canonical parameters (same as the benchmark).
     planarity_mask = (planarity > args.threshold_planarity).astype(np.int16)
-    labels, _ = compute_vectorized_planar_segments(
+    labels, _ = compute_planar_segments(
         planarity_mask, normal, depth,
         np.deg2rad(args.normal_threshold_deg), args.depth_threshold,
         neighbor_match_count_thresh=args.neighbor_match_count_thresh,
