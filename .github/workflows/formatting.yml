@@ -1,0 +1,37 @@
+name: Format and Lint Checks
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [ assigned, opened, synchronize, reopened ]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Format and Lint Checks
+    runs-on: ubuntu-latest
+    steps:
+      # The MoGe submodule is deliberately not checked out: it keeps its
+      # upstream style and scripts/format.sh never touches it.
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Check code format
+        run: |
+          set +x -euo pipefail
+          python -m pip install ruff==0.15.20
+          ./scripts/format.sh --all
+          git diff --name-only
+          git diff --exit-code || (echo "Code formatting failed" && exit 1)

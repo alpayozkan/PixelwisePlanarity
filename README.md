@@ -61,7 +61,8 @@ Python is formatted and linted with [ruff](https://docs.astral.sh/ruff/) (pinned
 ```
 
 The script runs `ruff format` followed by `ruff check --fix`. The `MoGe/`
-submodule is never reformatted — it keeps its upstream style.
+submodule is never reformatted — it keeps its upstream style. CI runs the same
+script on pushes to `main` and on pull requests, and fails if it changes anything.
 
 ## Demo
 
