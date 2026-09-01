@@ -4,30 +4,32 @@ Render 3D reconstructed planar surfaces from a single RGB image.
 
 Pipeline:
   RGB -> MoGe (depth/normals/planarity) -> plan2seg -> fit plane per segment
-  -> project pixels onto fitted planes -> textured point cloud -> render rotated view
+  -> project pixels onto fitted planes -> textured point cloud
+  -> render rotated view
 
 Usage:
     python evaluation/qualitative/visualize_3d_planes.py \
         --checkpoint /path/to/model.pt --image path/to/image.jpg
 """
 
+import argparse
+import copy
+import glob
 import os
 import sys
-import argparse
-import glob
-import copy
+from pathlib import Path
+
+import cv2
 import numpy as np
 import torch
 import torch.nn as nn
-import cv2
-from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from MoGe.moge.model.v2 import MoGeModel
 from pxwplanar.paths import planarity_model_path
-from pxwplanar.shared.segmentation.plan2seg import compute_planar_segments
 from pxwplanar.shared.plane_fitting.planefit import refine_plane_least_squares
+from pxwplanar.shared.segmentation.plan2seg import compute_planar_segments
 
 
 def load_model(checkpoint_path, device):
@@ -39,10 +41,14 @@ def load_model(checkpoint_path, device):
             last_conv = (name, module)
     name, old_conv = last_conv
     new_conv = nn.Conv2d(
-        old_conv.in_channels, 1,
-        kernel_size=old_conv.kernel_size, stride=old_conv.stride,
-        padding=old_conv.padding, dilation=old_conv.dilation,
-        groups=old_conv.groups, bias=old_conv.bias is not None,
+        old_conv.in_channels,
+        1,
+        kernel_size=old_conv.kernel_size,
+        stride=old_conv.stride,
+        padding=old_conv.padding,
+        dilation=old_conv.dilation,
+        groups=old_conv.groups,
+        bias=old_conv.bias is not None,
     )
     parent = model.planarity_head
     parts = name.split(".")
@@ -71,21 +77,33 @@ def rotation_matrix(rot_x_deg, rot_y_deg):
     rx = np.deg2rad(rot_x_deg)
     ry = np.deg2rad(rot_y_deg)
 
-    Rx = np.array([
-        [1, 0, 0],
-        [0, np.cos(rx), -np.sin(rx)],
-        [0, np.sin(rx), np.cos(rx)],
-    ])
-    Ry = np.array([
-        [np.cos(ry), 0, np.sin(ry)],
-        [0, 1, 0],
-        [-np.sin(ry), 0, np.cos(ry)],
-    ])
+    Rx = np.array(
+        [
+            [1, 0, 0],
+            [0, np.cos(rx), -np.sin(rx)],
+            [0, np.sin(rx), np.cos(rx)],
+        ]
+    )
+    Ry = np.array(
+        [
+            [np.cos(ry), 0, np.sin(ry)],
+            [0, 1, 0],
+            [-np.sin(ry), 0, np.cos(ry)],
+        ]
+    )
     return Ry @ Rx
 
 
-def render_pointcloud_image(pts, colors, width, height, rot_x, rot_y,
-                            bg_color=(255, 255, 255), point_radius=1):
+def render_pointcloud_image(
+    pts,
+    colors,
+    width,
+    height,
+    rot_x,
+    rot_y,
+    bg_color=(255, 255, 255),
+    point_radius=1,
+):
     """Render a colored point cloud to an image via manual projection.
 
     Rotates the point cloud around its centroid, then does orthographic
@@ -110,8 +128,9 @@ def render_pointcloud_image(pts, colors, width, height, rot_x, rot_y,
     yrange = max(ymax - ymin, 1e-6)
 
     # Preserve aspect ratio
-    scale = min(width * (1 - 2 * margin) / xrange,
-                height * (1 - 2 * margin) / yrange)
+    scale = min(
+        width * (1 - 2 * margin) / xrange, height * (1 - 2 * margin) / yrange
+    )
     cx = width / 2.0
     cy = height / 2.0
     xmid = (xmin + xmax) / 2.0
@@ -136,10 +155,13 @@ def render_pointcloud_image(pts, colors, width, height, rot_x, rot_y,
             for dy in range(-r, r + 1):
                 for dx in range(-r, r + 1):
                     nx, ny = xi + dx, yi + dy
-                    if 0 <= nx < width and 0 <= ny < height:
-                        if z[i] < zbuf[ny, nx]:
-                            zbuf[ny, nx] = z[i]
-                            img[ny, nx] = colors_sorted[i]
+                    if (
+                        0 <= nx < width
+                        and 0 <= ny < height
+                        and z[i] < zbuf[ny, nx]
+                    ):
+                        zbuf[ny, nx] = z[i]
+                        img[ny, nx] = colors_sorted[i]
 
     return img
 
@@ -149,7 +171,11 @@ def process_image(model, image_path, output_dir, device, args):
     stem = Path(image_path).stem
 
     resized = cv2.resize(rgb, (644, 476))
-    tensor = torch.tensor(resized / 255.0, dtype=torch.float32).permute(2, 0, 1).to(device)
+    tensor = (
+        torch.tensor(resized / 255.0, dtype=torch.float32)
+        .permute(2, 0, 1)
+        .to(device)
+    )
 
     with torch.no_grad():
         output = model.forward(tensor.unsqueeze(0), num_tokens=args.num_tokens)
@@ -161,11 +187,17 @@ def process_image(model, image_path, output_dir, device, args):
 
     out_h, out_w = args.height, args.width
     depth_r = cv2.resize(depth, (out_w, out_h), interpolation=cv2.INTER_LINEAR)
-    normals_r = cv2.resize(normals, (out_w, out_h), interpolation=cv2.INTER_LINEAR)
+    normals_r = cv2.resize(
+        normals, (out_w, out_h), interpolation=cv2.INTER_LINEAR
+    )
     norm_len = np.linalg.norm(normals_r, axis=-1, keepdims=True)
     normals_r = normals_r / (norm_len + 1e-8)
-    planarity_r = cv2.resize(planarity, (out_w, out_h), interpolation=cv2.INTER_LINEAR)
-    points_r = cv2.resize(points, (out_w, out_h), interpolation=cv2.INTER_LINEAR)
+    planarity_r = cv2.resize(
+        planarity, (out_w, out_h), interpolation=cv2.INTER_LINEAR
+    )
+    points_r = cv2.resize(
+        points, (out_w, out_h), interpolation=cv2.INTER_LINEAR
+    )
     rgb_r = cv2.resize(rgb, (out_w, out_h))
 
     # Plane segmentation
@@ -187,7 +219,7 @@ def process_image(model, image_path, output_dir, device, args):
     all_colors = []
 
     for pid in range(1, num_planes + 1):
-        seg_mask = (labels == pid)
+        seg_mask = labels == pid
         finite_mask = np.isfinite(points_r).all(axis=-1) & (depth_r > 0)
         valid = seg_mask & finite_mask
         if valid.sum() < args.min_plane_px:
@@ -226,9 +258,12 @@ def process_image(model, image_path, output_dir, device, args):
 
     for rot_y in args.rotations:
         img = render_pointcloud_image(
-            all_pts, all_colors,
-            width=out_w, height=out_h,
-            rot_x=args.rot_x, rot_y=rot_y,
+            all_pts,
+            all_colors,
+            width=out_w,
+            height=out_h,
+            rot_x=args.rot_x,
+            rot_y=rot_y,
             point_radius=args.point_radius,
         )
         suffix = f"_rot{int(rot_y)}" if len(args.rotations) > 1 else ""
@@ -238,10 +273,16 @@ def process_image(model, image_path, output_dir, device, args):
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="3D visualization of reconstructed planar surfaces")
+    p = argparse.ArgumentParser(
+        description="3D visualization of reconstructed planar surfaces"
+    )
     p.add_argument("--image", type=str, required=True)
-    p.add_argument("--checkpoint", type=str, default=planarity_model_path,
-                   help="4-head MoGe checkpoint; default: paths.planarity_model_path")
+    p.add_argument(
+        "--checkpoint",
+        type=str,
+        default=planarity_model_path,
+        help="4-head MoGe checkpoint; default: paths.planarity_model_path",
+    )
     p.add_argument("--output_dir", type=str, default="3d_plane_vis")
     p.add_argument("--device", type=str, default="cuda")
     p.add_argument("--num_tokens", type=int, default=1024)
@@ -254,11 +295,20 @@ def parse_args():
     p.add_argument("--neighbor_match_count", type=int, default=8)
     p.add_argument("--min_plane_px", type=int, default=100)
 
-    p.add_argument("--rotations", type=float, nargs="+", default=[30.0],
-                   help="Y-axis rotation angles in degrees")
+    p.add_argument(
+        "--rotations",
+        type=float,
+        nargs="+",
+        default=[30.0],
+        help="Y-axis rotation angles in degrees",
+    )
     p.add_argument("--rot_x", type=float, default=20.0)
-    p.add_argument("--point_radius", type=int, default=1,
-                   help="Radius of rendered points in pixels")
+    p.add_argument(
+        "--point_radius",
+        type=int,
+        default=1,
+        help="Radius of rendered points in pixels",
+    )
 
     return p.parse_args()
 
@@ -266,7 +316,10 @@ def parse_args():
 def main():
     args = parse_args()
     device = torch.device(
-        args.device if args.device != "mps" or torch.backends.mps.is_available() else "cpu")
+        args.device
+        if args.device != "mps" or torch.backends.mps.is_available()
+        else "cpu"
+    )
     os.makedirs(args.output_dir, exist_ok=True)
 
     model = load_model(args.checkpoint, device)

@@ -9,16 +9,17 @@ This module provides:
 
 import numpy as np
 import pandas as pd
-from typing import Dict, Optional, Tuple
 
 from .planefit import fit_planes_per_label
-
 
 # ============================================================
 # SEGMENTATION METRICS (image-to-image)
 # ============================================================
 
-def segmentation_covering_fast(gt_seg: np.ndarray, pred_seg: np.ndarray) -> float:
+
+def segmentation_covering_fast(
+    gt_seg: np.ndarray, pred_seg: np.ndarray
+) -> float:
     """
     Compute Segmentation Covering (SC) metric between two segmentation maps.
 
@@ -27,7 +28,8 @@ def segmentation_covering_fast(gt_seg: np.ndarray, pred_seg: np.ndarray) -> floa
     and weight by segment area.
 
     This is a pure image-to-image metric - no labels are ignored.
-    Both inputs should be pre-processed (e.g., background filtered) before calling.
+    Both inputs should be pre-processed (e.g., background filtered) before
+    calling.
 
     Args:
         gt_seg: (H, W) ground truth segmentation labels (int)
@@ -59,7 +61,7 @@ def segmentation_covering_fast(gt_seg: np.ndarray, pred_seg: np.ndarray) -> floa
     # IoU = intersection / union
     union = gt_areas[:, None] + pr_areas[None, :] - contingency
 
-    with np.errstate(divide='ignore', invalid='ignore'):
+    with np.errstate(divide="ignore", invalid="ignore"):
         iou_matrix = np.where(union > 0, contingency / union, 0.0)
 
     # For each GT segment, find best IoU with any predicted segment
@@ -76,37 +78,42 @@ def segmentation_covering_fast(gt_seg: np.ndarray, pred_seg: np.ndarray) -> floa
 # PLANE FITTING METRICS
 # ============================================================
 
+
 def compute_inliers_at_threshold(
     pts_world: np.ndarray,
     labels: np.ndarray,
-    plane_params: Dict[int, Tuple[float, float, float, float]],
+    plane_params: dict[int, tuple[float, float, float, float]],
     threshold: float,
-    inlier_ratio_gate: float = 0.5
-) -> Dict[str, float]:
+    inlier_ratio_gate: float = 0.5,
+) -> dict[str, float]:
     """
-    Count inliers at a given distance threshold using pre-fitted plane parameters.
+    Count inliers at a given distance threshold using pre-fitted plane
+    parameters.
 
     For each plane segment, computes the number of points within `threshold`
     distance of the fitted plane. Segments with inlier ratio below the gate
-    contribute 0 inliers but their points still count in the precision denominator.
+    contribute 0 inliers but their points still count in the precision
+    denominator.
 
     Args:
         pts_world: (N, 3) world coordinates
         labels: (N,) segment labels for each point
-        plane_params: {segment_id: (a, b, c, d)} plane parameters (ax + by + cz + d = 0)
+        plane_params: {segment_id: (a, b, c, d)} plane parameters
+            (ax + by + cz + d = 0)
         threshold: Distance threshold in meters
         inlier_ratio_gate: Minimum inlier ratio to count inliers (default 0.5)
 
     Returns:
         {"precision": float, "recall": float}
-        - precision: inliers / total_predicted_points (all predicted plane points)
+        - precision: inliers / total_predicted_points
+          (all predicted plane points)
         - recall: inliers / all_scene_points
     """
     total_inliers = 0
     total_points = 0
 
     for pid, params in plane_params.items():
-        mask = (labels == pid)
+        mask = labels == pid
         pts_plane = pts_world[mask]
         n_pts = pts_plane.shape[0]
 
@@ -134,10 +141,10 @@ def compute_inliers_at_threshold(
 def compute_inliers_at_threshold_with_indices(
     pts_world: np.ndarray,
     labels: np.ndarray,
-    plane_params: Dict[int, Tuple[float, float, float, float]],
+    plane_params: dict[int, tuple[float, float, float, float]],
     threshold: float,
-    inlier_ratio_gate: float = 0.5
-) -> Dict:
+    inlier_ratio_gate: float = 0.5,
+) -> dict:
     """
     Count inliers at a given distance threshold AND return inlier indices.
 
@@ -147,7 +154,8 @@ def compute_inliers_at_threshold_with_indices(
     Args:
         pts_world: (N, 3) world coordinates
         labels: (N,) segment labels for each point
-        plane_params: {segment_id: (a, b, c, d)} plane parameters (ax + by + cz + d = 0)
+        plane_params: {segment_id: (a, b, c, d)} plane parameters
+            (ax + by + cz + d = 0)
         threshold: Distance threshold in meters
         inlier_ratio_gate: Minimum inlier ratio to count inliers (default 0.5)
 
@@ -167,7 +175,7 @@ def compute_inliers_at_threshold_with_indices(
     all_inlier_indices = []
 
     for pid, params in plane_params.items():
-        mask = (labels == pid)
+        mask = labels == pid
         segment_indices = np.where(mask)[0]
         pts_plane = pts_world[mask]
         n_pts = pts_plane.shape[0]
@@ -188,7 +196,9 @@ def compute_inliers_at_threshold_with_indices(
             total_inliers += n_inliers
             num_valid_planes += 1
             # Collect inlier indices for visualization
-            all_inlier_indices.extend(segment_indices[inlier_mask_segment].tolist())
+            all_inlier_indices.extend(
+                segment_indices[inlier_mask_segment].tolist()
+            )
 
     precision = total_inliers / total_points if total_points > 0 else 0.0
     recall = total_inliers / len(labels) if len(labels) > 0 else 0.0
@@ -199,20 +209,20 @@ def compute_inliers_at_threshold_with_indices(
         "num_inliers": total_inliers,
         "num_valid_planes": num_valid_planes,
         "total_predicted_points": total_points,
-        "inlier_indices": all_inlier_indices
+        "inlier_indices": all_inlier_indices,
     }
 
 
 def fit_planes_and_evaluate_multi_threshold(
     pts_world: np.ndarray,
     labels: np.ndarray,
-    thresholds: Tuple[float, ...],
+    thresholds: tuple[float, ...],
     base_threshold: float = 0.02,
     num_iterations: int = 200,
     min_support: int = 100,
     inlier_ratio_gate: float = 0.5,
-    ransac_seed: Optional[int] = 0
-) -> Dict[float, Dict[str, float]]:
+    ransac_seed: int | None = 0,
+) -> dict[float, dict[str, float]]:
     """
     Fit planes ONCE with RANSAC, then evaluate at multiple distance thresholds.
 
@@ -239,7 +249,7 @@ def fit_planes_and_evaluate_multi_threshold(
         distance_threshold=base_threshold,
         num_iterations=num_iterations,
         min_support=min_support,
-        ransac_seed=ransac_seed
+        ransac_seed=ransac_seed,
     )
 
     if df is None or len(df) == 0:
@@ -268,28 +278,31 @@ def fit_planes_and_evaluate_multi_threshold(
 # PRECISION/RECALL FROM DATAFRAME
 # ============================================================
 
+
 def compute_precision_recall(
-    df: pd.DataFrame,
-    total_scene_points: Optional[int] = None
-) -> Dict:
+    df: pd.DataFrame, total_scene_points: int | None = None
+) -> dict:
     """
     Compute per-plane and global precision/recall from plane fitting results.
 
-    Precision measures what fraction of predicted plane points are actual inliers.
+    Precision measures what fraction of predicted plane points are actual
+    inliers.
     Recall measures what fraction of all scene points are explained by planes.
 
     Args:
         df: DataFrame with columns:
             - num_points: Total predicted points for each plane
             - refined_inlier_num_points: Inlier points after LS refinement
-        total_scene_points: Total number of 3D points in scene (planar + non-planar).
+        total_scene_points: Total number of 3D points in scene
+            (planar + non-planar).
                           If None, recall is not computed.
 
     Returns:
         Dictionary with:
             - df_with_metrics: DataFrame with added precision and recall columns
             - global_precision: Overall precision across all planes
-            - global_recall: Overall recall (None if total_scene_points not provided)
+            - global_recall: Overall recall
+              (None if total_scene_points not provided)
     """
     df = df.copy()
 
@@ -314,8 +327,12 @@ def compute_precision_recall(
     total_inliers = df["refined_inlier_num_points"].sum()
     total_predicted = df["num_points"].sum()
 
-    global_precision = total_inliers / total_predicted if total_predicted > 0 else 0.0
-    global_recall = (total_inliers / total_scene_points) if total_scene_points else None
+    global_precision = (
+        total_inliers / total_predicted if total_predicted > 0 else 0.0
+    )
+    global_recall = (
+        (total_inliers / total_scene_points) if total_scene_points else None
+    )
 
     return {
         "df_with_metrics": df,

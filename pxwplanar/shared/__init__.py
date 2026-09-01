@@ -1,1 +1,2 @@
-"""Shared core library: plane fitting, segmentation, rendering, datasets, utils."""
+"""Shared core library: plane fitting, segmentation, rendering, datasets,
+utils."""

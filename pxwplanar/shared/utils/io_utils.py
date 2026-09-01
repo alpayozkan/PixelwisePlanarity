@@ -7,16 +7,15 @@ This module provides functions for:
 - Semantic label remapping
 """
 
-import numpy as np
-import h5py
 import cv2
-from typing import Dict, Optional
+import h5py
+import numpy as np
 
 
 def save_label_image(
     label_img: np.ndarray,
     output_path: str,
-    remap_dict: Optional[Dict[int, int]] = None
+    remap_dict: dict[int, int] | None = None,
 ) -> None:
     """
     Save integer label image as PNG.
@@ -37,10 +36,7 @@ def save_label_image(
     cv2.imwrite(output_path, label_img)
 
 
-def load_h5_dataset(
-    h5_path: str,
-    dataset_name: str
-) -> np.ndarray:
+def load_h5_dataset(h5_path: str, dataset_name: str) -> np.ndarray:
     """
     Load dataset from HDF5 file.
 
@@ -51,16 +47,13 @@ def load_h5_dataset(
     Returns:
         data: Loaded numpy array
     """
-    with h5py.File(h5_path, 'r') as f:
+    with h5py.File(h5_path, "r") as f:
         data = f[dataset_name][:]
     return data
 
 
 def save_h5_dataset(
-    h5_path: str,
-    dataset_name: str,
-    data: np.ndarray,
-    compression: str = 'gzip'
+    h5_path: str, dataset_name: str, data: np.ndarray, compression: str = "gzip"
 ) -> None:
     """
     Save numpy array to HDF5 file.
@@ -71,7 +64,7 @@ def save_h5_dataset(
         data: Numpy array to save
         compression: Compression method ('gzip', 'lzf', or None)
     """
-    with h5py.File(h5_path, 'a') as f:
+    with h5py.File(h5_path, "a") as f:
         if dataset_name in f:
             del f[dataset_name]  # Overwrite if exists
         f.create_dataset(dataset_name, data=data, compression=compression)
@@ -79,8 +72,8 @@ def save_h5_dataset(
 
 def remap_semantic(
     semantic_img: np.ndarray,
-    id_to_name: Dict[int, str],
-    name_to_target: Dict[str, int]
+    id_to_name: dict[int, str],
+    name_to_target: dict[str, int],
 ) -> np.ndarray:
     """
     Remap semantic labels using two-stage lookup.

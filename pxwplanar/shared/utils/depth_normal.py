@@ -7,16 +7,12 @@ This module provides functions for:
 - 3D point cloud generation from depth
 """
 
-import numpy as np
 import cv2
+import numpy as np
 
 
 def depth_to_normal_remi(
-    depth: np.ndarray,
-    fx: float,
-    fy: float,
-    cx: float,
-    cy: float
+    depth: np.ndarray, fx: float, fy: float, cx: float, cy: float
 ) -> np.ndarray:
     """
     Convert depth image to surface normals using gradient-based method.
@@ -31,14 +27,15 @@ def depth_to_normal_remi(
         cy: Principal point y (pixels)
 
     Returns:
-        normal: (H,W,3) surface normal vectors (unnormalized, need normalization)
+        normal: (H,W,3) surface normal vectors (unnormalized, need
+            normalization)
     """
     # Convert depth to 3D points
     ans = depth_to_3d(depth, fx, fy, cx, cy)
 
     # Compute spatial vectors using convolution
     h_kernel = np.array([[1], [-1]])  # Vertical gradient
-    v_kernel = np.array([[1, -1]])    # Horizontal gradient
+    v_kernel = np.array([[1, -1]])  # Horizontal gradient
 
     h_map = cv2.filter2D(ans, -1, h_kernel)
     v_map = cv2.filter2D(ans, -1, v_kernel)
@@ -53,11 +50,7 @@ def depth_to_normal_remi(
 
 
 def depth_to_3d(
-    depth: np.ndarray,
-    fx: float,
-    fy: float,
-    cx: float,
-    cy: float
+    depth: np.ndarray, fx: float, fy: float, cx: float, cy: float
 ) -> np.ndarray:
     """
     Convert depth image to 3D point cloud in camera coordinates.

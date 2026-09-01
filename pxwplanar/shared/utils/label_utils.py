@@ -7,15 +7,12 @@ This module provides functions for:
 - Label inpainting and hole filling
 """
 
-import numpy as np
 import cv2
-from typing import Dict, Tuple
+import numpy as np
 
 
 def keep_top_k_planes(
-    plane_segmentation: np.ndarray,
-    k: int = 5,
-    ignore_idx: int = 0
+    plane_segmentation: np.ndarray, k: int = 5, ignore_idx: int = 0
 ) -> np.ndarray:
     """
     Keep only the top-k largest plane segments.
@@ -26,7 +23,8 @@ def keep_top_k_planes(
         ignore_idx: Background/non-planar label to ignore (default=0)
 
     Returns:
-        filtered_segmentation: (H,W) with only top-k planes, others set to ignore_idx
+        filtered_segmentation: (H,W) with only top-k planes, others set to
+            ignore_idx
     """
     seg = plane_segmentation.copy()
     unique, counts = np.unique(seg, return_counts=True)
@@ -45,7 +43,7 @@ def keep_top_k_planes(
 
 def remap_labels(
     seg: np.ndarray,
-) -> Tuple[np.ndarray, Dict[int, int]]:
+) -> tuple[np.ndarray, dict[int, int]]:
     """
     Remap planar labels (> 0) to the compact range [1..N]; 0 stays background.
 
@@ -59,8 +57,9 @@ def remap_labels(
     unique_labels = np.unique(seg)
     planar_labels = unique_labels[unique_labels > 0]
 
-    mapping = {int(old): int(new)
-               for new, old in enumerate(planar_labels, start=1)}
+    mapping = {
+        int(old): int(new) for new, old in enumerate(planar_labels, start=1)
+    }
 
     seg_remapped = np.zeros(seg.shape, dtype=np.int32)
 
@@ -94,8 +93,8 @@ def match_planes_by_overlap(
     uv2: np.ndarray,
     valid: np.ndarray,
     plane_seg1: np.ndarray,
-    plane_seg2: np.ndarray
-) -> Dict[int, int]:
+    plane_seg2: np.ndarray,
+) -> dict[int, int]:
     """
     Match plane IDs between two views based on reprojection overlap.
 
@@ -134,9 +133,8 @@ def match_planes_by_overlap(
 
 
 def remap_labels_fast(
-    seg: np.ndarray,
-    start: int = 1
-) -> Tuple[np.ndarray, Dict[int, int]]:
+    seg: np.ndarray, start: int = 1
+) -> tuple[np.ndarray, dict[int, int]]:
     """
     Fast remap segmentation labels using vectorized LUT lookup.
 
@@ -144,7 +142,8 @@ def remap_labels_fast(
 
     Args:
         seg: (H,W) segmentation map with arbitrary integer labels
-        start: Starting label index for planar regions (default=1, 0 reserved for background)
+        start: Starting label index for planar regions (default=1, 0
+            reserved for background)
 
     Returns:
         seg_remapped: (H,W) remapped segmentation
@@ -172,9 +171,7 @@ def remap_labels_fast(
 
 
 def map_array(
-    arr: np.ndarray,
-    matches: Dict[int, int],
-    default: int = 0
+    arr: np.ndarray, matches: dict[int, int], default: int = 0
 ) -> np.ndarray:
     """
     Map values in array according to a dictionary (fast LUT-based).
@@ -188,8 +185,14 @@ def map_array(
         mapped: Array with values mapped according to dict
     """
     # Use LUT for speed (only works for non-negative integers)
-    if np.issubdtype(arr.dtype, np.integer) and len(matches) > 0 and min(matches.keys()) >= 0:
-        lut = np.full(max(arr.max(), max(matches.keys())) + 1, default, dtype=int)
+    if (
+        np.issubdtype(arr.dtype, np.integer)
+        and len(matches) > 0
+        and min(matches.keys()) >= 0
+    ):
+        lut = np.full(
+            max(arr.max(), max(matches.keys())) + 1, default, dtype=int
+        )
         for k, v in matches.items():
             if k < len(lut):
                 lut[k] = v

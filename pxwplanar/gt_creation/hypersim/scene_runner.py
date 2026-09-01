@@ -7,14 +7,16 @@ Loads configuration from YAML, validates inputs, and runs the extraction.
 
 Usage:
     python scene_runner.py ai_001_001 --config ../configs/hypersim_default.yml
-    python scene_runner.py ai_003_007 --config ../configs/hypersim_default.yml --input_root /path/to/hypersim --output_root /path/to/output
+    python scene_runner.py ai_003_007 --config ../configs/hypersim_default.yml \
+        --input_root /path/to/hypersim --output_root /path/to/output
 """
 
+import argparse
 import os
 import sys
-import argparse
-import yaml
 from pathlib import Path
+
+import yaml
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
@@ -25,7 +27,8 @@ from pxwplanar.gt_creation.hypersim.plane_extraction import run
 
 def cast_config_types(cfg):
     """
-    Ensure all parameters have correct types for compatibility with argparse.Namespace.
+    Ensure all parameters have correct types for compatibility with
+    argparse.Namespace.
 
     Args:
         cfg: Dictionary loaded from YAML config
@@ -36,56 +39,116 @@ def cast_config_types(cfg):
 
     # --- Integer parameters ---
     int_keys = [
-        "palette_seed", "progress", "jobs",
-        "em_max_iters", "min_faces_patch",
-        "em_max_iters_small", "min_faces_patch_small",
-        "sat_rounds", "irls_max_iters",
-        "last_enable", "last_rg_iters",
-        "large_split_enable", "large_split_recursive",
-        "large_split_verts", "large_split_max_parts", "large_split_min_faces",
-        "big_ransac_enable", "big_ransac_max_iters", "big_ransac_max_planes_per_comp", "big_min_faces_patch",
-        "post_ransac_enable", "post_ransac_max_iters", "post_min_faces_patch",
+        "palette_seed",
+        "progress",
+        "jobs",
+        "em_max_iters",
+        "min_faces_patch",
+        "em_max_iters_small",
+        "min_faces_patch_small",
+        "sat_rounds",
+        "irls_max_iters",
+        "last_enable",
+        "last_rg_iters",
+        "large_split_enable",
+        "large_split_recursive",
+        "large_split_verts",
+        "large_split_max_parts",
+        "large_split_min_faces",
+        "big_ransac_enable",
+        "big_ransac_max_iters",
+        "big_ransac_max_planes_per_comp",
+        "big_min_faces_patch",
+        "post_ransac_enable",
+        "post_ransac_max_iters",
+        "post_min_faces_patch",
         "post_ransac_max_planes_per_comp",
-        "small_claim_enable", "small_claim_require_adjacent", "small_claim_refit",
-        "normalize_group_names", "h5_palette_seed", "generate_legend_if_missing"
+        "small_claim_enable",
+        "small_claim_require_adjacent",
+        "small_claim_refit",
+        "normalize_group_names",
+        "h5_palette_seed",
+        "generate_legend_if_missing",
     ]
 
     # --- Float parameters ---
     float_keys = [
-        "rg_theta_deg", "rg_dist_m", "rg_dihedral_deg", "rg_refit_every",
-        "sweep_normal_deg", "sweep_dist_m", "sweep_frac_vertices",
-        "em_min_growth", "min_area_patch", "p95_final_max",
-        "inlier_frac_min", "dist_thr", "normal_p95_deg_max",
-        "thickness_max_mul", "min_width_m", "fill_frac_min",
-        "merge_theta_deg", "merge_dist_m",
-        "rg_theta_deg_small", "rg_dist_m_small", "rg_dihedral_deg_small",
-        "rg_refit_every_small", "sweep_normal_deg_small", "sweep_dist_m_small",
-        "sweep_frac_vertices_small", "em_min_growth_small", "min_area_patch_small",
-        "normal_p95_deg_max_small", "thickness_max_small_mul", "min_width_m_small",
-        "fill_frac_min_small", "sat_normal_deg", "sat_dist_m", "sat_frac_vertices",
-        "sat_normal_p95_deg_max", "sat_thickness_max_mul", "sat_min_width_m",
-        "sat_fill_frac_min", "irls_eps", "last_dist_m", "last_normal_deg",
-        "last_unlabeled_ratio", "last_steal_factor",
-        "big_ransac_dist_m", "big_ransac_normal_deg", "big_ransac_min_inlier_frac",
-        "big_min_area_patch", "big_p95_final_max", "big_inlier_frac_min",
-        "big_normal_p95_deg_max", "big_thickness_max_mul", "big_min_width_m",
-        "big_fill_frac_min", "merge_big_theta_deg", "merge_big_dist_m",
-        "small_claim_normal_deg", "small_claim_dist_m",
-        "post_ransac_dist_m", "post_ransac_normal_deg", "post_ransac_min_inlier_frac",
-        "post_min_area_m2"
+        "rg_theta_deg",
+        "rg_dist_m",
+        "rg_dihedral_deg",
+        "rg_refit_every",
+        "sweep_normal_deg",
+        "sweep_dist_m",
+        "sweep_frac_vertices",
+        "em_min_growth",
+        "min_area_patch",
+        "p95_final_max",
+        "inlier_frac_min",
+        "dist_thr",
+        "normal_p95_deg_max",
+        "thickness_max_mul",
+        "min_width_m",
+        "fill_frac_min",
+        "merge_theta_deg",
+        "merge_dist_m",
+        "rg_theta_deg_small",
+        "rg_dist_m_small",
+        "rg_dihedral_deg_small",
+        "rg_refit_every_small",
+        "sweep_normal_deg_small",
+        "sweep_dist_m_small",
+        "sweep_frac_vertices_small",
+        "em_min_growth_small",
+        "min_area_patch_small",
+        "normal_p95_deg_max_small",
+        "thickness_max_small_mul",
+        "min_width_m_small",
+        "fill_frac_min_small",
+        "sat_normal_deg",
+        "sat_dist_m",
+        "sat_frac_vertices",
+        "sat_normal_p95_deg_max",
+        "sat_thickness_max_mul",
+        "sat_min_width_m",
+        "sat_fill_frac_min",
+        "irls_eps",
+        "last_dist_m",
+        "last_normal_deg",
+        "last_unlabeled_ratio",
+        "last_steal_factor",
+        "big_ransac_dist_m",
+        "big_ransac_normal_deg",
+        "big_ransac_min_inlier_frac",
+        "big_min_area_patch",
+        "big_p95_final_max",
+        "big_inlier_frac_min",
+        "big_normal_p95_deg_max",
+        "big_thickness_max_mul",
+        "big_min_width_m",
+        "big_fill_frac_min",
+        "merge_big_theta_deg",
+        "merge_big_dist_m",
+        "small_claim_normal_deg",
+        "small_claim_dist_m",
+        "post_ransac_dist_m",
+        "post_ransac_normal_deg",
+        "post_ransac_min_inlier_frac",
+        "post_min_area_m2",
     ]
 
     # --- String parameters ---
     str_keys = [
-        "backend", "rg_gate_mode", "gate_mode",
-        "policy_single_plane_labels", "large_split_mode",
-        "out_json_name", "out_ply_name"
+        "backend",
+        "rg_gate_mode",
+        "gate_mode",
+        "policy_single_plane_labels",
+        "large_split_mode",
+        "out_json_name",
+        "out_ply_name",
     ]
 
     # --- List parameters ---
-    list_keys = [
-        "policy_skip_labels"
-    ]
+    list_keys = ["policy_skip_labels"]
 
     # --- Apply casting ---
     for k in int_keys:
@@ -125,7 +188,7 @@ def build_args(scene_id, config_path, input_root=None, output_root=None):
     """
 
     # Load YAML configuration
-    with open(config_path, "r") as f:
+    with open(config_path) as f:
         cfg = yaml.safe_load(f)
 
     cfg = cast_config_types(cfg)
@@ -163,11 +226,11 @@ def build_args(scene_id, config_path, input_root=None, output_root=None):
         for mf in missing_files:
             print(f"   - {mf}")
         print(f"\n[INFO] Expected mesh directory: {mesh_dir}")
-        print(f"[INFO] Required files:")
-        print(f"   - mesh_vertices.hdf5")
-        print(f"   - mesh_faces_vi.hdf5")
-        print(f"   - mesh_faces_gi.hdf5")
-        print(f"   - metadata_groups.csv")
+        print("[INFO] Required files:")
+        print("   - mesh_vertices.hdf5")
+        print("   - mesh_faces_vi.hdf5")
+        print("   - mesh_faces_gi.hdf5")
+        print("   - metadata_groups.csv")
         sys.exit(1)
 
     os.makedirs(out_dir, exist_ok=True)
@@ -176,14 +239,16 @@ def build_args(scene_id, config_path, input_root=None, output_root=None):
     cfg["mesh"] = ""
 
     # Inject scene-specific I/O into config
-    cfg.update({
-        "h5_verts": h5_verts,
-        "h5_faces": h5_faces,
-        "h5_face_groups": h5_face_groups,
-        "groups_csv": groups_csv,
-        "legend_csv": legend_csv,
-        "out": out_dir
-    })
+    cfg.update(
+        {
+            "h5_verts": h5_verts,
+            "h5_faces": h5_faces,
+            "h5_face_groups": h5_face_groups,
+            "groups_csv": groups_csv,
+            "legend_csv": legend_csv,
+            "out": out_dir,
+        }
+    )
 
     return argparse.Namespace(**cfg)
 
@@ -205,34 +270,35 @@ Examples:
   python scene_runner.py ai_001_001 \\
       --input_root /data/hypersim \\
       --output_root /output/planes
-        """
+        """,
     )
 
     parser.add_argument(
-        "scene_id",
-        type=str,
-        help="Scene ID (e.g., ai_001_001, ai_003_007)"
+        "scene_id", type=str, help="Scene ID (e.g., ai_001_001, ai_003_007)"
     )
 
     parser.add_argument(
         "--config",
         type=str,
         default="../configs/hypersim_default.yml",
-        help="Path to YAML configuration file (default: ../configs/hypersim_default.yml)"
+        help=(
+            "Path to YAML configuration file "
+            "(default: ../configs/hypersim_default.yml)"
+        ),
     )
 
     parser.add_argument(
         "--input_root",
         type=str,
         default=None,
-        help="Override input data root directory (default: from config)"
+        help="Override input data root directory (default: from config)",
     )
 
     parser.add_argument(
         "--output_root",
         type=str,
         default=None,
-        help="Override output data root directory (default: from config)"
+        help="Override output data root directory (default: from config)",
     )
 
     args_cli = parser.parse_args()
@@ -255,7 +321,7 @@ Examples:
         scene_id,
         config_path,
         input_root=args_cli.input_root,
-        output_root=args_cli.output_root
+        output_root=args_cli.output_root,
     )
 
     print(f"Input:  {args.h5_verts.replace('/mesh_vertices.hdf5', '')}")
@@ -274,6 +340,7 @@ Examples:
         print(f"Error: {str(e)}")
         print("=" * 80)
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 

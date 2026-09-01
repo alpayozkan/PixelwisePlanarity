@@ -2,10 +2,10 @@ import os
 import shutil
 
 # --- Config ---
-full_scene_list_path = "hypersim_scene_ids.txt"   # Path to input scene list
-output_root = "scene_splits"                   # Output folder
-N = 100                                         # Number of partitions
-REVERSE_ORDER = False                           # 🔁 Set to True to reverse scene order
+full_scene_list_path = "hypersim_scene_ids.txt"  # Path to input scene list
+output_root = "scene_splits"  # Output folder
+N = 100  # Number of partitions
+REVERSE_ORDER = False  # 🔁 Set to True to reverse scene order
 # REVERSE_ORDER = True
 
 # --- Clean old splits ---
@@ -14,18 +14,18 @@ if os.path.exists(output_root):
     shutil.rmtree(output_root)
 
 # --- Read full scene list ---
-with open(full_scene_list_path, "r") as f:
+with open(full_scene_list_path) as f:
     all_scenes = [line.strip() for line in f if line.strip()]
 
 if REVERSE_ORDER:
     all_scenes = list(reversed(all_scenes))
-    print(f"[INFO] Reversed scene list order")
+    print("[INFO] Reversed scene list order")
 
 # --- Partition scenes ---
 total = len(all_scenes)
 scenes_per_split = (total + N - 1) // N  # ceiling division
-print('total: ', total)
-print('scenes_per_split: ', scenes_per_split)
+print("total: ", total)
+print("scenes_per_split: ", scenes_per_split)
 # --- Write splits ---
 os.makedirs(output_root, exist_ok=True)
 
@@ -45,8 +45,6 @@ for i in range(N):
     print(f"[INFO] Split {i}: {len(split_scenes)} scenes -> {split_path}")
 
 
-    
-
 # import os
 # import shutil
 
@@ -59,7 +57,7 @@ for i in range(N):
 # if os.path.exists(output_root):
 #     print(f"[INFO] Removing old output folder: {output_root}")
 #     shutil.rmtree(output_root)
-    
+
 # # --- Read full scene list ---
 # with open(full_scene_list_path, "r") as f:
 #     all_scenes = [line.strip() for line in f if line.strip()]

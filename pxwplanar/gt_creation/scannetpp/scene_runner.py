@@ -2,14 +2,16 @@
 """
 ScanNet++ scene runner for plane extraction.
 
-This script orchestrates the full plane extraction pipeline for a single ScanNet++ scene.
+This script orchestrates the full plane extraction pipeline for a single
+ScanNet++ scene.
 """
 
+import argparse
 import os
 import sys
-import argparse
-import yaml
 from pathlib import Path
+
+import yaml
 
 # Add repository root to path for absolute imports when running directly
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
@@ -23,37 +25,78 @@ def cast_config_types(cfg):
     """
     # Integer parameters
     int_keys = [
-        "palette_seed", "progress", "jobs",
-        "em_max_iters", "min_faces_patch",
-        "em_max_iters_small", "min_faces_patch_small",
-        "sat_rounds", "irls_max_iters",
-        "last_enable", "last_rg_iters",
-        "large_split_enable", "large_split_recursive",
-        "large_split_verts", "large_split_max_parts", "large_split_min_faces"
+        "palette_seed",
+        "progress",
+        "jobs",
+        "em_max_iters",
+        "min_faces_patch",
+        "em_max_iters_small",
+        "min_faces_patch_small",
+        "sat_rounds",
+        "irls_max_iters",
+        "last_enable",
+        "last_rg_iters",
+        "large_split_enable",
+        "large_split_recursive",
+        "large_split_verts",
+        "large_split_max_parts",
+        "large_split_min_faces",
     ]
 
     # Float parameters
     float_keys = [
-        "rg_theta_deg", "rg_dist_m", "rg_dihedral_deg", "rg_refit_every",
-        "sweep_normal_deg", "sweep_dist_m", "sweep_frac_vertices",
-        "em_min_growth", "min_area_patch", "p95_final_max",
-        "inlier_frac_min", "dist_thr", "normal_p95_deg_max",
-        "thickness_max_mul", "min_width_m", "fill_frac_min",
-        "merge_theta_deg", "merge_dist_m",
-        "rg_theta_deg_small", "rg_dist_m_small", "rg_dihedral_deg_small",
-        "rg_refit_every_small", "sweep_normal_deg_small", "sweep_dist_m_small",
-        "sweep_frac_vertices_small", "em_min_growth_small", "min_area_patch_small",
-        "normal_p95_deg_max_small", "thickness_max_small_mul", "min_width_m_small",
-        "fill_frac_min_small", "sat_normal_deg", "sat_dist_m", "sat_frac_vertices",
-        "sat_normal_p95_deg_max", "sat_thickness_max_mul", "sat_min_width_m",
-        "sat_fill_frac_min", "irls_eps", "last_dist_m", "last_normal_deg",
-        "last_unlabeled_ratio", "last_steal_factor"
+        "rg_theta_deg",
+        "rg_dist_m",
+        "rg_dihedral_deg",
+        "rg_refit_every",
+        "sweep_normal_deg",
+        "sweep_dist_m",
+        "sweep_frac_vertices",
+        "em_min_growth",
+        "min_area_patch",
+        "p95_final_max",
+        "inlier_frac_min",
+        "dist_thr",
+        "normal_p95_deg_max",
+        "thickness_max_mul",
+        "min_width_m",
+        "fill_frac_min",
+        "merge_theta_deg",
+        "merge_dist_m",
+        "rg_theta_deg_small",
+        "rg_dist_m_small",
+        "rg_dihedral_deg_small",
+        "rg_refit_every_small",
+        "sweep_normal_deg_small",
+        "sweep_dist_m_small",
+        "sweep_frac_vertices_small",
+        "em_min_growth_small",
+        "min_area_patch_small",
+        "normal_p95_deg_max_small",
+        "thickness_max_small_mul",
+        "min_width_m_small",
+        "fill_frac_min_small",
+        "sat_normal_deg",
+        "sat_dist_m",
+        "sat_frac_vertices",
+        "sat_normal_p95_deg_max",
+        "sat_thickness_max_mul",
+        "sat_min_width_m",
+        "sat_fill_frac_min",
+        "irls_eps",
+        "last_dist_m",
+        "last_normal_deg",
+        "last_unlabeled_ratio",
+        "last_steal_factor",
     ]
 
     # String parameters
     str_keys = [
-        "backend", "rg_gate_mode", "gate_mode",
-        "policy_single_plane_labels", "large_split_mode"
+        "backend",
+        "rg_gate_mode",
+        "gate_mode",
+        "policy_single_plane_labels",
+        "large_split_mode",
     ]
 
     # List parameters
@@ -90,7 +133,7 @@ def build_args(scene_id, config_path, input_root, output_root):
         output_root: Root directory for output
     """
     # Load YAML config
-    with open(config_path, "r") as f:
+    with open(config_path) as f:
         cfg = yaml.safe_load(f)
 
     cfg = cast_config_types(cfg)
@@ -100,8 +143,10 @@ def build_args(scene_id, config_path, input_root, output_root):
     input_root = input_root or cfg.get("input_root")
     output_root = output_root or cfg.get("output_root")
     if not input_root or not output_root:
-        print("[ERROR] input_root/output_root not set (pass --input_root/--output_root "
-              "or define them in the config)")
+        print(
+            "[ERROR] input_root/output_root not set "
+            "(pass --input_root/--output_root or define them in the config)"
+        )
         sys.exit(1)
 
     # Scene-specific paths
@@ -122,33 +167,53 @@ def build_args(scene_id, config_path, input_root, output_root):
     os.makedirs(out_dir, exist_ok=True)
 
     # Add scene-specific paths to config
-    cfg.update({
-        "mesh": mesh_path,
-        "segments_json": segments_json_path,
-        "segments_anno": segments_anno_path,
-        "out": out_dir
-    })
+    cfg.update(
+        {
+            "mesh": mesh_path,
+            "segments_json": segments_json_path,
+            "segments_anno": segments_anno_path,
+            "out": out_dir,
+        }
+    )
 
     return argparse.Namespace(**cfg)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Extract planes from ScanNet++ scene")
-    parser.add_argument("scene_id", type=str, help="Scene ID (e.g., '0a5c013435')")
-    parser.add_argument("--config", type=str,
-                       default="../configs/scannetpp_default.yml",
-                       help="Path to config YAML file")
-    parser.add_argument("--input_root", type=str, default=None,
-                       help="Root directory of ScanNet++ dataset "
-                            "(default: input_root from the config)")
-    parser.add_argument("--output_root", type=str, default=None,
-                       help="Root directory for output "
-                            "(default: output_root from the config)")
+    parser = argparse.ArgumentParser(
+        description="Extract planes from ScanNet++ scene"
+    )
+    parser.add_argument(
+        "scene_id", type=str, help="Scene ID (e.g., '0a5c013435')"
+    )
+    parser.add_argument(
+        "--config",
+        type=str,
+        default="../configs/scannetpp_default.yml",
+        help="Path to config YAML file",
+    )
+    parser.add_argument(
+        "--input_root",
+        type=str,
+        default=None,
+        help="Root directory of ScanNet++ dataset "
+        "(default: input_root from the config)",
+    )
+    parser.add_argument(
+        "--output_root",
+        type=str,
+        default=None,
+        help="Root directory for output (default: output_root from the config)",
+    )
 
     args_cli = parser.parse_args()
 
     print(f"[INFO] Processing scene: {args_cli.scene_id}")
-    args = build_args(args_cli.scene_id, args_cli.config,
-                     args_cli.input_root, args_cli.output_root)
+    args = build_args(
+        args_cli.scene_id,
+        args_cli.config,
+        args_cli.input_root,
+        args_cli.output_root,
+    )
     run(args)
     print(f"[DONE] Finished scene: {args_cli.scene_id}")

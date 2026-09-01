@@ -11,19 +11,18 @@ import os
 import time
 from collections import defaultdict
 from contextlib import contextmanager
-from typing import Dict, List, Optional, Tuple
 
+import h5py
 import numpy as np
 import pandas as pd
-import h5py
 from tqdm import tqdm
 
 from pxwplanar.shared.plane_fitting import set_ransac_seed
 
-
 # ============================================================
 # TIMING INFRASTRUCTURE
 # ============================================================
+
 
 class Timer:
     """
@@ -74,7 +73,10 @@ class Timer:
         for k, v in sorted(self.timings.items(), key=lambda x: -x[1]):
             count = self.counts[k]
             avg = v / count if count > 0 else 0
-            print(f"{k:25s} {self.format_time(v):>15s} ({count:>6d} calls, {avg*1000:>8.2f}ms avg)")
+            print(
+                f"{k:25s} {self.format_time(v):>15s} "
+                f"({count:>6d} calls, {avg * 1000:>8.2f}ms avg)"
+            )
         print("-" * 60)
         print(f"{'TOTAL WALL TIME':25s} {self.format_time(total):>15s}")
         if num_frames > 0:
@@ -85,24 +87,30 @@ class Timer:
         """Convert timings to DataFrame for saving."""
         rows = []
         for name, seconds in self.timings.items():
-            rows.append({
-                "stage": name,
-                "time_seconds": seconds,
-                "time_hms": self.format_time(seconds),
-                "calls": self.counts[name],
-                "avg_ms": (seconds / self.counts[name] * 1000) if self.counts[name] > 0 else 0
-            })
-        return pd.DataFrame(rows).sort_values(by="time_seconds", ascending=False)
+            rows.append(
+                {
+                    "stage": name,
+                    "time_seconds": seconds,
+                    "time_hms": self.format_time(seconds),
+                    "calls": self.counts[name],
+                    "avg_ms": (seconds / self.counts[name] * 1000)
+                    if self.counts[name] > 0
+                    else 0,
+                }
+            )
+        return pd.DataFrame(rows).sort_values(
+            by="time_seconds", ascending=False
+        )
 
 
 # ============================================================
 # RESULT SAVING UTILITIES
 # ============================================================
 
+
 def save_results_csv(
-    results: Dict[Tuple[str, str], Dict],
-    csv_out_dir: str
-) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    results: dict[tuple[str, str], dict], csv_out_dir: str
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Save evaluation results to CSV files.
 
@@ -124,7 +132,7 @@ def save_results_csv(
     df = pd.DataFrame.from_records(list(results.values()))
     df = df.set_index(["scene_id", "frame_idx"])
 
-    out_path = os.path.join(csv_out_dir, 'results.csv')
+    out_path = os.path.join(csv_out_dir, "results.csv")
     df.to_csv(out_path)
     print(f"[CSV] Saved per-frame results to {out_path}")
 
@@ -143,7 +151,7 @@ def save_results_csv(
     # Dataset stats
     dataset_stats = {
         "num_scenes": len(df_scene),
-        "num_frames_total": int(df_scene["num_frames"].sum())
+        "num_frames_total": int(df_scene["num_frames"].sum()),
     }
     numeric_cols = df_scene.select_dtypes(include="number").columns
     metric_cols = [c for c in numeric_cols if c != "num_frames"]
@@ -160,8 +168,7 @@ def save_results_csv(
 
 
 def save_predictions_h5(
-    scene_predictions: Dict[str, List[Tuple[str, np.ndarray]]],
-    h5_root: str
+    scene_predictions: dict[str, list[tuple[str, np.ndarray]]], h5_root: str
 ):
     """
     Save predictions to H5 files (one per scene).
@@ -172,18 +179,26 @@ def save_predictions_h5(
     """
     os.makedirs(h5_root, exist_ok=True)
 
-    for scene_id, frame_data in tqdm(scene_predictions.items(), desc="Writing H5"):
+    for scene_id, frame_data in tqdm(
+        scene_predictions.items(), desc="Writing H5"
+    ):
         frame_data.sort(key=lambda x: x[0])
         frame_ids_list = [fd[0] for fd in frame_data]
-        planes = np.stack([fd[1] for fd in frame_data], axis=0).astype(np.uint16)
+        planes = np.stack([fd[1] for fd in frame_data], axis=0).astype(
+            np.uint16
+        )
 
         scene_h5_dir = os.path.join(h5_root, scene_id)
         os.makedirs(scene_h5_dir, exist_ok=True)
 
         h5_path = os.path.join(scene_h5_dir, "planes.h5")
         with h5py.File(h5_path, "w") as f:
-            f.create_dataset("planes", data=planes, compression="gzip", compression_opts=4)
-            f.create_dataset("frame_ids", data=np.array(frame_ids_list, dtype="S"))
+            f.create_dataset(
+                "planes", data=planes, compression="gzip", compression_opts=4
+            )
+            f.create_dataset(
+                "frame_ids", data=np.array(frame_ids_list, dtype="S")
+            )
 
     print(f"[H5] Written {len(scene_predictions)} scene files to {h5_root}")
 
@@ -200,6 +215,7 @@ def save_runtime(timer: Timer, csv_out_dir: str):
 # FRAME EVALUATION
 # ============================================================
 
+
 def evaluate_single_frame_old(
     scene_id: str,
     frame_idx: str,
@@ -208,12 +224,12 @@ def evaluate_single_frame_old(
     K_np: np.ndarray,
     c2w_np: np.ndarray,
     labels: np.ndarray,
-    thresholds: Tuple[float, ...],
+    thresholds: tuple[float, ...],
     compute_plane_metrics_flag: bool = True,
     ransac_iterations: int = 200,
     inlier_ratio_gate: float = 0.5,
-    ransac_seed: Optional[int] = 0
-) -> Tuple[Dict, np.ndarray]:
+    ransac_seed: int | None = 0,
+) -> tuple[dict, np.ndarray]:
     """
     [DEPRECATED] Use evaluate_single_frame() instead (v1 version).
 
@@ -236,7 +252,8 @@ def evaluate_single_frame_old(
         thresholds: Tuple of distance thresholds for plane metrics (meters)
         compute_plane_metrics_flag: Whether to compute RANSAC plane metrics
         ransac_iterations: Number of RANSAC iterations
-        inlier_ratio_gate: Minimum inlier ratio to count a segment as valid (default 0.5)
+        inlier_ratio_gate: Minimum inlier ratio to count a segment as valid
+            (default 0.5)
         ransac_seed: Seed for RANSAC reproducibility (default 0). None disables
             seeding (legacy non-deterministic behaviour).
 
@@ -252,19 +269,23 @@ def evaluate_single_frame_old(
         pts_world, pt_labels, _ = backproject(depth_np, K_np, c2w_np, labels)
 
         if pts_world.shape[0] == 0:
-            metric_thr = {f"prec@{thr*100:.1f}cm": 0.0 for thr in thresholds}
-            metric_thr.update({f"rec@{thr*100:.1f}cm": 0.0 for thr in thresholds})
+            metric_thr = {f"prec@{thr * 100:.1f}cm": 0.0 for thr in thresholds}
+            metric_thr.update(
+                {f"rec@{thr * 100:.1f}cm": 0.0 for thr in thresholds}
+            )
         else:
             metric_thr = compute_plane_metrics_old(
-                pts_world, pt_labels, thresholds,
+                pts_world,
+                pt_labels,
+                thresholds,
                 num_iterations=ransac_iterations,
                 inlier_ratio_gate=inlier_ratio_gate,
-                ransac_seed=ransac_seed
+                ransac_seed=ransac_seed,
             )
     else:
         for thr in thresholds:
-            metric_thr[f"prec@{thr*100:.1f}cm"] = np.nan
-            metric_thr[f"rec@{thr*100:.1f}cm"] = np.nan
+            metric_thr[f"prec@{thr * 100:.1f}cm"] = np.nan
+            metric_thr[f"rec@{thr * 100:.1f}cm"] = np.nan
 
     # Clustering metrics (pure img-to-img)
     clustering = compute_clustering_metrics(gt_seg_np, labels)
@@ -275,7 +296,7 @@ def evaluate_single_frame_old(
         "frame_idx": frame_idx,
         **clustering,
         **metric_thr,
-        **bp_metrics
+        **bp_metrics,
     }
 
     return metrics, labels
@@ -285,10 +306,10 @@ def evaluate_single_frame_old(
 # EVALUATION HELPERS
 # ============================================================
 
+
 def compute_clustering_metrics(
-    gt_seg: np.ndarray,
-    pred_seg: np.ndarray
-) -> Dict[str, float]:
+    gt_seg: np.ndarray, pred_seg: np.ndarray
+) -> dict[str, float]:
     """
     Compute clustering metrics between GT and predicted segmentation.
 
@@ -307,8 +328,9 @@ def compute_clustering_metrics(
     Returns:
         {"rand_index": float, "voi": float, "sc": float}
     """
-    from sklearn.metrics import rand_score
     from skimage.metrics import variation_of_information
+    from sklearn.metrics import rand_score
+
     from pxwplanar.shared.plane_fitting import segmentation_covering_fast
 
     # Rand Index
@@ -328,11 +350,12 @@ def compute_binary_planarity_metrics(
     gt_seg: np.ndarray,
     pred_seg: np.ndarray,
     bg_label: int = 0,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """
     Compute binary planarity classification metrics.
 
-    Treats the problem as binary: planar (label > bg_label) vs non-planar (label == bg_label).
+    Treats the problem as binary: planar (label > bg_label) vs non-planar
+    (label == bg_label).
 
     All metrics are prefixed with 'bp_' (binary planarity) to avoid conflicts
     with existing 3D plane geometry metrics (prec@/rec@).
@@ -347,8 +370,10 @@ def compute_binary_planarity_metrics(
             "bp_accuracy": float,   # (TP + TN) / total
             "bp_precision": float,  # TP / (TP + FP)
             "bp_recall": float,     # TP / (TP + FN)
-            "bp_f1": float,         # 2 * precision * recall / (precision + recall)
-            "bp_iou": float,        # TP / (TP + FP + FN), Jaccard index for planar class
+            "bp_f1": float,         # 2 * precision * recall
+                                    #     / (precision + recall)
+            "bp_iou": float,        # TP / (TP + FP + FN), Jaccard index
+                                    #     for planar class
         }
     """
     gt_planar = gt_seg != bg_label
@@ -378,12 +403,12 @@ def compute_binary_planarity_metrics(
 def compute_plane_metrics_old(
     pts_world: np.ndarray,
     labels: np.ndarray,
-    thresholds: Tuple[float, ...],
+    thresholds: tuple[float, ...],
     num_iterations: int = 200,
     min_support: int = 100,
     inlier_ratio_gate: float = 0.5,
-    ransac_seed: Optional[int] = 0
-) -> Dict[str, float]:
+    ransac_seed: int | None = 0,
+) -> dict[str, float]:
     """
     [DEPRECATED] Use compute_plane_metrics() instead (v1 version).
 
@@ -397,12 +422,15 @@ def compute_plane_metrics_old(
         thresholds: Tuple of distance thresholds (meters)
         num_iterations: RANSAC iterations
         min_support: Minimum points for RANSAC
-        inlier_ratio_gate: Minimum inlier ratio to count a segment as valid (default 0.5)
+        inlier_ratio_gate: Minimum inlier ratio to count a segment as valid
+            (default 0.5)
 
     Returns:
         {"prec@Xcm": float, "rec@Xcm": float} for each threshold X
     """
-    from pxwplanar.shared.plane_fitting import fit_planes_and_evaluate_multi_threshold
+    from pxwplanar.shared.plane_fitting import (
+        fit_planes_and_evaluate_multi_threshold,
+    )
 
     multi_metrics = fit_planes_and_evaluate_multi_threshold(
         pts_world,
@@ -412,13 +440,13 @@ def compute_plane_metrics_old(
         num_iterations=num_iterations,
         min_support=min_support,
         inlier_ratio_gate=inlier_ratio_gate,
-        ransac_seed=ransac_seed
+        ransac_seed=ransac_seed,
     )
 
     result = {}
     for thr in thresholds:
-        result[f"prec@{thr*100:.1f}cm"] = multi_metrics[thr]["precision"]
-        result[f"rec@{thr*100:.1f}cm"] = multi_metrics[thr]["recall"]
+        result[f"prec@{thr * 100:.1f}cm"] = multi_metrics[thr]["precision"]
+        result[f"rec@{thr * 100:.1f}cm"] = multi_metrics[thr]["recall"]
 
     return result
 
@@ -426,29 +454,31 @@ def compute_plane_metrics_old(
 def compute_plane_metrics(
     pts_world: np.ndarray,
     labels: np.ndarray,
-    thresholds: Tuple[float, ...],
+    thresholds: tuple[float, ...],
     num_iterations: int = 200,
     min_support: int = 100,
     inlier_ratio_gate: float = 0.5,
-    ransac_seed: Optional[int] = 0
-) -> Dict[str, float]:
+    ransac_seed: int | None = 0,
+) -> dict[str, float]:
     """
     Compute plane fitting metrics at multiple thresholds (threshold-consistent).
 
 
     DIFFERENCE FROM compute_plane_metrics_old:
-    - compute_plane_metrics_old: Uses fixed base_threshold=0.02 (2cm) for RANSAC fitting,
-      then evaluates inliers at each threshold. This means the same plane equation
-      is used for all thresholds.
-    - compute_plane_metrics (current): Uses the evaluation threshold as the RANSAC threshold.
-      This means each threshold gets its own plane fit, and precision/recall reflect
-      how well planes can be fit AND evaluated at that specific tolerance.
+    - compute_plane_metrics_old: Uses fixed base_threshold=0.02 (2cm) for
+      RANSAC fitting, then evaluates inliers at each threshold. This means
+      the same plane equation is used for all thresholds.
+    - compute_plane_metrics (current): Uses the evaluation threshold as the
+      RANSAC threshold. This means each threshold gets its own plane fit,
+      and precision/recall reflect how well planes can be fit AND evaluated
+      at that specific tolerance.
 
     This version measures:
     "What is the precision/recall when planes are fit at threshold X?"
 
     The old version measured:
-    "Given a robustly-fit plane (at 2cm), how precise is it at stricter thresholds?"
+    "Given a robustly-fit plane (at 2cm), how precise is it at stricter
+    thresholds?"
 
     Args:
         pts_world: (N, 3) world coordinates
@@ -456,14 +486,15 @@ def compute_plane_metrics(
         thresholds: Tuple of distance thresholds (meters)
         num_iterations: RANSAC iterations
         min_support: Minimum points for RANSAC
-        inlier_ratio_gate: Minimum inlier ratio to count a segment as valid (default 0.5)
+        inlier_ratio_gate: Minimum inlier ratio to count a segment as valid
+            (default 0.5)
 
     Returns:
         {"prec@Xcm": float, "rec@Xcm": float} for each threshold X
     """
     from pxwplanar.shared.plane_fitting import (
-        fit_planes_per_label,
         compute_inliers_at_threshold,
+        fit_planes_per_label,
     )
 
     result = {}
@@ -476,12 +507,12 @@ def compute_plane_metrics(
             distance_threshold=thr,  # Use evaluation threshold for RANSAC
             num_iterations=num_iterations,
             min_support=min_support,
-            ransac_seed=ransac_seed
+            ransac_seed=ransac_seed,
         )
 
         if df is None or len(df) == 0:
-            result[f"prec@{thr*100:.1f}cm"] = 0.0
-            result[f"rec@{thr*100:.1f}cm"] = 0.0
+            result[f"prec@{thr * 100:.1f}cm"] = 0.0
+            result[f"rec@{thr * 100:.1f}cm"] = 0.0
             continue
 
         # Extract fitted plane parameters
@@ -491,8 +522,8 @@ def compute_plane_metrics(
                 plane_params[pid] = data["plane_model_refined"]
 
         if not plane_params:
-            result[f"prec@{thr*100:.1f}cm"] = 0.0
-            result[f"rec@{thr*100:.1f}cm"] = 0.0
+            result[f"prec@{thr * 100:.1f}cm"] = 0.0
+            result[f"rec@{thr * 100:.1f}cm"] = 0.0
             continue
 
         # Evaluate at the same threshold
@@ -500,8 +531,8 @@ def compute_plane_metrics(
             pts_world, labels, plane_params, thr, inlier_ratio_gate
         )
 
-        result[f"prec@{thr*100:.1f}cm"] = metrics["precision"]
-        result[f"rec@{thr*100:.1f}cm"] = metrics["recall"]
+        result[f"prec@{thr * 100:.1f}cm"] = metrics["precision"]
+        result[f"rec@{thr * 100:.1f}cm"] = metrics["recall"]
 
     return result
 
@@ -509,14 +540,15 @@ def compute_plane_metrics(
 def compute_plane_metrics_multigates(
     pts_world: np.ndarray,
     labels: np.ndarray,
-    thresholds: Tuple[float, ...],
-    inlier_ratio_gates: Tuple[float, ...] = (0.5, 0.7, 0.8, 0.9),
+    thresholds: tuple[float, ...],
+    inlier_ratio_gates: tuple[float, ...] = (0.5, 0.7, 0.8, 0.9),
     num_iterations: int = 200,
     min_support: int = 100,
-    ransac_seed: Optional[int] = 0,
-) -> Dict[str, float]:
+    ransac_seed: int | None = 0,
+) -> dict[str, float]:
     """
-    Compute plane fitting metrics at multiple thresholds AND multiple inlier ratio gates.
+    Compute plane fitting metrics at multiple thresholds AND multiple inlier
+    ratio gates.
 
     Fits RANSAC once per threshold, then evaluates at each gate — the gate only
     affects which segments count as valid planes, so the plane fits are reused.
@@ -530,16 +562,17 @@ def compute_plane_metrics_multigates(
         min_support: Minimum points for RANSAC
 
     Returns:
-        {"prec@Xcm_gateY": float, "rec@Xcm_gateY": float} for each (threshold, gate)
+        {"prec@Xcm_gateY": float, "rec@Xcm_gateY": float} for each
+        (threshold, gate)
     """
     from pxwplanar.shared.plane_fitting import (
-        fit_planes_per_label,
         compute_inliers_at_threshold,
+        fit_planes_per_label,
     )
 
     result = {}
     for thr in thresholds:
-        thresh_str = f"{thr*100:.1f}cm"
+        thresh_str = f"{thr * 100:.1f}cm"
 
         # Fit planes once per threshold
         fit_results, df = fit_planes_per_label(
@@ -549,7 +582,7 @@ def compute_plane_metrics_multigates(
             distance_threshold=thr,
             num_iterations=num_iterations,
             min_support=min_support,
-            ransac_seed=ransac_seed
+            ransac_seed=ransac_seed,
         )
 
         if df is None or len(df) == 0:
@@ -588,16 +621,17 @@ def evaluate_single_frame_multigates(
     K_np: np.ndarray,
     c2w_np: np.ndarray,
     labels: np.ndarray,
-    thresholds: Tuple[float, ...],
-    inlier_ratio_gates: Tuple[float, ...] = (0.5, 0.7, 0.8, 0.9),
+    thresholds: tuple[float, ...],
+    inlier_ratio_gates: tuple[float, ...] = (0.5, 0.7, 0.8, 0.9),
     compute_plane_metrics_flag: bool = True,
     ransac_iterations: int = 200,
-    ransac_seed: Optional[int] = 0,
-) -> Tuple[Dict, np.ndarray]:
+    ransac_seed: int | None = 0,
+) -> tuple[dict, np.ndarray]:
     """
     Evaluate a single frame at multiple inlier ratio gates.
 
-    Same as evaluate_single_frame but fits RANSAC once and evaluates at all gates.
+    Same as evaluate_single_frame but fits RANSAC once and evaluates at all
+    gates.
     Produces columns like prec@0.1cm_gate0.5, prec@0.1cm_gate0.9, etc.
 
     Args:
@@ -626,20 +660,22 @@ def evaluate_single_frame_multigates(
 
         if pts_world.shape[0] == 0:
             for thr in thresholds:
-                thresh_str = f"{thr*100:.1f}cm"
+                thresh_str = f"{thr * 100:.1f}cm"
                 for gate in inlier_ratio_gates:
                     metric_thr[f"prec@{thresh_str}_gate{gate}"] = 0.0
                     metric_thr[f"rec@{thresh_str}_gate{gate}"] = 0.0
         else:
             metric_thr = compute_plane_metrics_multigates(
-                pts_world, pt_labels, thresholds,
+                pts_world,
+                pt_labels,
+                thresholds,
                 inlier_ratio_gates=inlier_ratio_gates,
                 num_iterations=ransac_iterations,
                 ransac_seed=ransac_seed,
             )
     else:
         for thr in thresholds:
-            thresh_str = f"{thr*100:.1f}cm"
+            thresh_str = f"{thr * 100:.1f}cm"
             for gate in inlier_ratio_gates:
                 metric_thr[f"prec@{thresh_str}_gate{gate}"] = np.nan
                 metric_thr[f"rec@{thresh_str}_gate{gate}"] = np.nan
@@ -653,7 +689,7 @@ def evaluate_single_frame_multigates(
         "frame_idx": frame_idx,
         **clustering,
         **metric_thr,
-        **bp_metrics
+        **bp_metrics,
     }
 
     return metrics, labels
@@ -667,20 +703,23 @@ def evaluate_single_frame(
     K_np: np.ndarray,
     c2w_np: np.ndarray,
     labels: np.ndarray,
-    thresholds: Tuple[float, ...],
+    thresholds: tuple[float, ...],
     compute_plane_metrics_flag: bool = True,
     ransac_iterations: int = 200,
     inlier_ratio_gate: float = 0.5,
-    ransac_seed: Optional[int] = 0
-) -> Tuple[Dict, np.ndarray]:
+    ransac_seed: int | None = 0,
+) -> tuple[dict, np.ndarray]:
     """
-    Evaluate a single frame with pre-computed segmentation labels (threshold-consistent).
+    Evaluate a single frame with pre-computed segmentation labels
+    (threshold-consistent).
 
 
     Uses compute_plane_metrics() which runs RANSAC at each evaluation threshold
-    (not fixed 2cm). This ensures visualization and evaluation use identical plane fits.
+    (not fixed 2cm). This ensures visualization and evaluation use identical
+    plane fits.
 
-    For the deprecated old version (fixed 2cm RANSAC), use evaluate_single_frame_old().
+    For the deprecated old version (fixed 2cm RANSAC), use
+    evaluate_single_frame_old().
 
     Args:
         scene_id: Scene identifier
@@ -693,7 +732,8 @@ def evaluate_single_frame(
         thresholds: Tuple of distance thresholds for plane metrics (meters)
         compute_plane_metrics_flag: Whether to compute RANSAC plane metrics
         ransac_iterations: Number of RANSAC iterations
-        inlier_ratio_gate: Minimum inlier ratio to count a segment as valid (default 0.5)
+        inlier_ratio_gate: Minimum inlier ratio to count a segment as valid
+            (default 0.5)
         ransac_seed: Seed for RANSAC reproducibility (default 0). None disables
             seeding (legacy non-deterministic behaviour).
 
@@ -709,19 +749,23 @@ def evaluate_single_frame(
         pts_world, pt_labels, _ = backproject(depth_np, K_np, c2w_np, labels)
 
         if pts_world.shape[0] == 0:
-            metric_thr = {f"prec@{thr*100:.1f}cm": 0.0 for thr in thresholds}
-            metric_thr.update({f"rec@{thr*100:.1f}cm": 0.0 for thr in thresholds})
+            metric_thr = {f"prec@{thr * 100:.1f}cm": 0.0 for thr in thresholds}
+            metric_thr.update(
+                {f"rec@{thr * 100:.1f}cm": 0.0 for thr in thresholds}
+            )
         else:
             metric_thr = compute_plane_metrics(
-                pts_world, pt_labels, thresholds,
+                pts_world,
+                pt_labels,
+                thresholds,
                 num_iterations=ransac_iterations,
                 inlier_ratio_gate=inlier_ratio_gate,
-                ransac_seed=ransac_seed
+                ransac_seed=ransac_seed,
             )
     else:
         for thr in thresholds:
-            metric_thr[f"prec@{thr*100:.1f}cm"] = np.nan
-            metric_thr[f"rec@{thr*100:.1f}cm"] = np.nan
+            metric_thr[f"prec@{thr * 100:.1f}cm"] = np.nan
+            metric_thr[f"rec@{thr * 100:.1f}cm"] = np.nan
 
     # Clustering metrics (pure img-to-img)
     clustering = compute_clustering_metrics(gt_seg_np, labels)
@@ -734,7 +778,7 @@ def evaluate_single_frame(
         "frame_idx": frame_idx,
         **clustering,
         **metric_thr,
-        **bp_metrics
+        **bp_metrics,
     }
 
     return metrics, labels
@@ -744,32 +788,36 @@ def evaluate_single_frame(
 # HYPERSIM-SPECIFIC EVALUATION (backproject_mcam)
 # ============================================================
 
+
 def evaluate_single_frame_hypersim(
     scene_id: str,
     frame_idx: str,
     depth_euc_np: np.ndarray,
     gt_seg_np: np.ndarray,
     M_cam_from_uv: np.ndarray,
-    native_wh: Tuple[int, int],
+    native_wh: tuple[int, int],
     c2w_np: np.ndarray,
     labels: np.ndarray,
-    thresholds: Tuple[float, ...],
+    thresholds: tuple[float, ...],
     compute_plane_metrics_flag: bool = True,
     ransac_iterations: int = 200,
     inlier_ratio_gate: float = 0.5,
-    ransac_seed: Optional[int] = 0,
-) -> Tuple[Dict, np.ndarray]:
+    ransac_seed: int | None = 0,
+) -> tuple[dict, np.ndarray]:
     """
-    Evaluate a single Hypersim frame using backproject_mcam (exact V-Ray ray directions).
+    Evaluate a single Hypersim frame using backproject_mcam (exact V-Ray ray
+    directions).
 
-    Uses raycasted Euclidean depth from planes.ply + M_cam_from_uv for backprojection,
+    Uses raycasted Euclidean depth from planes.ply + M_cam_from_uv for
+    backprojection,
     which is geometrically consistent with the plane labels and avoids pinhole
     approximation errors.
 
     Args:
         scene_id: Scene identifier
         frame_idx: Frame identifier
-        depth_euc_np: (H, W) Euclidean ray distance in meters (raycasted from planes.ply)
+        depth_euc_np: (H, W) Euclidean ray distance in meters
+            (raycasted from planes.ply)
         gt_seg_np: (H, W) ground truth segmentation
         M_cam_from_uv: (3, 3) V-Ray camera matrix from metadata CSV
         native_wh: (native_w, native_h) native render resolution
@@ -790,23 +838,32 @@ def evaluate_single_frame_hypersim(
 
     if compute_plane_metrics_flag:
         pts_world, pt_labels, _ = backproject_mcam(
-            depth_euc_np, M_cam_from_uv, native_wh[0], native_wh[1], c2w_np, labels
+            depth_euc_np,
+            M_cam_from_uv,
+            native_wh[0],
+            native_wh[1],
+            c2w_np,
+            labels,
         )
 
         if pts_world.shape[0] == 0:
-            metric_thr = {f"prec@{thr*100:.1f}cm": 0.0 for thr in thresholds}
-            metric_thr.update({f"rec@{thr*100:.1f}cm": 0.0 for thr in thresholds})
+            metric_thr = {f"prec@{thr * 100:.1f}cm": 0.0 for thr in thresholds}
+            metric_thr.update(
+                {f"rec@{thr * 100:.1f}cm": 0.0 for thr in thresholds}
+            )
         else:
             metric_thr = compute_plane_metrics(
-                pts_world, pt_labels, thresholds,
+                pts_world,
+                pt_labels,
+                thresholds,
                 num_iterations=ransac_iterations,
                 inlier_ratio_gate=inlier_ratio_gate,
-                ransac_seed=ransac_seed
+                ransac_seed=ransac_seed,
             )
     else:
         for thr in thresholds:
-            metric_thr[f"prec@{thr*100:.1f}cm"] = np.nan
-            metric_thr[f"rec@{thr*100:.1f}cm"] = np.nan
+            metric_thr[f"prec@{thr * 100:.1f}cm"] = np.nan
+            metric_thr[f"rec@{thr * 100:.1f}cm"] = np.nan
 
     clustering = compute_clustering_metrics(gt_seg_np, labels)
     bp_metrics = compute_binary_planarity_metrics(gt_seg_np, labels)
@@ -816,7 +873,7 @@ def evaluate_single_frame_hypersim(
         "frame_idx": frame_idx,
         **clustering,
         **metric_thr,
-        **bp_metrics
+        **bp_metrics,
     }
 
     return metrics, labels
@@ -828,24 +885,27 @@ def evaluate_single_frame_hypersim_multigates(
     depth_euc_np: np.ndarray,
     gt_seg_np: np.ndarray,
     M_cam_from_uv: np.ndarray,
-    native_wh: Tuple[int, int],
+    native_wh: tuple[int, int],
     c2w_np: np.ndarray,
     labels: np.ndarray,
-    thresholds: Tuple[float, ...],
-    inlier_ratio_gates: Tuple[float, ...] = (0.5, 0.7, 0.8, 0.9),
+    thresholds: tuple[float, ...],
+    inlier_ratio_gates: tuple[float, ...] = (0.5, 0.7, 0.8, 0.9),
     compute_plane_metrics_flag: bool = True,
     ransac_iterations: int = 200,
-    ransac_seed: Optional[int] = 0,
-) -> Tuple[Dict, np.ndarray]:
+    ransac_seed: int | None = 0,
+) -> tuple[dict, np.ndarray]:
     """
-    Evaluate a single Hypersim frame at multiple inlier ratio gates using backproject_mcam.
+    Evaluate a single Hypersim frame at multiple inlier ratio gates using
+    backproject_mcam.
 
-    Same as evaluate_single_frame_hypersim but fits RANSAC once and evaluates at all gates.
+    Same as evaluate_single_frame_hypersim but fits RANSAC once and evaluates
+    at all gates.
 
     Args:
         scene_id: Scene identifier
         frame_idx: Frame identifier
-        depth_euc_np: (H, W) Euclidean ray distance in meters (raycasted from planes.ply)
+        depth_euc_np: (H, W) Euclidean ray distance in meters
+            (raycasted from planes.ply)
         gt_seg_np: (H, W) ground truth segmentation
         M_cam_from_uv: (3, 3) V-Ray camera matrix from metadata CSV
         native_wh: (native_w, native_h) native render resolution
@@ -866,25 +926,32 @@ def evaluate_single_frame_hypersim_multigates(
 
     if compute_plane_metrics_flag:
         pts_world, pt_labels, _ = backproject_mcam(
-            depth_euc_np, M_cam_from_uv, native_wh[0], native_wh[1], c2w_np, labels
+            depth_euc_np,
+            M_cam_from_uv,
+            native_wh[0],
+            native_wh[1],
+            c2w_np,
+            labels,
         )
 
         if pts_world.shape[0] == 0:
             for thr in thresholds:
-                thresh_str = f"{thr*100:.1f}cm"
+                thresh_str = f"{thr * 100:.1f}cm"
                 for gate in inlier_ratio_gates:
                     metric_thr[f"prec@{thresh_str}_gate{gate}"] = 0.0
                     metric_thr[f"rec@{thresh_str}_gate{gate}"] = 0.0
         else:
             metric_thr = compute_plane_metrics_multigates(
-                pts_world, pt_labels, thresholds,
+                pts_world,
+                pt_labels,
+                thresholds,
                 inlier_ratio_gates=inlier_ratio_gates,
                 num_iterations=ransac_iterations,
                 ransac_seed=ransac_seed,
             )
     else:
         for thr in thresholds:
-            thresh_str = f"{thr*100:.1f}cm"
+            thresh_str = f"{thr * 100:.1f}cm"
             for gate in inlier_ratio_gates:
                 metric_thr[f"prec@{thresh_str}_gate{gate}"] = np.nan
                 metric_thr[f"rec@{thresh_str}_gate{gate}"] = np.nan
@@ -897,7 +964,7 @@ def evaluate_single_frame_hypersim_multigates(
         "frame_idx": frame_idx,
         **clustering,
         **metric_thr,
-        **bp_metrics
+        **bp_metrics,
     }
 
     return metrics, labels

@@ -6,20 +6,27 @@ Renders extracted planes to PNG images for each frame in a ScanNet++ scene.
 Uses raycasting to project 3D plane meshes to 2D images.
 
 Usage:
-    python rendering.py scene_id --input_root /path/to/scannetpp --plane_root /path/to/planes --output_root /path/to/output
+    python rendering.py scene_id --input_root /path/to/scannetpp \
+        --plane_root /path/to/planes --output_root /path/to/output
 """
+
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
-from pxwplanar.shared.rendering import load_mesh_with_vertex_labels, raycast_semantic
-from pxwplanar.shared.utils import save_label_image
-import open3d as o3d
-import numpy as np
+import argparse
 import json
 import os
-import argparse
+
+import numpy as np
 from tqdm import tqdm
+
+from pxwplanar.shared.rendering import (
+    load_mesh_with_vertex_labels,
+    raycast_semantic,
+)
+from pxwplanar.shared.utils import save_label_image
 
 
 def remap_semantic_old(semantic_img):
@@ -49,19 +56,48 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Render ScanNet++ planes to PNG images"
     )
-    parser.add_argument("scene_id", type=str, help="Scene ID (e.g., 0a5c013435)")
-    parser.add_argument("--input_root", type=str, required=True,
-                        help="Root directory of ScanNet++ dataset")
-    parser.add_argument("--plane_root", type=str, required=True,
-                        help="Root directory containing extracted planes (planes_v2.ply, falling back to planes.ply)")
-    parser.add_argument("--output_root", type=str, required=True,
-                        help="Root directory to save rendered plane images")
-    parser.add_argument("--frame_skip", type=int, default=25,
-                        help="Frame skip interval (default: 25)")
-    parser.add_argument("--width", type=int, default=640,
-                        help="Output image width (default: 640)")
-    parser.add_argument("--height", type=int, default=480,
-                        help="Output image height (default: 480)")
+    parser.add_argument(
+        "scene_id", type=str, help="Scene ID (e.g., 0a5c013435)"
+    )
+    parser.add_argument(
+        "--input_root",
+        type=str,
+        required=True,
+        help="Root directory of ScanNet++ dataset",
+    )
+    parser.add_argument(
+        "--plane_root",
+        type=str,
+        required=True,
+        help=(
+            "Root directory containing extracted planes "
+            "(planes_v2.ply, falling back to planes.ply)"
+        ),
+    )
+    parser.add_argument(
+        "--output_root",
+        type=str,
+        required=True,
+        help="Root directory to save rendered plane images",
+    )
+    parser.add_argument(
+        "--frame_skip",
+        type=int,
+        default=25,
+        help="Frame skip interval (default: 25)",
+    )
+    parser.add_argument(
+        "--width",
+        type=int,
+        default=640,
+        help="Output image width (default: 640)",
+    )
+    parser.add_argument(
+        "--height",
+        type=int,
+        default=480,
+        help="Output image height (default: 480)",
+    )
     args = parser.parse_args()
 
     scene_id = args.scene_id
@@ -99,7 +135,7 @@ if __name__ == "__main__":
         print(f"[ERROR] Pose file not found: {pose_file}")
         sys.exit(1)
 
-    with open(pose_file, "r") as f:
+    with open(pose_file) as f:
         data = json.load(f)
 
     # === Intrinsics ===
@@ -125,13 +161,18 @@ if __name__ == "__main__":
 
     # === Raycast ===
     print("[INFO] Raycasting...")
-    for i, (frame_id, frame_data) in enumerate(tqdm(data.items(), total=len(data))):
+    for i, (frame_id, frame_data) in enumerate(
+        tqdm(data.items(), total=len(data))
+    ):
         if i % frame_skip != 0:
             continue
 
         c2w = np.array(frame_data["aligned_pose"])
-        semantic_img = raycast_semantic(sem_mesh, vertex_labels, K_scaled, (W, H), c2w)
-        # semantic_img = remap_semantic_old(semantic_img)  # BUGGY: plane_id=0 collides with non-planar
+        semantic_img = raycast_semantic(
+            sem_mesh, vertex_labels, K_scaled, (W, H), c2w
+        )
+        # semantic_img = remap_semantic_old(semantic_img)
+        # BUGGY: plane_id=0 collides with non-planar
         semantic_img = remap_plane_ids(semantic_img)
 
         seg_path = os.path.join(render_save_path, f"{frame_id}.png")

@@ -3,8 +3,8 @@
 Generate 3D plane visualization comparisons: Ours vs ZeroPlane vs GT.
 
 Reads a scene list (scene_id frame_id per line), runs MoGe inference for "Ours",
-loads ZeroPlane H5 predictions, loads GT plane labels, and renders 2D segmentation
-+ 3D plane-projected point clouds from multiple rotations.
+loads ZeroPlane H5 predictions, loads GT plane labels, and renders 2D
+segmentation + 3D plane-projected point clouds from multiple rotations.
 
 Output structure:
     {output_root}/{scene_id}/
@@ -24,27 +24,33 @@ scenes.txt format (one per line):
     09c1414f1b 1350
 """
 
-import os
-import sys
+import argparse
 import copy
 import json
-import argparse
-import numpy as np
-import h5py
+import os
+import sys
+from pathlib import Path
+
 import cv2
+import h5py
+import numpy as np
 import torch
 import torch.nn as nn
-from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from MoGe.moge.model.v2 import MoGeModel
+from pxwplanar.paths import (
+    inference_h5_root,
+    planarity_model_path,
+    scannetpp_path,
+    scannetpp_rend_plane_path,
+    vis3d_root,
+)
 from pxwplanar.shared.segmentation.plan2seg import compute_planar_segments
-from pxwplanar.paths import (scannetpp_path, scannetpp_rend_plane_path, inference_h5_root,
-                   planarity_model_path, vis3d_root)
-
 
 # ── Geometry helpers ──────────────────────────────────────────────────────────
+
 
 def fit_plane_svd(pts):
     c = pts.mean(axis=0)
@@ -56,7 +62,8 @@ def fit_plane_svd(pts):
 
 
 def project_onto_plane_ray(pts, p, max_displacement_factor=0.3):
-    """Ray-plane intersection: project points along camera rays onto fitted plane.
+    """Ray-plane intersection: project points along camera rays onto
+    fitted plane.
 
     Clamps displacement to avoid overshooting when rays are nearly parallel
     to the plane (shallow viewing angles like tables/floors).
@@ -83,19 +90,27 @@ def project_onto_plane_ray(pts, p, max_displacement_factor=0.3):
 
 def rotation_matrix(rot_x_deg, rot_y_deg):
     rx, ry = np.deg2rad(rot_x_deg), np.deg2rad(rot_y_deg)
-    Rx = np.array([[1, 0, 0], [0, np.cos(rx), -np.sin(rx)], [0, np.sin(rx), np.cos(rx)]])
-    Ry = np.array([[np.cos(ry), 0, np.sin(ry)], [0, 1, 0], [-np.sin(ry), 0, np.cos(ry)]])
+    Rx = np.array(
+        [[1, 0, 0], [0, np.cos(rx), -np.sin(rx)], [0, np.sin(rx), np.cos(rx)]]
+    )
+    Ry = np.array(
+        [[np.cos(ry), 0, np.sin(ry)], [0, 1, 0], [-np.sin(ry), 0, np.cos(ry)]]
+    )
     return Ry @ Rx
 
 
 # ── Point cloud building ─────────────────────────────────────────────────────
 
-def build_pointcloud(pts_3d, labels, num_planes, rgb_img, min_plane_px=100,
-                     no_project=False):
+
+def build_pointcloud(
+    pts_3d, labels, num_planes, rgb_img, min_plane_px=100, no_project=False
+):
     """Build (pts, colors_rgb) from 3D point map + plane labels."""
     z = pts_3d[:, :, 2]
     np.random.seed(42)
-    pcolors = np.random.randint(50, 230, size=(num_planes + 1, 3), dtype=np.uint8)
+    pcolors = np.random.randint(
+        50, 230, size=(num_planes + 1, 3), dtype=np.uint8
+    )
 
     all_pts, all_colors = [], []
     for pid in range(1, num_planes + 1):
@@ -137,8 +152,17 @@ def build_pointcloud(pts_3d, labels, num_planes, rgb_img, min_plane_px=100,
 
 # ── Rendering ─────────────────────────────────────────────────────────────────
 
-def render_pointcloud_image(pts, colors, width, height, rot_x, rot_y,
-                            bg_color=(255, 255, 255), point_radius=1):
+
+def render_pointcloud_image(
+    pts,
+    colors,
+    width,
+    height,
+    rot_x,
+    rot_y,
+    bg_color=(255, 255, 255),
+    point_radius=1,
+):
     """Perspective projection with z-buffering."""
     centroid = np.median(pts, axis=0)
     R = rotation_matrix(rot_x, rot_y)
@@ -175,7 +199,11 @@ def render_pointcloud_image(pts, colors, width, height, rot_x, rot_y,
             for dy in range(-point_radius, point_radius + 1):
                 for dx in range(-point_radius, point_radius + 1):
                     nx_, ny_ = xi + dx, yi + dy
-                    if 0 <= nx_ < width and 0 <= ny_ < height and z_sorted[i] < zbuf[ny_, nx_]:
+                    if (
+                        0 <= nx_ < width
+                        and 0 <= ny_ < height
+                        and z_sorted[i] < zbuf[ny_, nx_]
+                    ):
                         zbuf[ny_, nx_] = z_sorted[i]
                         img[ny_, nx_] = cs[i]
     return img
@@ -183,12 +211,15 @@ def render_pointcloud_image(pts, colors, width, height, rot_x, rot_y,
 
 # ── 2D segmentation visualization ────────────────────────────────────────────
 
+
 def colorize_seg(labels, rgb=None, alpha=0.5):
     """Colorize plane segmentation. If rgb given, blend as overlay."""
     unique_ids = sorted([i for i in np.unique(labels) if i > 0])
     np.random.seed(42)
-    cmap = {pid: np.random.randint(50, 230, 3).astype(np.uint8)
-            for pid in unique_ids}
+    cmap = {
+        pid: np.random.randint(50, 230, 3).astype(np.uint8)
+        for pid in unique_ids
+    }
 
     seg_img = np.full((*labels.shape, 3), 210, dtype=np.uint8)
     for pid, color in cmap.items():
@@ -197,19 +228,24 @@ def colorize_seg(labels, rgb=None, alpha=0.5):
     if rgb is not None:
         mask = labels > 0
         out = rgb.copy()
-        out[mask] = (rgb[mask].astype(np.float32) * (1 - alpha) +
-                     seg_img[mask].astype(np.float32) * alpha).astype(np.uint8)
+        out[mask] = (
+            rgb[mask].astype(np.float32) * (1 - alpha)
+            + seg_img[mask].astype(np.float32) * alpha
+        ).astype(np.uint8)
         return out
     return seg_img
 
 
 # ── Backprojection helpers ────────────────────────────────────────────────────
 
+
 def backproject(depth, K, flip_y=True):
     """Depth + intrinsics → (H, W, 3) point map. flip_y for y-up convention."""
     H, W = depth.shape
     K = K.astype(np.float64)
-    u, v = np.meshgrid(np.arange(W, dtype=np.float64), np.arange(H, dtype=np.float64))
+    u, v = np.meshgrid(
+        np.arange(W, dtype=np.float64), np.arange(H, dtype=np.float64)
+    )
     z = depth.astype(np.float64)
     x = (u - K[0, 2]) * z / K[0, 0]
     y = (v - K[1, 2]) * z / K[1, 1]
@@ -259,6 +295,7 @@ def find_frame_in_h5(fids, frame_id):
 
 # ── Data loading ──────────────────────────────────────────────────────────────
 
+
 def load_gt_data(scene_id, frame_id, args):
     """Load GT plane labels + depth + K → (pts_3d, labels, num_planes, rgb)."""
     gt_root = args.gt_root
@@ -267,10 +304,16 @@ def load_gt_data(scene_id, frame_id, args):
     # GT plane labels
     rendered_h5 = os.path.join(gt_root, scene_id, "rendered.h5")
     with h5py.File(rendered_h5, "r") as f:
-        fids = [x.decode() if isinstance(x, bytes) else str(x) for x in f["frame_ids"][:]]
+        fids = [
+            x.decode() if isinstance(x, bytes) else str(x)
+            for x in f["frame_ids"][:]
+        ]
         idx = find_frame_in_h5(fids, frame_id)
         if idx is None:
-            print(f"  [GT] Frame {frame_id} not in rendered.h5 for {scene_id} (has: {fids[:3]}...)")
+            print(
+                f"  [GT] Frame {frame_id} not in rendered.h5 for "
+                f"{scene_id} (has: {fids[:3]}...)"
+            )
             return None
         labels = f["planes"][idx].astype(np.int32)
 
@@ -280,12 +323,18 @@ def load_gt_data(scene_id, frame_id, args):
         depth = f["depth"][idx].astype(np.float32) / 1000.0
 
     # Intrinsics from pose JSON
-    pose_file = os.path.join(rgb_root, scene_id, "iphone", "pose_intrinsic_imu.json")
+    pose_file = os.path.join(
+        rgb_root, scene_id, "iphone", "pose_intrinsic_imu.json"
+    )
     with open(pose_file) as f:
         pose_data = json.load(f)
     # Try multiple key formats for pose lookup
     pose_key = None
-    for candidate in [frame_id, f"frame_{frame_id}", frame_id.lstrip("0") or "0"]:
+    for candidate in [
+        frame_id,
+        f"frame_{frame_id}",
+        frame_id.lstrip("0") or "0",
+    ]:
         if candidate in pose_data:
             pose_key = candidate
             break
@@ -306,11 +355,16 @@ def load_gt_data(scene_id, frame_id, args):
     num_planes = int(labels.max())
 
     # RGB
-    rgb_path = os.path.join(rgb_root, scene_id, "iphone", "rgb", f"frame_{frame_id}.jpg")
+    rgb_path = os.path.join(
+        rgb_root, scene_id, "iphone", "rgb", f"frame_{frame_id}.jpg"
+    )
     rgb = cv2.cvtColor(cv2.imread(rgb_path), cv2.COLOR_BGR2RGB)
     rgb = cv2.resize(rgb, (W, H))
 
-    print(f"  [GT] {num_planes} planes, depth [{depth[depth>0].min():.2f}, {depth[depth>0].max():.2f}]m")
+    print(
+        f"  [GT] {num_planes} planes, "
+        f"depth [{depth[depth > 0].min():.2f}, {depth[depth > 0].max():.2f}]m"
+    )
     return pts_3d, labels, num_planes, rgb
 
 
@@ -319,7 +373,9 @@ def load_zeroplane_data(scene_id, frame_id, args):
     zp_root = args.zeroplane_root
 
     planes_h5 = os.path.join(zp_root, "planes", scene_id, "planes.h5")
-    depth_h5 = os.path.join(zp_root, "planes_depth", scene_id, "planes_depth.h5")
+    depth_h5 = os.path.join(
+        zp_root, "planes_depth", scene_id, "planes_depth.h5"
+    )
     intr_h5 = os.path.join(zp_root, "intrinsics", scene_id, "intrinsics.h5")
 
     if not all(os.path.exists(p) for p in [planes_h5, depth_h5, intr_h5]):
@@ -327,10 +383,16 @@ def load_zeroplane_data(scene_id, frame_id, args):
         return None
 
     with h5py.File(planes_h5, "r") as f:
-        fids = [x.decode() if isinstance(x, bytes) else str(x) for x in f["frame_ids"][:]]
+        fids = [
+            x.decode() if isinstance(x, bytes) else str(x)
+            for x in f["frame_ids"][:]
+        ]
         idx = find_frame_in_h5(fids, frame_id)
         if idx is None:
-            print(f"  [ZP] Frame {frame_id} not found in {scene_id} (has: {fids[:3]}...)")
+            print(
+                f"  [ZP] Frame {frame_id} not found in {scene_id} "
+                f"(has: {fids[:3]}...)"
+            )
             return None
         labels = f["planes"][idx].astype(np.int32)
 
@@ -352,12 +414,16 @@ def load_zeroplane_data(scene_id, frame_id, args):
     num_planes = int(labels.max())
 
     # Load RGB
-    rgb_path = os.path.join(args.rgb_root, scene_id, "iphone", "rgb", f"frame_{frame_id}.jpg")
+    rgb_path = os.path.join(
+        args.rgb_root, scene_id, "iphone", "rgb", f"frame_{frame_id}.jpg"
+    )
     rgb = cv2.cvtColor(cv2.imread(rgb_path), cv2.COLOR_BGR2RGB)
     rgb = cv2.resize(rgb, (W, H))
 
     vd = depth[depth > 0]
-    print(f"  [ZP] {num_planes} planes, depth [{vd.min():.2f}, {vd.max():.2f}]m")
+    print(
+        f"  [ZP] {num_planes} planes, depth [{vd.min():.2f}, {vd.max():.2f}]m"
+    )
     return pts_3d, labels, num_planes, rgb
 
 
@@ -371,10 +437,14 @@ def load_moge_model(args, device):
             last_conv = (name, module)
     name, old_conv = last_conv
     new_conv = nn.Conv2d(
-        old_conv.in_channels, 1,
-        kernel_size=old_conv.kernel_size, stride=old_conv.stride,
-        padding=old_conv.padding, dilation=old_conv.dilation,
-        groups=old_conv.groups, bias=old_conv.bias is not None,
+        old_conv.in_channels,
+        1,
+        kernel_size=old_conv.kernel_size,
+        stride=old_conv.stride,
+        padding=old_conv.padding,
+        dilation=old_conv.dilation,
+        groups=old_conv.groups,
+        bias=old_conv.bias is not None,
     )
     parent = model.planarity_head
     parts = name.split(".")
@@ -390,7 +460,11 @@ def load_moge_model(args, device):
 def run_moge_inference(model, rgb, device, args):
     """Run MoGe inference → (pts_3d, labels, num_planes, rgb_resized)."""
     resized = cv2.resize(rgb, (644, 476))
-    tensor = torch.tensor(resized / 255.0, dtype=torch.float32).permute(2, 0, 1).to(device)
+    tensor = (
+        torch.tensor(resized / 255.0, dtype=torch.float32)
+        .permute(2, 0, 1)
+        .to(device)
+    )
 
     with torch.no_grad():
         output = model.forward(tensor.unsqueeze(0), num_tokens=args.num_tokens)
@@ -403,11 +477,17 @@ def run_moge_inference(model, rgb, device, args):
 
     out_h, out_w = args.height, args.width
     depth_r = cv2.resize(depth, (out_w, out_h), interpolation=cv2.INTER_LINEAR)
-    normals_r = cv2.resize(normals, (out_w, out_h), interpolation=cv2.INTER_LINEAR)
+    normals_r = cv2.resize(
+        normals, (out_w, out_h), interpolation=cv2.INTER_LINEAR
+    )
     norm_len = np.linalg.norm(normals_r, axis=-1, keepdims=True)
     normals_r = normals_r / (norm_len + 1e-8)
-    planarity_r = cv2.resize(planarity, (out_w, out_h), interpolation=cv2.INTER_LINEAR)
-    points_r = cv2.resize(points, (out_w, out_h), interpolation=cv2.INTER_LINEAR)
+    planarity_r = cv2.resize(
+        planarity, (out_w, out_h), interpolation=cv2.INTER_LINEAR
+    )
+    points_r = cv2.resize(
+        points, (out_w, out_h), interpolation=cv2.INTER_LINEAR
+    )
     rgb_r = cv2.resize(rgb, (out_w, out_h))
 
     planarity_binary = (planarity_r > args.planarity_threshold).astype(np.uint8)
@@ -427,16 +507,19 @@ def run_moge_inference(model, rgb, device, args):
 
 # ── Main pipeline ─────────────────────────────────────────────────────────────
 
+
 def process_scene(scene_id, frame_id, model, device, args):
     """Process one scene: generate all outputs for GT, ZeroPlane, Ours."""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Scene: {scene_id}, Frame: {frame_id}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     scene_dir = os.path.join(args.output_root, scene_id)
 
     # Load RGB
-    rgb_path = os.path.join(args.rgb_root, scene_id, "iphone", "rgb", f"frame_{frame_id}.jpg")
+    rgb_path = os.path.join(
+        args.rgb_root, scene_id, "iphone", "rgb", f"frame_{frame_id}.jpg"
+    )
     if not os.path.exists(rgb_path):
         print(f"  RGB not found: {rgb_path}")
         return
@@ -445,8 +528,10 @@ def process_scene(scene_id, frame_id, model, device, args):
     # Save RGB
     os.makedirs(scene_dir, exist_ok=True)
     rgb_save = cv2.resize(rgb_full, (args.width, args.height))
-    cv2.imwrite(os.path.join(scene_dir, "rgb.png"),
-                cv2.cvtColor(rgb_save, cv2.COLOR_RGB2BGR))
+    cv2.imwrite(
+        os.path.join(scene_dir, "rgb.png"),
+        cv2.cvtColor(rgb_save, cv2.COLOR_RGB2BGR),
+    )
 
     # ── Process each method ──
     methods = {}
@@ -477,14 +562,19 @@ def process_scene(scene_id, frame_id, model, device, args):
         rgb_seg = cv2.resize(rgb_full, (W_seg, H_seg))
         seg_overlay = colorize_seg(labels, rgb=rgb_seg)
         seg_flat = colorize_seg(labels)
-        cv2.imwrite(os.path.join(method_dir, "seg_2d.png"),
-                    cv2.cvtColor(seg_overlay, cv2.COLOR_RGB2BGR))
-        cv2.imwrite(os.path.join(method_dir, "seg_2d_flat.png"),
-                    cv2.cvtColor(seg_flat, cv2.COLOR_RGB2BGR))
+        cv2.imwrite(
+            os.path.join(method_dir, "seg_2d.png"),
+            cv2.cvtColor(seg_overlay, cv2.COLOR_RGB2BGR),
+        )
+        cv2.imwrite(
+            os.path.join(method_dir, "seg_2d_flat.png"),
+            cv2.cvtColor(seg_flat, cv2.COLOR_RGB2BGR),
+        )
 
         # Build 3D point cloud with RGB texture
-        pts, colors = build_pointcloud(pts_3d, labels, num_planes, rgb_img,
-                                       min_plane_px=args.min_plane_px)
+        pts, colors = build_pointcloud(
+            pts_3d, labels, num_planes, rgb_img, min_plane_px=args.min_plane_px
+        )
         if pts is None:
             print(f"  [{method_name}] No valid planes for 3D render")
             continue
@@ -494,25 +584,35 @@ def process_scene(scene_id, frame_id, model, device, args):
 
         # Frontal render (rot_x=0, rot_y=0) — should match 2D camera view
         img_front = render_pointcloud_image(
-            pts, colors,
-            width=args.width, height=args.height,
-            rot_x=0, rot_y=0,
+            pts,
+            colors,
+            width=args.width,
+            height=args.height,
+            rot_x=0,
+            rot_y=0,
             point_radius=args.point_radius,
         )
-        cv2.imwrite(os.path.join(method_dir, "3d_frontal.png"),
-                    cv2.cvtColor(img_front, cv2.COLOR_RGB2BGR))
+        cv2.imwrite(
+            os.path.join(method_dir, "3d_frontal.png"),
+            cv2.cvtColor(img_front, cv2.COLOR_RGB2BGR),
+        )
 
         # 3D renders at each rotation
         for rot_y in args.rotations:
             img = render_pointcloud_image(
-                pts, colors,
-                width=args.width, height=args.height,
-                rot_x=args.rot_x, rot_y=rot_y,
+                pts,
+                colors,
+                width=args.width,
+                height=args.height,
+                rot_x=args.rot_x,
+                rot_y=rot_y,
                 point_radius=args.point_radius,
             )
             fname = f"3d_rotY{rot_y:.0f}.png"
-            cv2.imwrite(os.path.join(method_dir, fname),
-                        cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
+            cv2.imwrite(
+                os.path.join(method_dir, fname),
+                cv2.cvtColor(img, cv2.COLOR_RGB2BGR),
+            )
 
     print(f"  Saved to {scene_dir}/")
 
@@ -534,24 +634,37 @@ def parse_scene_list(path):
 
 
 def main():
-    p = argparse.ArgumentParser(description="Generate 3D plane comparison visualizations")
+    p = argparse.ArgumentParser(
+        description="Generate 3D plane comparison visualizations"
+    )
 
     # Input
-    p.add_argument("--scene_list", type=str, required=True,
-                   help="Text file with 'scene_id frame_id' per line")
+    p.add_argument(
+        "--scene_list",
+        type=str,
+        required=True,
+        help="Text file with 'scene_id frame_id' per line",
+    )
 
     # Paths
-    p.add_argument("--output_root", type=str,
-                   default=vis3d_root)
-    p.add_argument("--rgb_root", type=str,
-                   default=os.path.join(scannetpp_path, "data"))
-    p.add_argument("--gt_root", type=str,
-                   default=scannetpp_rend_plane_path,
-                   help="Root of the rendered plane GT (<scene>/rendered*.h5)")
-    p.add_argument("--zeroplane_root", type=str,
-                   default=os.path.join(inference_h5_root, "zeroplane_default_dust3r_released"))
-    p.add_argument("--checkpoint", type=str,
-                   default=planarity_model_path)
+    p.add_argument("--output_root", type=str, default=vis3d_root)
+    p.add_argument(
+        "--rgb_root", type=str, default=os.path.join(scannetpp_path, "data")
+    )
+    p.add_argument(
+        "--gt_root",
+        type=str,
+        default=scannetpp_rend_plane_path,
+        help="Root of the rendered plane GT (<scene>/rendered*.h5)",
+    )
+    p.add_argument(
+        "--zeroplane_root",
+        type=str,
+        default=os.path.join(
+            inference_h5_root, "zeroplane_default_dust3r_released"
+        ),
+    )
+    p.add_argument("--checkpoint", type=str, default=planarity_model_path)
 
     # MoGe inference
     p.add_argument("--device", type=str, default="cuda")
@@ -567,8 +680,13 @@ def main():
     p.add_argument("--min_plane_px", type=int, default=200)
 
     # Rendering
-    p.add_argument("--rotations", type=float, nargs="+", default=[0, 1, 2, 3],
-                   help="Y-axis rotation angles in degrees")
+    p.add_argument(
+        "--rotations",
+        type=float,
+        nargs="+",
+        default=[0, 1, 2, 3],
+        help="Y-axis rotation angles in degrees",
+    )
     p.add_argument("--rot_x", type=float, default=20.0)
     p.add_argument("--point_radius", type=int, default=1)
 

@@ -6,13 +6,13 @@ All data stored in HDF5 format.
 """
 
 import os
+
+import cv2
 import h5py
 import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
-import cv2
-from typing import Optional
 
 
 class HypersimPlanarityDataset(Dataset):
@@ -25,11 +25,11 @@ class HypersimPlanarityDataset(Dataset):
         root_dir: str,
         plane_label_root: str,
         filtered_csv_path: str,
-        split: str = 'train',
+        split: str = "train",
         image_height: int = 512,
         image_width: int = 768,
-        max_samples: Optional[int] = None,
-        preprocessed_rgb_dir: Optional[str] = None
+        max_samples: int | None = None,
+        preprocessed_rgb_dir: str | None = None,
     ):
         """
         Args:
@@ -40,7 +40,8 @@ class HypersimPlanarityDataset(Dataset):
             image_height: Target image height
             image_width: Target image width
             max_samples: Optional limit on number of samples
-            preprocessed_rgb_dir: Optional directory with pre-tone-mapped RGB .npy files
+            preprocessed_rgb_dir: Optional directory with pre-tone-mapped
+                RGB .npy files
         """
         self.root_dir = root_dir
         self.plane_label_root = plane_label_root
@@ -58,24 +59,38 @@ class HypersimPlanarityDataset(Dataset):
 
         # Build dataset entries
         self.valid_pairs = []
-        for idx, row in self.df.iterrows():
+        for _idx, row in self.df.iterrows():
             scene_id = row["scene_name"]
             cam_name = row["camera_name"]  # e.g., "cam_00"
             frame_id = f"{int(row['frame_id']):04d}"
 
-            color_dir = os.path.join(root_dir, scene_id, "images",
-                                    f"scene_{cam_name}_final_hdf5")
-            geom_dir = os.path.join(root_dir, scene_id, "images",
-                                   f"scene_{cam_name}_geometry_hdf5")
+            color_dir = os.path.join(
+                root_dir, scene_id, "images", f"scene_{cam_name}_final_hdf5"
+            )
+            geom_dir = os.path.join(
+                root_dir, scene_id, "images", f"scene_{cam_name}_geometry_hdf5"
+            )
 
             rgb_path = os.path.join(color_dir, f"frame.{frame_id}.color.hdf5")
             sem_path = os.path.join(geom_dir, f"frame.{frame_id}.semantic.hdf5")
-            depth_path = os.path.join(geom_dir, f"frame.{frame_id}.depth_meters.hdf5")
-            plane_h5 = os.path.join(plane_label_root, scene_id,
-                                   f"rendered_planes_{cam_name}.h5")
+            depth_path = os.path.join(
+                geom_dir, f"frame.{frame_id}.depth_meters.hdf5"
+            )
+            plane_h5 = os.path.join(
+                plane_label_root, scene_id, f"rendered_planes_{cam_name}.h5"
+            )
 
-            self.valid_pairs.append((scene_id, frame_id, cam_name,
-                                    rgb_path, sem_path, depth_path, plane_h5))
+            self.valid_pairs.append(
+                (
+                    scene_id,
+                    frame_id,
+                    cam_name,
+                    rgb_path,
+                    sem_path,
+                    depth_path,
+                    plane_h5,
+                )
+            )
 
         print(f"[Hypersim] {split} split → {len(self.valid_pairs)} frames")
 
@@ -83,7 +98,15 @@ class HypersimPlanarityDataset(Dataset):
         return len(self.valid_pairs)
 
     def __getitem__(self, idx):
-        scene_id, frame_id, cam_name, rgb_path, sem_path, depth_path, plane_h5 = self.valid_pairs[idx]
+        (
+            scene_id,
+            frame_id,
+            cam_name,
+            rgb_path,
+            sem_path,
+            depth_path,
+            plane_h5,
+        ) = self.valid_pairs[idx]
         H, W = self.image_height, self.image_width
 
         # Load plane segmentation
@@ -107,7 +130,9 @@ class HypersimPlanarityDataset(Dataset):
                 sem = f["dataset"][:]
             sem = torch.from_numpy(sem.astype(np.int64)).unsqueeze(0)
         except Exception as e:
-            print(f"[WARN] Failed loading semantic for {scene_id}/{frame_id}: {e}")
+            print(
+                f"[WARN] Failed loading semantic for {scene_id}/{frame_id}: {e}"
+            )
             sem = torch.zeros((1, H, W), dtype=torch.int64)
 
         # Load depth
@@ -123,15 +148,18 @@ class HypersimPlanarityDataset(Dataset):
         try:
             if self.preprocessed_rgb_dir is not None:
                 # Load pre-tone-mapped RGB
-                npy_path = os.path.join(self.preprocessed_rgb_dir,
-                                       f"{scene_id}_{frame_id}.npy")
+                npy_path = os.path.join(
+                    self.preprocessed_rgb_dir, f"{scene_id}_{frame_id}.npy"
+                )
                 rgb = np.load(npy_path)  # Already in [0,1]
             else:
                 # Apply tone mapping on-the-fly
                 rgb = self.load_hypersim_rgb_hdr(rgb_path)
 
             rgb = cv2.resize(rgb, (W, H), interpolation=cv2.INTER_LINEAR)
-            image = torch.tensor(rgb, dtype=torch.float32).permute(2, 0, 1)  # [3, H, W]
+            image = torch.tensor(rgb, dtype=torch.float32).permute(
+                2, 0, 1
+            )  # [3, H, W]
         except Exception as e:
             print(f"[WARN] Failed loading RGB for {scene_id}/{frame_id}: {e}")
             image = torch.zeros((3, H, W), dtype=torch.float32)
@@ -150,7 +178,7 @@ class HypersimPlanarityDataset(Dataset):
         h5_path: str,
         percentile: float = 90,
         target_max: float = 0.8,
-        gamma: float = 2.2
+        gamma: float = 2.2,
     ) -> np.ndarray:
         """
         Load HDR RGB from Hypersim HDF5 and apply tone mapping.

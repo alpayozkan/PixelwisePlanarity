@@ -8,12 +8,12 @@ This module provides functions for:
 - Filtering planes by inlier ratio
 """
 
+import contextlib
+import copy
+
 import numpy as np
 import open3d as o3d
 import pandas as pd
-import copy
-from typing import Tuple, Dict, Optional, List
-
 
 # ============================================================
 # RANSAC SEEDING / REPRODUCIBILITY
@@ -41,11 +41,19 @@ def _detect_segment_plane_seed_support() -> bool:
     try:
         _p = o3d.geometry.PointCloud()
         _p.points = o3d.utility.Vector3dVector(
-            np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0],
-                      [0.0, 1.0, 0.0], [1.0, 1.0, 0.0]], dtype=np.float64)
+            np.array(
+                [
+                    [0.0, 0.0, 0.0],
+                    [1.0, 0.0, 0.0],
+                    [0.0, 1.0, 0.0],
+                    [1.0, 1.0, 0.0],
+                ],
+                dtype=np.float64,
+            )
         )
-        _p.segment_plane(distance_threshold=0.01, ransac_n=3,
-                         num_iterations=1, seed=0)
+        _p.segment_plane(
+            distance_threshold=0.01, ransac_n=3, num_iterations=1, seed=0
+        )
         return True
     except TypeError:
         return False
@@ -57,7 +65,7 @@ def _detect_segment_plane_seed_support() -> bool:
 _SEGMENT_PLANE_HAS_SEED = _detect_segment_plane_seed_support()
 
 
-def set_ransac_seed(seed: Optional[int]) -> None:
+def set_ransac_seed(seed: int | None) -> None:
     """Pin open3d's process-global RANSAC RNG. No-op when ``seed`` is None.
 
     Must be called *inside* each worker process (e.g. at the top of every
@@ -66,17 +74,21 @@ def set_ransac_seed(seed: Optional[int]) -> None:
     """
     if seed is None:
         return
-    try:
+    # Older/newer open3d without utility.random — global seeding
+    # unavailable; per-call seed (if supported) still applies.
+    with contextlib.suppress(Exception):
         o3d.utility.random.seed(int(seed))
-    except Exception:
-        # Older/newer open3d without utility.random — global seeding unavailable;
-        # per-call seed (if supported) still applies.
-        pass
 
 
-def _segment_plane(pcd, distance_threshold: float, ransac_n: int,
-                   num_iterations: int, seed: Optional[int] = None):
-    """``pcd.segment_plane`` wrapper that forwards ``seed`` only when supported."""
+def _segment_plane(
+    pcd,
+    distance_threshold: float,
+    ransac_n: int,
+    num_iterations: int,
+    seed: int | None = None,
+):
+    """``pcd.segment_plane`` wrapper that forwards ``seed`` only when
+    supported."""
     if seed is not None and _SEGMENT_PLANE_HAS_SEED:
         return pcd.segment_plane(
             distance_threshold=distance_threshold,
@@ -95,8 +107,8 @@ def backproject(
     depth: np.ndarray,
     K: np.ndarray,
     T_cw: np.ndarray,
-    plane_seg: Optional[np.ndarray] = None
-) -> Tuple[np.ndarray, Optional[np.ndarray], np.ndarray]:
+    plane_seg: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray | None, np.ndarray]:
     """
     Backproject depth image to 3D world coordinates.
 
@@ -119,8 +131,9 @@ def backproject(
     Kinv = np.linalg.inv(K)
 
     # Create pixel grid (u = x, v = y)
-    u, v = np.meshgrid(np.arange(W, dtype=np.float64),
-                       np.arange(H, dtype=np.float64))
+    u, v = np.meshgrid(
+        np.arange(W, dtype=np.float64), np.arange(H, dtype=np.float64)
+    )
     uv1 = np.stack([u, v, np.ones_like(u)], axis=-1).reshape(-1, 3)  # (HW,3)
 
     # Valid depth mask
@@ -146,15 +159,14 @@ def backproject(
     return pts_world, labels, valid_idx
 
 
-
 def backproject_mcam(
     depth_euc: np.ndarray,
     M_cam_from_uv: np.ndarray,
     native_w: int,
     native_h: int,
     T_cw: np.ndarray,
-    plane_seg: Optional[np.ndarray] = None,
-) -> Tuple[np.ndarray, Optional[np.ndarray], np.ndarray]:
+    plane_seg: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray | None, np.ndarray]:
     """
     Backproject Euclidean depth to 3D using V-Ray's M_cam_from_uv camera model.
 
@@ -163,10 +175,12 @@ def backproject_mcam(
     This eliminates the systematic position errors (radial artifacts) that grow
     toward image edges with the pinhole approximation.
 
-    The 3D point for each pixel is:  P = depth_euc * normalize(M_cam_from_uv @ [u_ndc, v_ndc, 1])
+    The 3D point for each pixel is:
+        P = depth_euc * normalize(M_cam_from_uv @ [u_ndc, v_ndc, 1])
 
     Args:
-        depth_euc: (H, W) Euclidean ray distance in meters (from depth_meters.hdf5)
+        depth_euc: (H, W) Euclidean ray distance in meters
+            (from depth_meters.hdf5)
         M_cam_from_uv: (3, 3) V-Ray camera matrix from metadata CSV
         native_w: Native render width (for NDC grid computation)
         native_h: Native render height (for NDC grid computation)
@@ -258,14 +272,14 @@ def refine_plane_least_squares(P: np.ndarray) -> np.ndarray:
 def fit_planes_per_label(
     pts: np.ndarray,
     labels: np.ndarray,
-    ignore_labels: Tuple[int, ...] = (0,),
+    ignore_labels: tuple[int, ...] = (0,),
     distance_threshold: float = 0.01,
     ransac_n: int = 3,
     num_iterations: int = 1000,
     min_support: int = 50,
     verbose: bool = False,
-    ransac_seed: Optional[int] = 0
-) -> Tuple[Dict, pd.DataFrame]:
+    ransac_seed: int | None = 0,
+) -> tuple[dict, pd.DataFrame]:
     """
     Fit planes to each labeled segment using RANSAC + least-squares refinement.
 
@@ -273,7 +287,8 @@ def fit_planes_per_label(
         pts: (N,3) 3D points
         labels: (N,) plane labels for each point
         ignore_labels: Labels to skip (e.g., background)
-        distance_threshold: RANSAC inlier threshold in same units as pts (meters)
+        distance_threshold: RANSAC inlier threshold in same units as pts
+            (meters)
         ransac_n: Number of points to sample for RANSAC
         num_iterations: Number of RANSAC iterations
         min_support: Minimum number of points required for a valid plane
@@ -310,20 +325,25 @@ def fit_planes_per_label(
     labels_arr = np.asarray(labels).reshape(-1)
     pts = pts.reshape(-1, 3)
     valid = np.isfinite(pts).all(axis=1)
-    pts_valid = pts[valid]
+    pts[valid]
     labels_valid = labels_arr[valid]
     idx_valid = np.nonzero(valid)[0]
 
-    unique_labels = [l for l in np.unique(labels_valid) if l not in ignore_labels]
+    unique_labels = [
+        lbl for lbl in np.unique(labels_valid) if lbl not in ignore_labels
+    ]
     results = {}
 
     for pid in unique_labels:
-        mask = (labels_valid == pid)
+        mask = labels_valid == pid
         idx_global = idx_valid[mask]
 
         if idx_global.size < max(min_support, ransac_n):
             if verbose:
-                print(f'[Plane {pid}] Not enough points: {idx_global.size} < {min_support}')
+                print(
+                    f"[Plane {pid}] Not enough points: "
+                    f"{idx_global.size} < {min_support}"
+                )
             continue
 
         # Build point cloud for this label
@@ -342,7 +362,10 @@ def fit_planes_per_label(
 
         if inliers_local.size < min_support:
             if verbose:
-                print(f'[Plane {pid}] RANSAC inliers too few: {inliers_local.size}')
+                print(
+                    f"[Plane {pid}] RANSAC inliers too few: "
+                    f"{inliers_local.size}"
+                )
             continue
 
         # Map back to global indices
@@ -366,43 +389,45 @@ def fit_planes_per_label(
         refined_inlier_ratio = len(inliers_all) / max(1, len(idx_global))
 
         results[pid] = {
-            'plane_model': np.array(plane_model, dtype=float),
-            'plane_model_refined': plane_refined,
-            'inliers_local': inliers_local,
-            'inliers_global': inliers_global,
-            'inliers_all': inliers_all,
-            'indices_all': idx_global,
-            'support': int(inliers_local.size),
-            'rms': rms,
-            'num_points': len(idx_global),
-            'ransac_inlier_num_points': len(inliers_global),
-            'refined_inlier_num_points': len(inliers_all),
-            'ransac_inlier_ratio': ransac_inlier_ratio,
-            'refined_inlier_ratio': refined_inlier_ratio,
+            "plane_model": np.array(plane_model, dtype=float),
+            "plane_model_refined": plane_refined,
+            "inliers_local": inliers_local,
+            "inliers_global": inliers_global,
+            "inliers_all": inliers_all,
+            "indices_all": idx_global,
+            "support": int(inliers_local.size),
+            "rms": rms,
+            "num_points": len(idx_global),
+            "ransac_inlier_num_points": len(inliers_global),
+            "refined_inlier_num_points": len(inliers_all),
+            "ransac_inlier_ratio": ransac_inlier_ratio,
+            "refined_inlier_ratio": refined_inlier_ratio,
         }
 
     # Create summary DataFrame
     rows = []
     for pid, data in results.items():
-        rows.append({
-            "plane_id": pid,
-            "num_points": data["num_points"],
-            "ransac_inlier_num_points": data["ransac_inlier_num_points"],
-            "refined_inlier_num_points": data["refined_inlier_num_points"],
-            "inlier_ratio_ransac": data["ransac_inlier_ratio"],
-            "inlier_ratio_refined": data["refined_inlier_ratio"],
-        })
+        rows.append(
+            {
+                "plane_id": pid,
+                "num_points": data["num_points"],
+                "ransac_inlier_num_points": data["ransac_inlier_num_points"],
+                "refined_inlier_num_points": data["refined_inlier_num_points"],
+                "inlier_ratio_ransac": data["ransac_inlier_ratio"],
+                "inlier_ratio_refined": data["refined_inlier_ratio"],
+            }
+        )
 
     plane_df = pd.DataFrame(rows)
     return results, plane_df
 
 
 def filter_planes_by_inlier_ratio(
-    results: Dict,
+    results: dict,
     plane_df: pd.DataFrame,
     inlier_ratio_threshold: float = 0.5,
-    verbose: bool = False
-) -> Tuple[Dict, pd.DataFrame]:
+    verbose: bool = False,
+) -> tuple[dict, pd.DataFrame]:
     """
     Remove planes with low inlier ratios.
 
@@ -426,23 +451,29 @@ def filter_planes_by_inlier_ratio(
     ]["plane_id"].tolist()
 
     # Filter dictionary and DataFrame
-    filtered_results = {pid: data for pid, data in results.items()
-                       if pid in valid_plane_ids}
-    filtered_df = plane_df[plane_df["plane_id"].isin(valid_plane_ids)].reset_index(drop=True)
+    filtered_results = {
+        pid: data for pid, data in results.items() if pid in valid_plane_ids
+    }
+    filtered_df = plane_df[
+        plane_df["plane_id"].isin(valid_plane_ids)
+    ].reset_index(drop=True)
 
     if verbose:
         n_removed = len(results) - len(filtered_results)
-        print(f"Filtered out {n_removed} planes (kept {len(filtered_results)} / {len(results)})")
+        print(
+            f"Filtered out {n_removed} planes "
+            f"(kept {len(filtered_results)} / {len(results)})"
+        )
 
     return filtered_results, filtered_df
 
 
 def mark_planes_below_threshold_as_outliers(
-    results: Dict,
+    results: dict,
     plane_df: pd.DataFrame,
     inlier_ratio_threshold: float = 0.5,
-    verbose: bool = False
-) -> Tuple[Dict, pd.DataFrame]:
+    verbose: bool = False,
+) -> tuple[dict, pd.DataFrame]:
     """
     Mark low-quality planes as all-outliers instead of removing them.
 
@@ -493,15 +524,20 @@ def mark_planes_below_threshold_as_outliers(
 
             # Update DataFrame
             mask = updated_df["plane_id"] == pid
-            updated_df.loc[mask, [
-                "refined_inlier_num_points",
-                "inlier_ratio_refined",
-                "ransac_inlier_num_points",
-                "inlier_ratio_ransac"
-            ]] = 0
+            updated_df.loc[
+                mask,
+                [
+                    "refined_inlier_num_points",
+                    "inlier_ratio_refined",
+                    "ransac_inlier_num_points",
+                    "inlier_ratio_ransac",
+                ],
+            ] = 0
 
     if verbose:
-        print(f"Marked {len(below_ids)} planes as all-outliers "
-              f"(below {inlier_ratio_threshold:.2f})")
+        print(
+            f"Marked {len(below_ids)} planes as all-outliers "
+            f"(below {inlier_ratio_threshold:.2f})"
+        )
 
     return updated_results, updated_df

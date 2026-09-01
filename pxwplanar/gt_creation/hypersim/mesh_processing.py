@@ -5,15 +5,18 @@ Hypersim Mesh Processing Script
 Processes Hypersim mesh files to create semantic-colored PLY and GLB exports.
 
 Usage:
-    python mesh_processing.py --mesh_dir /path/to/scene/_detail/mesh --output_dir /path/to/output
+    python mesh_processing.py --mesh_dir /path/to/scene/_detail/mesh \
+        --output_dir /path/to/output
 """
+
+import argparse
 import os
 import re
+
 import h5py
 import numpy as np
 import pandas as pd
 import trimesh
-import argparse
 
 
 def load_h5(path):
@@ -57,7 +60,9 @@ def process_mesh(mesh_dir, output_dir):
     print(f"[INFO] Vertices: {verts.shape[0]}, Faces: {faces.shape[0]}")
 
     # Load per-face group ids & group names
-    group_ids = load_h5(os.path.join(mesh_dir, "mesh_faces_gi.hdf5")).reshape(-1)
+    group_ids = load_h5(os.path.join(mesh_dir, "mesh_faces_gi.hdf5")).reshape(
+        -1
+    )
     groups_csv = os.path.join(mesh_dir, "metadata_groups.csv")
     if not os.path.exists(groups_csv):
         raise FileNotFoundError(f"metadata_groups.csv not found in {mesh_dir}")
@@ -78,8 +83,12 @@ def process_mesh(mesh_dir, output_dir):
 
     # Assign colors per semantic class
     rng = np.random.default_rng(42)  # stable colors across runs
-    sem_to_color = {n: rng.integers(0, 256, size=3, dtype=np.uint8) for n in unique_sem}
-    face_colors = np.array([sem_to_color[n] for n in semantic_names], dtype=np.uint8)
+    sem_to_color = {
+        n: rng.integers(0, 256, size=3, dtype=np.uint8) for n in unique_sem
+    }
+    face_colors = np.array(
+        [sem_to_color[n] for n in semantic_names], dtype=np.uint8
+    )
 
     # Export 1) PLY colored by semantic
     mesh = trimesh.Trimesh(vertices=verts, faces=faces, process=False)
@@ -93,12 +102,16 @@ def process_mesh(mesh_dir, output_dir):
     legend_rows = []
     for name in unique_sem:
         r, g, b = map(int, sem_to_color[name])
-        legend_rows.append({
-            "semantic_id": sem_to_id[name],
-            "semantic_name": name,
-            "R": r, "G": g, "B": b,
-            "face_count": face_counts.get(name, 0)
-        })
+        legend_rows.append(
+            {
+                "semantic_id": sem_to_id[name],
+                "semantic_name": name,
+                "R": r,
+                "G": g,
+                "B": b,
+                "face_count": face_counts.get(name, 0),
+            }
+        )
     legend_df = pd.DataFrame(legend_rows).sort_values("semantic_id")
     csv_path = os.path.join(output_dir, "semantic_legend.csv")
     legend_df.to_csv(csv_path, index=False)
@@ -113,11 +126,11 @@ def process_mesh(mesh_dir, output_dir):
             continue
         sub_faces = faces[idx]
 
-        submesh = trimesh.Trimesh(vertices=verts, faces=sub_faces, process=False)
-        color = sem_to_color[name].astype(np.float32) / 255.0
-        mat = trimesh.visual.material.SimpleMaterial(
-            name=name, diffuse=color
+        submesh = trimesh.Trimesh(
+            vertices=verts, faces=sub_faces, process=False
         )
+        color = sem_to_color[name].astype(np.float32) / 255.0
+        mat = trimesh.visual.material.SimpleMaterial(name=name, diffuse=color)
         submesh.visual.material = mat
         parts[name] = submesh
 
@@ -133,10 +146,18 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Process Hypersim mesh to create semantic-colored exports"
     )
-    parser.add_argument("--mesh_dir", type=str, required=True,
-                        help="Directory containing mesh HDF5 files (mesh_vertices.hdf5, etc.)")
-    parser.add_argument("--output_dir", type=str, required=True,
-                        help="Directory for output files")
+    parser.add_argument(
+        "--mesh_dir",
+        type=str,
+        required=True,
+        help="Directory containing mesh HDF5 files (mesh_vertices.hdf5, etc.)",
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        required=True,
+        help="Directory for output files",
+    )
     args = parser.parse_args()
 
     if not os.path.isdir(args.mesh_dir):

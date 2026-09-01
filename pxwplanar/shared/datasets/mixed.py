@@ -1,10 +1,13 @@
-from torch.utils.data import Dataset
 import random
 
 import torchvision.transforms.functional as TF
+from torch.utils.data import Dataset
+
 
 class MixedPlanarityDataset(Dataset):
-    def __init__(self, dataset_a, dataset_b, image_height=512, image_width=768, seed=42):
+    def __init__(
+        self, dataset_a, dataset_b, image_height=512, image_width=768, seed=42
+    ):
         self.dataset_a = dataset_a
         self.dataset_b = dataset_b
         self.len_a = len(dataset_a)
@@ -20,14 +23,26 @@ class MixedPlanarityDataset(Dataset):
         return self.total_len
 
     def __getitem__(self, idx):
-        sample = self.dataset_a[idx % self.len_a] if random.random() < self.prob_a else self.dataset_b[idx % self.len_b]
+        sample = (
+            self.dataset_a[idx % self.len_a]
+            if random.random() < self.prob_a
+            else self.dataset_b[idx % self.len_b]
+        )
 
         # Resize tensors
         H, W = self.image_height, self.image_width
-        sample["image"] = TF.resize(sample["image"], [H, W], interpolation=TF.InterpolationMode.BILINEAR)
-        sample["depth"] = TF.resize(sample["depth"], [H, W], interpolation=TF.InterpolationMode.BILINEAR)
-        sample["plane"] = TF.resize(sample["plane"], [H, W], interpolation=TF.InterpolationMode.NEAREST)
+        sample["image"] = TF.resize(
+            sample["image"], [H, W], interpolation=TF.InterpolationMode.BILINEAR
+        )
+        sample["depth"] = TF.resize(
+            sample["depth"], [H, W], interpolation=TF.InterpolationMode.BILINEAR
+        )
+        sample["plane"] = TF.resize(
+            sample["plane"], [H, W], interpolation=TF.InterpolationMode.NEAREST
+        )
         sem_key = "sem" if "sem" in sample else "semantic"
-        sample[sem_key] = TF.resize(sample[sem_key], [H, W], interpolation=TF.InterpolationMode.NEAREST)
+        sample[sem_key] = TF.resize(
+            sample[sem_key], [H, W], interpolation=TF.InterpolationMode.NEAREST
+        )
 
         return sample
