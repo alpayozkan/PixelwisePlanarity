@@ -362,7 +362,7 @@ def load_moge_data(args):
     """Run MoGe inference and return (pts_3d, labels, num_planes, rgb_img)."""
     import torch
     import torch.nn as nn
-    from MoGe.moge.model.v2 import MoGeModel
+    from pxwplanar.moge_backend import MoGeModel
     from pxwplanar.shared.segmentation.plan2seg import compute_planar_segments
 
     image_path = args.moge
