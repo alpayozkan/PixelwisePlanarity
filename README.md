@@ -49,6 +49,20 @@ as `model_epoch1.pt` (legacy training format; also loadable — it additionally
 pulls the MoGe-2 base weights `Ruicheng/moge-2-vitl-normal` to rebuild the
 module tree).
 
+### Code style
+
+Python is formatted and linted with [ruff](https://docs.astral.sh/ruff/) (pinned in
+`env/environment.yml`; `pip install -e ".[dev]"` also pulls it in), configured by
+`ruff.toml` at the repo root:
+
+```bash
+./scripts/format.sh          # files changed vs. main (all files on main)
+./scripts/format.sh --all    # every tracked Python file
+```
+
+The script runs `ruff format` followed by `ruff check --fix`. The `MoGe/`
+submodule is never reformatted — it keeps its upstream style.
+
 ## Demo
 
 ```bash
@@ -123,6 +137,7 @@ RGB → MoGe 4-head model → planarity, metric depth, normals, mask     (pxwpla
 ├── demo/                 # Example frames + run_demo.py + make_gif.py
 ├── splits/               # Train/val/test scene lists per dataset
 ├── env/                  # Conda environment + setup script
+├── scripts/format.sh     # ruff formatting entry point (config: ruff.toml)
 └── MoGe/                 # Git submodule: MoGe fork with 4-head training code
 ```
 

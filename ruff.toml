@@ -1,0 +1,32 @@
+# Formatting / linting configuration, applied by scripts/format.sh.
+# Layout and rule selection follow COLMAP's ruff.toml; the version pin lives in
+# scripts/format.sh and env/environment.yml.
+
+line-length = 80
+
+# The MoGe fork is a submodule with its own upstream style — never reformat it.
+extend-exclude = ["MoGe"]
+
+[lint]
+select = [
+    # pycodestyle
+    "E",
+    # Pyflakes
+    "F",
+    # pyupgrade
+    "UP",
+    # flake8-bugbear
+    "B",
+    # flake8-simplify
+    "SIM",
+    # isort
+    "I",
+]
+ignore = [
+    # multiple `with` statements on one line
+    "SIM117",
+    # module-level import not at top of file: entry points in this repo
+    # deliberately `sys.path.insert(0, <repo root>)` before importing
+    # `pxwplanar.*` / `MoGe.moge.*` so they run both as scripts and as modules.
+    "E402",
+]
