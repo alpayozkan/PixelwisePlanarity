@@ -30,3 +30,9 @@ ignore = [
     # `pxwplanar.*` / `MoGe.moge.*` so they run both as scripts and as modules.
     "E402",
 ]
+
+[lint.isort]
+# `MoGe` is a git submodule at the repo root, so isort's first-party detection
+# depends on whether it happens to be checked out (CI does not fetch it).
+# Pin both to keep import grouping identical everywhere.
+known-first-party = ["pxwplanar", "MoGe"]
