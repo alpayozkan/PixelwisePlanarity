@@ -11,8 +11,6 @@ import argparse
 import copy
 import glob
 import os
-import sys
-from pathlib import Path
 
 import cv2
 import matplotlib.pyplot as plt
@@ -22,20 +20,16 @@ import torch.nn as nn
 import torch.nn.functional as F
 from tqdm import tqdm
 
-# Add project root to path (for MoGe submodule at repo root)
-script_dir = Path(__file__).resolve().parent
-project_root = script_dir.parent.parent.parent
-sys.path.insert(0, str(project_root))
-
-from MoGe.moge.model.v2 import MoGeModel, normalized_view_plane_uv
+# MoGe backend: the MoGe/ submodule in a checkout, the installed `moge`
+# distribution in a library install (see pxwplanar/moge_backend.py).
+from pxwplanar.moge_backend import MoGeModel, normalized_view_plane_uv
 
 # Released 4-head checkpoint on the Hugging Face Hub (MoGe-native format).
 DEFAULT_HF_REPO = "alpayozkan/pxwplanar-moge2-planarity"
 
 
 class MoGePlanarityInference:
-    """Class for performing inference with trained MoGe 4-head planarity
-    model."""
+    """Inference with a trained MoGe 4-head planarity model."""
 
     @classmethod
     def from_pretrained(
@@ -183,8 +177,8 @@ class MoGePlanarityInference:
             Preprocessed image tensor
         """
         # Load image
-        if isinstance(image_path, str):
-            image = cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
+        if isinstance(image_path, (str, os.PathLike)):
+            image = cv2.cvtColor(cv2.imread(str(image_path)), cv2.COLOR_BGR2RGB)
         else:
             # Assume it's already a numpy array
             image = image_path
@@ -325,9 +319,9 @@ class MoGePlanarityInference:
             #         outputs = self.model(image_tensor, num_tokens=num_tokens)
             #         if 'planarity' not in outputs:
             #             # Fall back to manual forward
-            #             outputs = self._manual_forward(
-            #                 image_tensor, num_tokens
-            #             )
+            #     outputs = self._manual_forward(
+            #         image_tensor, num_tokens
+            #     )
             #     except:
             #         # Fall back to manual forward
             #         outputs = self._manual_forward(image_tensor, num_tokens)
@@ -367,15 +361,15 @@ class MoGePlanarityInference:
                     results["mask"] = mask_prob
 
                 if "normal" in outputs:
-                    # FIX: MoGe v2 already outputs (B, H, W, 3), squeeze
-                    # gives (H, W, 3)
+                    # MoGe v2 already outputs (B, H, W, 3);
+                    # squeeze gives (H, W, 3)
                     normal = outputs["normal"].squeeze().cpu().numpy()
                     # No transpose needed - already in HWC format
                     results["normal"] = normal
 
                 if "points" in outputs:
-                    # FIX: MoGe v2 already outputs (B, H, W, 3), squeeze
-                    # gives (H, W, 3)
+                    # MoGe v2 already outputs (B, H, W, 3);
+                    # squeeze gives (H, W, 3)
                     points = outputs["points"].squeeze().cpu().numpy()
                     # No transpose needed - already in HWC format
                     results["points"] = points
@@ -397,8 +391,8 @@ class MoGePlanarityInference:
         Return dict keys (when return_all_heads=True):
           - planarity_probability: (H, W) float32 [0, 1]
           - planarity_binary: (H, W) uint8
-          - planarity_probability_full / planarity_binary_full: resized to
-            original
+          - planarity_probability_full / planarity_binary_full: resized
+            to the original resolution
           - depth: (H, W) float32, metric z-depth in meters (0 where masked)
           - normal: (H, W, 3) float32, unit normals (0 where masked)
           - points: (H, W, 3) float32, metric 3D points (0 where masked)
@@ -590,7 +584,9 @@ class MoGePlanarityInference:
         results = self.predict(image_path, return_all_heads=return_all_heads)
 
         # Load original image
-        original_image = cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
+        original_image = cv2.cvtColor(
+            cv2.imread(str(image_path)), cv2.COLOR_BGR2RGB
+        )
 
         # Determine number of subplots: image + probability + binary,
         # plus overlay, plus mask + normal when all heads are requested
@@ -691,8 +687,8 @@ class MoGePlanarityInference:
         original_sizes = []
 
         for p in image_paths:
-            if isinstance(p, str):
-                img = cv2.cvtColor(cv2.imread(p), cv2.COLOR_BGR2RGB)
+            if isinstance(p, (str, os.PathLike)):
+                img = cv2.cvtColor(cv2.imread(str(p)), cv2.COLOR_BGR2RGB)
             else:
                 img = p
 
@@ -739,12 +735,12 @@ class MoGePlanarityInference:
 
                 if return_all_heads:
                     if "normal" in outputs:
-                        # FIX: MoGe v2 already outputs (B, H, W, 3),
+                        # MoGe v2 already outputs (B, H, W, 3);
                         # no transpose needed
                         normal = outputs["normal"][i].cpu().numpy()
                         res["normal"] = normal
                     if "points" in outputs:
-                        # FIX: MoGe v2 already outputs (B, H, W, 3),
+                        # MoGe v2 already outputs (B, H, W, 3);
                         # no transpose needed
                         points = outputs["points"][i].cpu().numpy()
                         res["points"] = points

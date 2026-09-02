@@ -31,6 +31,19 @@ bash env/create_env.sh    # conda env `pxwplanar` from env/environment.yml,
 conda activate pxwplanar
 ```
 
+### Use as a third-party dependency
+
+Another project can depend on this repo directly - no clone, no submodule:
+
+```bash
+pip install "pxwplanar @ git+https://github.com/alpayozkan/PixelwisePlanarity.git"
+```
+
+The MoGe fork comes in as the `moge` dependency and the released checkpoint
+downloads from the Hugging Face Hub on first use, so the minimal API below
+works out of the box. `pxwplanar.paths` is only needed by the dataset pipelines
+(GT creation, benchmark), not by inference on your own images.
+
 **Before running anything**: configure the paths in `pxwplanar/paths.py`. Every dataset root,
 checkpoint path, and output root resolves through it from a single data root — either set the
 `PXWPLANAR_DATA_ROOT` environment variable (default: `<repo>/data`), or create

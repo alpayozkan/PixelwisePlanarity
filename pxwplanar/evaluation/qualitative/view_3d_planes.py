@@ -105,8 +105,10 @@ def render_pointcloud_image(
     bg_color=(255, 255, 255),
     point_radius=1,
 ):
-    """Render a colored point cloud to an image via orthographic
-    projection with z-buffering."""
+    """Render a colored point cloud via orthographic projection.
+
+    Uses z-buffering to resolve occlusion.
+    """
     centroid = np.median(pts, axis=0)
     pts_c = pts - centroid
 
@@ -147,10 +149,8 @@ def render_pointcloud_image(
             for dy in range(-r, r + 1):
                 for dx in range(-r, r + 1):
                     nx_, ny_ = xi + dx, yi + dy
-                    if (
-                        0 <= nx_ < width
-                        and 0 <= ny_ < height
-                        and z[i] < zbuf[ny_, nx_]
+                    if (0 <= nx_ < width and 0 <= ny_ < height) and (
+                        z[i] < zbuf[ny_, nx_]
                     ):
                         zbuf[ny_, nx_] = z[i]
                         img[ny_, nx_] = colors_sorted[i]
@@ -233,10 +233,8 @@ def render_side_by_side(
                 for dy in range(-r, r + 1):
                     for dx in range(-r, r + 1):
                         nx_, ny_ = xi + dx, yi + dy
-                        if (
-                            x_lo <= nx_ < x_hi
-                            and 0 <= ny_ < height
-                            and z[i] < zbuf[ny_, nx_]
+                        if (x_lo <= nx_ < x_hi and 0 <= ny_ < height) and (
+                            z[i] < zbuf[ny_, nx_]
                         ):
                             zbuf[ny_, nx_] = z[i]
                             img[ny_, nx_] = colors_sorted[i]
@@ -252,7 +250,7 @@ def render_side_by_side(
 def build_pointcloud(pts_3d, labels, num_planes, rgb_img, args):
     """Build point cloud arrays from 3D points and plane labels.
 
-    Returns (pts, colors_rgb) or None.
+    Returns (pts, colors_rgb), or None.
     """
     H, W = labels.shape
     z = pts_3d[:, :, 2]
@@ -390,8 +388,8 @@ def load_h5_data(args):
     H, W = depth.shape
 
     # Scale intrinsics from stored resolution to actual depth resolution.
-    # ZeroPlane H5 stores K at the original capture resolution (e.g.
-    # 1920x1440 for ScanNet++ iPhone).  Depth/labels are at a smaller
+    # ZeroPlane H5 stores K at the original capture resolution (e.g. 1920x1440
+    # for ScanNet++ iPhone). Depth/labels are at a smaller
     # resolution (480x640).
     K_orig_w = K[0, 2] * 2  # approximate original width from cx
     K_orig_h = K[1, 2] * 2  # approximate original height from cy
@@ -429,7 +427,7 @@ def load_moge_data(args):
     import torch
     import torch.nn as nn
 
-    from MoGe.moge.model.v2 import MoGeModel
+    from pxwplanar.moge_backend import MoGeModel
     from pxwplanar.shared.segmentation.plan2seg import compute_planar_segments
 
     image_path = args.moge

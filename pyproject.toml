@@ -7,6 +7,8 @@ license = { text = "MIT" }
 authors = [
     { name = "Ahmetcan Yavuz" },
     { name = "Alpay Ozkan" },
+    { name = "Rémi Pautrat", email = "pautratrmi@microsoft.com"},
+    { name = "Shaohui Liu", email = "b1ueber2y@gmail.com" },
 ]
 requires-python = ">=3.10"
 # Version pins live in env/environment.yml (the supported way to install is
@@ -34,6 +36,9 @@ dependencies = [
     "connected-components-3d",
     # required by the MoGe submodule (imported by every inference entry point)
     "huggingface_hub",
+    # MoGe fork with the 4-head model; a checkout uses the MoGe/ submodule
+    # instead (see pxwplanar/moge_backend.py)
+    "moge @ git+https://github.com/Ahmetcanyvz/MoGe.git@planarity",
     "utils3d @ git+https://github.com/EasternJournalist/utils3d.git@3fab839f0be9931dac7c8488eb0e1600c236e183",
 ]
 
