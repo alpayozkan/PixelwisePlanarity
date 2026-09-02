@@ -6,8 +6,9 @@ Raycasts the extracted plane mesh to produce per-frame depth (meters)
 that is geometrically consistent with the plane labels.
 
 This avoids two problems with the original V-Ray depth_meters.hdf5:
-  1. Geometry mismatch: V-Ray depth comes from the full scene mesh (all objects),
-     while plane labels come from our plane mesh (planes.ply).
+  1. Geometry mismatch: V-Ray depth comes from the full scene mesh
+     (all objects), while plane labels come from our plane mesh
+     (planes.ply).
   2. Camera model artifacts: pinhole backprojection introduces radial errors
      compared to the true V-Ray ray directions.
 
@@ -35,6 +36,7 @@ Usage:
         --output_root /data/hypersim \\
         --metadata_csv metadata_camera_parameters.csv
 """
+
 import sys
 from pathlib import Path
 
@@ -43,10 +45,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 import argparse
 import os
+
 import h5py
 import numpy as np
-import pandas as pd
 import open3d as o3d
+import pandas as pd
 from tqdm import tqdm
 
 from pxwplanar.shared.rendering import read_ply_faces_with_plane_ids
@@ -70,7 +73,9 @@ def get_mpau(df_scene, params_root, scene_id):
             return mpau
 
     # Fallback: per-scene metadata_scene.csv
-    fallback_csv = os.path.join(params_root, scene_id, "_detail", "metadata_scene.csv")
+    fallback_csv = os.path.join(
+        params_root, scene_id, "_detail", "metadata_scene.csv"
+    )
     if os.path.exists(fallback_csv):
         df_meta_scene = pd.read_csv(fallback_csv)
         for _, row in df_meta_scene.iterrows():
@@ -106,12 +111,24 @@ def build_raycasting_scene(mesh_path):
 
 def load_M_cam_from_uv(df_scene):
     """Load the 3x3 M_cam_from_uv matrix from a metadata CSV row."""
-    return np.array([[df_scene[f"M_cam_from_uv_{i}{j}"] for j in range(3)]
-                     for i in range(3)])
+    return np.array(
+        [
+            [df_scene[f"M_cam_from_uv_{i}{j}"] for j in range(3)]
+            for i in range(3)
+        ]
+    )
 
 
-def raycast_depth(rc_scene, M_cam_from_uv, R_world_from_cam,
-                  cam_position, W, H, mpau, depth_type="zdepth"):
+def raycast_depth(
+    rc_scene,
+    M_cam_from_uv,
+    R_world_from_cam,
+    cam_position,
+    W,
+    H,
+    mpau,
+    depth_type="zdepth",
+):
     """Raycast the plane mesh and return depth in meters.
 
     Uses the exact V-Ray NDC grid and M_cam_from_uv for ray generation,
@@ -140,7 +157,7 @@ def raycast_depth(rc_scene, M_cam_from_uv, R_world_from_cam,
 
     # Camera-space ray directions via M_cam_from_uv
     uvs = np.stack([uu, vv, np.ones_like(uu)], axis=-1)  # (H, W, 3)
-    dirs_cam = uvs @ M_cam_from_uv.T                      # (H, W, 3)
+    dirs_cam = uvs @ M_cam_from_uv.T  # (H, W, 3)
 
     # World-space ray directions (normalized for Open3D raycasting)
     dirs_world = dirs_cam @ R_world_from_cam.T
@@ -153,7 +170,7 @@ def raycast_depth(rc_scene, M_cam_from_uv, R_world_from_cam,
         o3d.core.Tensor(rays.reshape(-1, 6), dtype=o3d.core.Dtype.Float32)
     )
 
-    t_hit = ans['t_hit'].numpy().reshape(H, W)
+    t_hit = ans["t_hit"].numpy().reshape(H, W)
     hit_mask = np.isfinite(t_hit)
 
     depth = np.zeros((H, W), dtype=np.float32)
@@ -164,10 +181,12 @@ def raycast_depth(rc_scene, M_cam_from_uv, R_world_from_cam,
         # t_hit (asset units) -> Euclidean meters -> z-depth meters
         # cos(theta) = |d_cam.z| / |d_cam|
         # V-Ray camera looks along -Z so d_cam.z is typically negative.
-        ray_lengths = np.linalg.norm(dirs_cam, axis=-1)        # (H, W)
-        z_abs = np.abs(dirs_cam[:, :, 2])                      # (H, W)
+        ray_lengths = np.linalg.norm(dirs_cam, axis=-1)  # (H, W)
+        z_abs = np.abs(dirs_cam[:, :, 2])  # (H, W)
         cos_theta = np.where(ray_lengths > 0, z_abs / ray_lengths, 1.0)
-        depth[hit_mask] = (t_hit[hit_mask] * mpau * cos_theta[hit_mask]).astype(np.float32)
+        depth[hit_mask] = (t_hit[hit_mask] * mpau * cos_theta[hit_mask]).astype(
+            np.float32
+        )
 
     return depth
 
@@ -181,12 +200,24 @@ def save_depth_hdf5(depth, path):
     """
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with h5py.File(path, "w") as f:
-        f.create_dataset("dataset", data=depth, dtype=np.float32,
-                         compression="gzip", chunks=(96, 128))
+        f.create_dataset(
+            "dataset",
+            data=depth,
+            dtype=np.float32,
+            compression="gzip",
+            chunks=(96, 128),
+        )
 
 
-def process_scene(scene_id, params_root, plane_root, output_root,
-                  metadata_csv, frame_skip=1, depth_type="zdepth"):
+def process_scene(
+    scene_id,
+    params_root,
+    plane_root,
+    output_root,
+    metadata_csv,
+    frame_skip=1,
+    depth_type="zdepth",
+):
     """Raycast plane mesh to produce per-frame depth for all cameras in a scene.
 
     Args:
@@ -198,12 +229,17 @@ def process_scene(scene_id, params_root, plane_root, output_root,
         frame_skip: Frame skip interval (1 = all frames).
         depth_type: "zdepth" or "euclidean".
     """
-    print(f"[INFO] Raycasting depth for scene: {scene_id} (depth_type={depth_type})")
+    print(
+        f"[INFO] Raycasting depth for scene: {scene_id} "
+        f"(depth_type={depth_type})"
+    )
 
     # === Locate mesh ===
     mesh_path = os.path.join(plane_root, scene_id, "planes.ply")
     if not os.path.exists(mesh_path):
-        mesh_path = os.path.join(plane_root, "plane_ours_gt", scene_id, "planes.ply")
+        mesh_path = os.path.join(
+            plane_root, "plane_ours_gt", scene_id, "planes.ply"
+        )
     if not os.path.exists(mesh_path):
         print(f"[ERROR] Mesh not found: {mesh_path}")
         return False
@@ -235,8 +271,14 @@ def process_scene(scene_id, params_root, plane_root, output_root,
         print(f"[ERROR] Detail directory not found: {detail_dir}")
         return False
 
-    cam_names = sorted([d for d in os.listdir(detail_dir)
-                        if d.startswith("cam_") and os.path.isdir(os.path.join(detail_dir, d))])
+    cam_names = sorted(
+        [
+            d
+            for d in os.listdir(detail_dir)
+            if d.startswith("cam_")
+            and os.path.isdir(os.path.join(detail_dir, d))
+        ]
+    )
     print(f"[INFO] Found {len(cam_names)} cameras: {cam_names}")
 
     if len(cam_names) == 0:
@@ -246,8 +288,12 @@ def process_scene(scene_id, params_root, plane_root, output_root,
     for cam_name in cam_names:
         print(f"\n[INFO] Processing {cam_name}...")
         camera_dir = os.path.join(detail_dir, cam_name)
-        cam_pos_path = os.path.join(camera_dir, "camera_keyframe_positions.hdf5")
-        cam_rot_path = os.path.join(camera_dir, "camera_keyframe_orientations.hdf5")
+        cam_pos_path = os.path.join(
+            camera_dir, "camera_keyframe_positions.hdf5"
+        )
+        cam_rot_path = os.path.join(
+            camera_dir, "camera_keyframe_orientations.hdf5"
+        )
 
         if not os.path.exists(cam_pos_path) or not os.path.exists(cam_rot_path):
             print(f"[WARN] Missing pose files for {cam_name}, skipping.")
@@ -261,11 +307,18 @@ def process_scene(scene_id, params_root, plane_root, output_root,
 
         total_frames = len(cam_positions)
         dir_suffix = "raycast_euc" if depth_type == "euclidean" else "raycast"
-        out_dir = os.path.join(output_root, scene_id, "images",
-                               f"scene_{cam_name}_geometry_hdf5_{dir_suffix}")
+        out_dir = os.path.join(
+            output_root,
+            scene_id,
+            "images",
+            f"scene_{cam_name}_geometry_hdf5_{dir_suffix}",
+        )
 
         processed = 0
-        print(f"[INFO] Raycasting {total_frames} frames for {cam_name} (skip={frame_skip})...")
+        print(
+            f"[INFO] Raycasting {total_frames} frames for {cam_name} "
+            f"(skip={frame_skip})..."
+        )
 
         for frame_id in tqdm(range(total_frames), desc=f"{cam_name}"):
             if frame_id % frame_skip != 0:
@@ -275,10 +328,16 @@ def process_scene(scene_id, params_root, plane_root, output_root,
             out_path = os.path.join(out_dir, f"frame.{fid}.depth_meters.hdf5")
 
             R = cam_orientations[frame_id]  # (3,3) R_world_from_cam
-            T = cam_positions[frame_id]     # (3,)  camera position in world
+            T = cam_positions[frame_id]  # (3,)  camera position in world
 
             depth = raycast_depth(
-                rc_scene, M_cam_from_uv, R, T, W, H, mpau,
+                rc_scene,
+                M_cam_from_uv,
+                R,
+                T,
+                W,
+                H,
+                mpau,
                 depth_type=depth_type,
             )
             save_depth_hdf5(depth, out_path)
@@ -294,22 +353,48 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Raycast Hypersim plane mesh to produce per-frame depth"
     )
-    parser.add_argument("scene_id", type=str, help="Scene ID (e.g., ai_001_001)")
-    parser.add_argument("--params_root", type=str, required=True,
-                        help="Root directory of Hypersim parameters")
-    parser.add_argument("--plane_root", type=str, required=True,
-                        help="Root directory containing extracted plane meshes")
-    parser.add_argument("--output_root", type=str, required=True,
-                        help="Root directory to save raycasted depth HDF5 files")
-    parser.add_argument("--metadata_csv", type=str, required=True,
-                        help="Path to metadata_camera_parameters.csv")
-    parser.add_argument("--frame_skip", type=int, default=1,
-                        help="Frame skip interval (default: 1 = all frames)")
-    parser.add_argument("--depth_type", type=str, default="zdepth",
-                        choices=["zdepth", "euclidean"],
-                        help="Depth type: 'zdepth' (default) saves z-depth "
-                             "(use with pinhole K), 'euclidean' saves raw "
-                             "Euclidean ray distance (use with M_cam_from_uv)")
+    parser.add_argument(
+        "scene_id", type=str, help="Scene ID (e.g., ai_001_001)"
+    )
+    parser.add_argument(
+        "--params_root",
+        type=str,
+        required=True,
+        help="Root directory of Hypersim parameters",
+    )
+    parser.add_argument(
+        "--plane_root",
+        type=str,
+        required=True,
+        help="Root directory containing extracted plane meshes",
+    )
+    parser.add_argument(
+        "--output_root",
+        type=str,
+        required=True,
+        help="Root directory to save raycasted depth HDF5 files",
+    )
+    parser.add_argument(
+        "--metadata_csv",
+        type=str,
+        required=True,
+        help="Path to metadata_camera_parameters.csv",
+    )
+    parser.add_argument(
+        "--frame_skip",
+        type=int,
+        default=1,
+        help="Frame skip interval (default: 1 = all frames)",
+    )
+    parser.add_argument(
+        "--depth_type",
+        type=str,
+        default="zdepth",
+        choices=["zdepth", "euclidean"],
+        help="Depth type: 'zdepth' (default) saves z-depth "
+        "(use with pinhole K), 'euclidean' saves raw "
+        "Euclidean ray distance (use with M_cam_from_uv)",
+    )
     args = parser.parse_args()
 
     success = process_scene(

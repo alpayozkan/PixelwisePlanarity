@@ -9,18 +9,18 @@ merge: Top-K + Union-Find + nearest-neighbor 3D proximity.
 """
 
 import time
-import numpy as np
-from typing import Tuple
 from collections import defaultdict
 
+import numpy as np
 from scipy.ndimage import distance_transform_edt
 from scipy.spatial import cKDTree
-from pxwplanar.shared.plane_fitting import backproject
 
+from pxwplanar.shared.plane_fitting import backproject
 
 # ============================================================
 # SHARED HELPERS
 # ============================================================
+
 
 def _fit_plane_svd(points):
     """Fit plane n·x + d = 0 via SVD. Returns (normal, offset, centroid)."""
@@ -49,8 +49,9 @@ def _build_point_map(depth, K, c2w, labels):
     return pts_map
 
 
-def _fit_segment(pts_map, labels, lab, min_pixels,
-                 max_fit_pts=5000, max_sample_pts=500):
+def _fit_segment(
+    pts_map, labels, lab, min_pixels, max_fit_pts=5000, max_sample_pts=500
+):
     """Fit SVD plane for one segment. Returns dict or None."""
     mask = labels == lab
     count = int(mask.sum())
@@ -64,7 +65,9 @@ def _fit_segment(pts_map, labels, lab, min_pixels,
 
     pts_fit = pts
     if pts.shape[0] > max_fit_pts:
-        pts_fit = pts[np.random.choice(pts.shape[0], max_fit_pts, replace=False)]
+        pts_fit = pts[
+            np.random.choice(pts.shape[0], max_fit_pts, replace=False)
+        ]
     try:
         n, d, centroid = _fit_plane_svd(pts_fit)
     except np.linalg.LinAlgError:
@@ -72,10 +75,17 @@ def _fit_segment(pts_map, labels, lab, min_pixels,
 
     pts_sample = pts
     if pts.shape[0] > max_sample_pts:
-        pts_sample = pts[np.random.choice(pts.shape[0], max_sample_pts, replace=False)]
+        pts_sample = pts[
+            np.random.choice(pts.shape[0], max_sample_pts, replace=False)
+        ]
 
-    return dict(normal=n, offset=d, centroid=centroid,
-                count=count, pts_sample=pts_sample)
+    return dict(
+        normal=n,
+        offset=d,
+        centroid=centroid,
+        count=count,
+        pts_sample=pts_sample,
+    )
 
 
 def _relabel(labels):
@@ -90,8 +100,13 @@ def _relabel(labels):
     return lut[labels.ravel()].reshape(labels.shape)
 
 
-def _check_coplanarity(pa, pb, cos_thresh, merge_offset_m, cross_dist_factor=2.0):
-    """Check if two segments are coplanar. Returns (ok, angle, offset, xdist, decision)."""
+def _check_coplanarity(
+    pa, pb, cos_thresh, merge_offset_m, cross_dist_factor=2.0
+):
+    """Check if two segments are coplanar.
+
+    Returns (ok, angle, offset, xdist, decision).
+    """
     n_a, d_a = pa["normal"], pa["offset"]
     n_b, d_b = pb["normal"], pb["offset"]
 
@@ -116,15 +131,24 @@ def _check_coplanarity(pa, pb, cos_thresh, merge_offset_m, cross_dist_factor=2.0
     return True, angle, offset, xdist, "CANDIDATE"
 
 
-def _log_entry(iteration, a, b, pa, pb, angle, offset, xdist, decision, **extra):
+def _log_entry(
+    iteration, a, b, pa, pb, angle, offset, xdist, decision, **extra
+):
     """Build a merge log entry dict."""
     entry = dict(
-        iteration=iteration, seg_a=a, seg_b=b,
-        cnt_a=pa["count"], cnt_b=pb["count"],
-        angle_deg=angle, offset_diff=offset, cross_dist=xdist,
+        iteration=iteration,
+        seg_a=a,
+        seg_b=b,
+        cnt_a=pa["count"],
+        cnt_b=pb["count"],
+        angle_deg=angle,
+        offset_diff=offset,
+        cross_dist=xdist,
         decision=decision,
-        n_a=pa["normal"].copy(), d_a=pa["offset"],
-        n_b=pb["normal"].copy(), d_b=pb["offset"],
+        n_a=pa["normal"].copy(),
+        d_a=pa["offset"],
+        n_b=pb["normal"].copy(),
+        d_b=pb["offset"],
     )
     entry.update(extra)
     return entry
@@ -132,6 +156,7 @@ def _log_entry(iteration, a, b, pa, pb, angle, offset, xdist, decision, **extra)
 
 class _UnionFind:
     """Simple Union-Find with path compression."""
+
     def __init__(self):
         self.parent = {}
 
@@ -146,7 +171,16 @@ class _UnionFind:
             self.parent[ra] = rb
 
 
-def _unionfind_merge(labels, params, candidates, pts_map, min_pixels, verbose, merge_log, iteration):
+def _unionfind_merge(
+    labels,
+    params,
+    candidates,
+    pts_map,
+    min_pixels,
+    verbose,
+    merge_log,
+    iteration,
+):
     """Union-Find merge: transitive closure of all candidate pairs."""
     if not candidates:
         return 0
@@ -163,11 +197,13 @@ def _unionfind_merge(labels, params, candidates, pts_map, min_pixels, verbose, m
     n_merged = 0
     refit_labs = set()
 
-    for root, members in groups.items():
+    for _root, members in groups.items():
         if len(members) < 2:
             continue
 
-        rep = max(members, key=lambda l: params[l]["count"] if l in params else 0)
+        rep = max(
+            members, key=lambda lb: params[lb]["count"] if lb in params else 0
+        )
         others = members - {rep}
 
         for b in others:
@@ -175,9 +211,15 @@ def _unionfind_merge(labels, params, candidates, pts_map, min_pixels, verbose, m
             params.pop(b, None)
             n_merged += 1
             if verbose:
-                merge_log.append(dict(
-                    iteration=iteration, seg_a=rep, seg_b=b,
-                    decision="MERGED_UF", group_size=len(members)))
+                merge_log.append(
+                    dict(
+                        iteration=iteration,
+                        seg_a=rep,
+                        seg_b=b,
+                        decision="MERGED_UF",
+                        group_size=len(members),
+                    )
+                )
 
         refit_labs.add(rep)
 
@@ -195,8 +237,13 @@ def _unionfind_merge(labels, params, candidates, pts_map, min_pixels, verbose, m
 # merge: Top-K + Union-Find + nearest-neighbor 3D proximity
 # ============================================================
 
+
 def merge(
-    labels, depth, normal, K, c2w,
+    labels,
+    depth,
+    normal,
+    K,
+    c2w,
     merge_normal_deg=5.0,
     merge_offset_m=0.05,
     merge_min_pixels=100,
@@ -236,8 +283,15 @@ def merge(
     H, W = labels.shape
     cos_thresh = np.cos(np.deg2rad(merge_normal_deg))
 
-    timing = dict(backproject=0.0, plane_fitting=0.0, adjacency=0.0,
-                  pair_eval=0.0, relabel=0.0, total=0.0, n_iterations=0)
+    timing = dict(
+        backproject=0.0,
+        plane_fitting=0.0,
+        adjacency=0.0,
+        pair_eval=0.0,
+        relabel=0.0,
+        total=0.0,
+        n_iterations=0,
+    )
     t_total = time.time()
 
     # Identify top-K segments by pixel count
@@ -280,16 +334,24 @@ def merge(
         bg_mask = labels == 0
         expanded = labels.copy()
         if bg_mask.any():
-            dist, nearest_idx = distance_transform_edt(bg_mask, return_indices=True)
+            dist, nearest_idx = distance_transform_edt(
+                bg_mask, return_indices=True
+            )
             bridge = bg_mask & (dist <= merge_gap_px)
-            expanded[bridge] = labels[nearest_idx[0][bridge], nearest_idx[1][bridge]]
+            expanded[bridge] = labels[
+                nearest_idx[0][bridge], nearest_idx[1][bridge]
+            ]
 
         edt_pairs = set()
-        for arr_a, arr_b in [(expanded[:, :-1], expanded[:, 1:]),
-                             (expanded[:-1, :], expanded[1:, :])]:
+        for arr_a, arr_b in [
+            (expanded[:, :-1], expanded[:, 1:]),
+            (expanded[:-1, :], expanded[1:, :]),
+        ]:
             mask = (arr_a > 0) & (arr_b > 0) & (arr_a != arr_b)
             if mask.any():
-                pairs = np.sort(np.column_stack([arr_a[mask], arr_b[mask]]), axis=1)
+                pairs = np.sort(
+                    np.column_stack([arr_a[mask], arr_b[mask]]), axis=1
+                )
                 pairs = np.unique(pairs, axis=0)
                 for a, b in pairs:
                     a, b = int(a), int(b)
@@ -332,9 +394,11 @@ def merge(
         angles = np.degrees(np.arccos(np.clip(np.abs(dots), -1.0, 1.0)))
         normal_ok = np.abs(dots) >= cos_thresh
 
-        offset_diffs = np.where(dots < 0,
-                                np.abs(offsets_a + offsets_b),
-                                np.abs(offsets_a - offsets_b))
+        offset_diffs = np.where(
+            dots < 0,
+            np.abs(offsets_a + offsets_b),
+            np.abs(offsets_a - offsets_b),
+        )
         offset_ok = offset_diffs <= merge_offset_m
 
         candidates = []
@@ -343,36 +407,82 @@ def merge(
 
             if not normal_ok[idx]:
                 if verbose:
-                    merge_log.append(_log_entry(
-                        it, a, b, params[a], params[b],
-                        angles[idx], None, None, "REJECT_NORMAL"))
+                    merge_log.append(
+                        _log_entry(
+                            it,
+                            a,
+                            b,
+                            params[a],
+                            params[b],
+                            angles[idx],
+                            None,
+                            None,
+                            "REJECT_NORMAL",
+                        )
+                    )
                 continue
 
             if not offset_ok[idx]:
                 if verbose:
-                    merge_log.append(_log_entry(
-                        it, a, b, params[a], params[b],
-                        angles[idx], offset_diffs[idx], None, "REJECT_OFFSET"))
+                    merge_log.append(
+                        _log_entry(
+                            it,
+                            a,
+                            b,
+                            params[a],
+                            params[b],
+                            angles[idx],
+                            offset_diffs[idx],
+                            None,
+                            "REJECT_OFFSET",
+                        )
+                    )
                 continue
 
-            d_ab = _cross_plane_distance(params[a]["pts_sample"],
-                                         params[b]["normal"], params[b]["offset"])
-            d_ba = _cross_plane_distance(params[b]["pts_sample"],
-                                         params[a]["normal"], params[a]["offset"])
+            d_ab = _cross_plane_distance(
+                params[a]["pts_sample"],
+                params[b]["normal"],
+                params[b]["offset"],
+            )
+            d_ba = _cross_plane_distance(
+                params[b]["pts_sample"],
+                params[a]["normal"],
+                params[a]["offset"],
+            )
             xdist = max(d_ab, d_ba)
 
             if xdist > merge_offset_m * 2.0:
                 if verbose:
-                    merge_log.append(_log_entry(
-                        it, a, b, params[a], params[b],
-                        angles[idx], offset_diffs[idx], xdist, "REJECT_CROSSDIST"))
+                    merge_log.append(
+                        _log_entry(
+                            it,
+                            a,
+                            b,
+                            params[a],
+                            params[b],
+                            angles[idx],
+                            offset_diffs[idx],
+                            xdist,
+                            "REJECT_CROSSDIST",
+                        )
+                    )
                 continue
 
             candidates.append((params[a]["count"] + params[b]["count"], a, b))
             if verbose:
-                merge_log.append(_log_entry(
-                    it, a, b, params[a], params[b],
-                    angles[idx], offset_diffs[idx], xdist, "CANDIDATE"))
+                merge_log.append(
+                    _log_entry(
+                        it,
+                        a,
+                        b,
+                        params[a],
+                        params[b],
+                        angles[idx],
+                        offset_diffs[idx],
+                        xdist,
+                        "CANDIDATE",
+                    )
+                )
 
         timing["pair_eval"] += time.time() - t0
 
@@ -381,8 +491,16 @@ def merge(
 
         # --- Union-Find transitive merge ---
         t0 = time.time()
-        n = _unionfind_merge(labels, params, candidates, pts_map,
-                             merge_min_pixels, verbose, merge_log, it)
+        n = _unionfind_merge(
+            labels,
+            params,
+            candidates,
+            pts_map,
+            merge_min_pixels,
+            verbose,
+            merge_log,
+            it,
+        )
         timing["plane_fitting"] += time.time() - t0
         total_merged += n
         if n == 0:

@@ -13,7 +13,8 @@ NPZ contents (identical to ParallelDomain "_d2" format):
     raw_depth:          (192, 256)    float32
     high_res_depth:     (1, 480, 640) float64
     high_res_raw_depth: (480, 640)    float32
-    segmentation:       (192, 256)    int32, plane IDs 0..N-1, label 20 = non-planar
+    segmentation:       (192, 256)    int32, plane IDs 0..N-1,
+                                      label 20 = non-planar
     plane:              (N, 3)        float64, n/d format (n^T x = 1)
     num_planes:         shape (1,)    int64
     intrinsic:          (3, 3)        float64, at 256x192 resolution
@@ -82,16 +83,23 @@ class NYUv2PlaneDataset(Dataset):
         all_files = os.listdir(data_root)
 
         # Prefer split-prefixed files if present, else flat numeric naming.
-        prefixed = [f for f in all_files
-                    if f.startswith(f"{split}_") and f.endswith("_d2.npz")]
+        prefixed = [
+            f
+            for f in all_files
+            if f.startswith(f"{split}_") and f.endswith("_d2.npz")
+        ]
         if prefixed:
             npz_files = sorted(prefixed, key=lambda f: int(f.split("_")[1]))
         else:
-            flat = [f for f in all_files
-                    if f.endswith("_d2.npz") and f.split("_")[0].isdigit()]
+            flat = [
+                f
+                for f in all_files
+                if f.endswith("_d2.npz") and f.split("_")[0].isdigit()
+            ]
             if not flat:
                 raise FileNotFoundError(
-                    f"No {split}_*_d2.npz or <idx>_d2.npz files found in {data_root}"
+                    f"No {split}_*_d2.npz or <idx>_d2.npz files "
+                    f"found in {data_root}"
                 )
             npz_files = sorted(flat, key=lambda f: int(f.split("_")[0]))
 
@@ -104,11 +112,15 @@ class NYUv2PlaneDataset(Dataset):
             if fname.endswith(f"_{split}.json"):
                 json_name = fname
                 break
-        self._json_path = os.path.join(data_root, json_name) if json_name else None
+        self._json_path = (
+            os.path.join(data_root, json_name) if json_name else None
+        )
         self._json_cache = None
 
         # Read intrinsics from first sample (constant across dataset)
-        first = np.load(os.path.join(data_root, npz_files[0]), allow_pickle=True)
+        first = np.load(
+            os.path.join(data_root, npz_files[0]), allow_pickle=True
+        )
         self._K_native = first["intrinsic"].astype(np.float32)  # at 256x192
         self._native_h, self._native_w = 192, 256
         self._hires_h, self._hires_w = 480, 640
@@ -131,7 +143,7 @@ class NYUv2PlaneDataset(Dataset):
     def _load_json(self):
         """Lazy-load and cache JSON metadata."""
         if self._json_cache is None and self._json_path is not None:
-            with open(self._json_path, "r") as f:
+            with open(self._json_path) as f:
                 self._json_cache = json.load(f)
         return self._json_cache
 
@@ -142,7 +154,7 @@ class NYUv2PlaneDataset(Dataset):
         """
         out = np.empty_like(seg, dtype=np.int32)
         non_planar_mask = seg == _NON_PLANAR
-        out[~non_planar_mask] = seg[~non_planar_mask] + 1   # 0..N-1 -> 1..N
+        out[~non_planar_mask] = seg[~non_planar_mask] + 1  # 0..N-1 -> 1..N
         out[non_planar_mask] = 0
         return out
 
@@ -154,40 +166,47 @@ class NYUv2PlaneDataset(Dataset):
         d = np.load(npz_path, allow_pickle=True)
 
         H, W = self.image_height, self.image_width
-        use_hires = (H >= self._hires_h) or (W >= self._hires_w)
+        use_hires = (self._hires_h <= H) or (self._hires_w <= W)
 
         # --- RGB (BGR -> RGB) ---
         if use_hires:
-            rgb_raw = d["raw_image"][:, :, ::-1].copy()      # (480, 640, 3)
+            rgb_raw = d["raw_image"][:, :, ::-1].copy()  # (480, 640, 3)
         else:
-            rgb_raw = d["image"][:, :, ::-1].copy()           # (192, 256, 3)
+            rgb_raw = d["image"][:, :, ::-1].copy()  # (192, 256, 3)
 
         H_src, W_src = rgb_raw.shape[:2]
-        need_resize = (H != H_src) or (W != W_src)
+        need_resize = (H_src != H) or (W_src != W)
 
         if need_resize:
-            rgb_raw = cv2.resize(rgb_raw, (W, H), interpolation=cv2.INTER_LINEAR)
-        image = torch.from_numpy(
-            rgb_raw.astype(np.float32) / 255.0
-        ).permute(2, 0, 1)  # (3, H, W)
+            rgb_raw = cv2.resize(
+                rgb_raw, (W, H), interpolation=cv2.INTER_LINEAR
+            )
+        image = torch.from_numpy(rgb_raw.astype(np.float32) / 255.0).permute(
+            2, 0, 1
+        )  # (3, H, W)
 
         # --- Depth ---
         if use_hires:
             depth_raw = d["high_res_raw_depth"].astype(np.float32)  # (480, 640)
         else:
-            depth_raw = d["raw_depth"].astype(np.float32)           # (192, 256)
+            depth_raw = d["raw_depth"].astype(np.float32)  # (192, 256)
         if need_resize:
-            depth_raw = cv2.resize(depth_raw, (W, H), interpolation=cv2.INTER_LINEAR)
+            depth_raw = cv2.resize(
+                depth_raw, (W, H), interpolation=cv2.INTER_LINEAR
+            )
         depth = torch.from_numpy(depth_raw).unsqueeze(0)  # (1, H, W)
 
         # --- Plane labels (remap to standard convention) ---
         seg_raw = d["segmentation"]  # (192, 256), always at low-res
-        if H != self._native_h or W != self._native_w:
+        if self._native_h != H or self._native_w != W:
             seg_raw = cv2.resize(
-                seg_raw.astype(np.float32), (W, H),
+                seg_raw.astype(np.float32),
+                (W, H),
                 interpolation=cv2.INTER_NEAREST,
             ).astype(np.int64)
-        plane = torch.from_numpy(self._remap_labels(seg_raw)).unsqueeze(0)  # (1, H, W)
+        plane = torch.from_numpy(self._remap_labels(seg_raw)).unsqueeze(
+            0
+        )  # (1, H, W)
 
         # --- Semantic labels (not available - zeros) ---
         sem = torch.zeros(1, H, W, dtype=torch.int64)
@@ -201,12 +220,12 @@ class NYUv2PlaneDataset(Dataset):
         c2w = np.eye(4, dtype=np.float32)
 
         return {
-            "image": image,                                     # (3, H, W) float32 [0, 1]
-            "depth": depth,                                     # (1, H, W) float32 meters
-            "plane": plane,                                     # (1, H, W) int32
-            "sem": sem,                                         # (1, H, W) int64
-            "K": torch.from_numpy(K),                           # (3, 3) float32
-            "c2w": torch.from_numpy(c2w),                       # (4, 4) float32
+            "image": image,  # (3, H, W) float32 [0, 1]
+            "depth": depth,  # (1, H, W) float32 meters
+            "plane": plane,  # (1, H, W) int32
+            "sem": sem,  # (1, H, W) int64
+            "K": torch.from_numpy(K),  # (3, 3) float32
+            "c2w": torch.from_numpy(c2w),  # (4, 4) float32
             "rgb_path": f"nyuv2/{self.split}_{sample_idx}",
             "scene_id": "nyuv2",
             "frame_idx": str(sample_idx),
@@ -228,7 +247,7 @@ class NYUv2PlaneDataset(Dataset):
         npz_path, sample_idx = self.valid_pairs[idx]
         d = np.load(npz_path, allow_pickle=True)
 
-        plane_params = d["plane"]                           # (N, 3) n/d format
+        plane_params = d["plane"]  # (N, 3) n/d format
         num_planes = int(np.asarray(d["num_planes"]).flat[0])
         seg = d["segmentation"]
 

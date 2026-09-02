@@ -20,33 +20,51 @@ Usage:
     python render_depth.py <scene_id> [--input_root ...] [--output_root ...]
                            [--frame_skip 25]
 """
+
+import argparse
+import json
 import os
 import sys
-import json
-import argparse
 
 import h5py
 import numpy as np
 import open3d as o3d
 from tqdm import tqdm
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..")))
+sys.path.insert(
+    0,
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..")),
+)
 
+from pxwplanar.paths import scannetpp_rend_plane_path, scannetppv2_path
 from pxwplanar.shared.rendering.render import raycast_depth
-from pxwplanar.paths import scannetppv2_path, scannetpp_rend_plane_path
 
 
 def parse_args():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     ap.add_argument("scene_id", type=str)
-    ap.add_argument("--input_root", type=str, default=os.path.join(scannetppv2_path, "data"),
-                    help="ScanNet++ data root (per-scene scans/mesh_aligned_0.05.ply "
-                         "and iphone/pose_intrinsic_imu.json).")
-    ap.add_argument("--output_root", type=str, default=scannetpp_rend_plane_path,
-                    help="Output root for <scene>/rendered_depth.h5.")
-    ap.add_argument("--frame_skip", type=int, default=25,
-                    help="Render every Nth frame (default 25, matching render_scene.py).")
+    ap.add_argument(
+        "--input_root",
+        type=str,
+        default=os.path.join(scannetppv2_path, "data"),
+        help="ScanNet++ data root (per-scene scans/mesh_aligned_0.05.ply "
+        "and iphone/pose_intrinsic_imu.json).",
+    )
+    ap.add_argument(
+        "--output_root",
+        type=str,
+        default=scannetpp_rend_plane_path,
+        help="Output root for <scene>/rendered_depth.h5.",
+    )
+    ap.add_argument(
+        "--frame_skip",
+        type=int,
+        default=25,
+        help="Render every Nth frame (default 25, matching render_scene.py).",
+    )
     ap.add_argument("--width", type=int, default=640)
     ap.add_argument("--height", type=int, default=480)
     return ap.parse_args()
@@ -56,15 +74,22 @@ def main():
     args = parse_args()
     scene_id = args.scene_id
 
-    mesh_path = os.path.join(args.input_root, scene_id, "scans", "mesh_aligned_0.05.ply")
+    mesh_path = os.path.join(
+        args.input_root, scene_id, "scans", "mesh_aligned_0.05.ply"
+    )
     print(f"[INFO] Rendering depth for scene: {scene_id}")
     print(f"[INFO] Reading {mesh_path} ...")
     mesh = o3d.io.read_triangle_mesh(mesh_path)
     mesh.compute_vertex_normals()
-    print(f"[INFO] Mesh: {len(mesh.vertices)} vertices, {len(mesh.triangles)} faces")
+    print(
+        f"[INFO] Mesh: {len(mesh.vertices)} vertices, "
+        f"{len(mesh.triangles)} faces"
+    )
 
-    pose_file = os.path.join(args.input_root, scene_id, "iphone", "pose_intrinsic_imu.json")
-    with open(pose_file, "r") as f:
+    pose_file = os.path.join(
+        args.input_root, scene_id, "iphone", "pose_intrinsic_imu.json"
+    )
+    with open(pose_file) as f:
         data = json.load(f)
 
     # Intrinsics scaled from the iPhone native resolution to the render size.
@@ -73,10 +98,10 @@ def main():
     W_orig, H_orig = 1920, 1440
     W, H = args.width, args.height
     K_scaled = K.copy()
-    K_scaled[0, 0] *= W / W_orig   # fx
-    K_scaled[0, 2] *= W / W_orig   # cx
-    K_scaled[1, 1] *= H / H_orig   # fy
-    K_scaled[1, 2] *= H / H_orig   # cy
+    K_scaled[0, 0] *= W / W_orig  # fx
+    K_scaled[0, 2] *= W / W_orig  # cx
+    K_scaled[1, 1] *= H / H_orig  # fy
+    K_scaled[1, 2] *= H / H_orig  # cy
 
     out_dir = os.path.join(args.output_root, scene_id)
     os.makedirs(out_dir, exist_ok=True)
@@ -85,7 +110,9 @@ def main():
     print("[INFO] Rendering depth ...")
     frame_ids = []
     depth_list = []
-    for i, (frame_id, frame_data) in enumerate(tqdm(data.items(), total=len(data))):
+    for i, (frame_id, frame_data) in enumerate(
+        tqdm(data.items(), total=len(data))
+    ):
         if i % max(1, args.frame_skip) != 0:
             continue
 

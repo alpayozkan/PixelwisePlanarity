@@ -8,7 +8,8 @@ planes, calibration) to a single HDF5 file per scene.
 
 Usage:
     python -m pxwplanar.gt_creation.synthia.scene_runner \
-        --scene_dir /path/to/test/test5_10segs_weather_0_.../DD-MM-YYYY_HH-MM-SS \
+        --scene_dir \
+            /path/to/test/test5_10segs_weather_0_.../DD-MM-YYYY_HH-MM-SS \
         --output_root /path/to/output
 
     python -m pxwplanar.gt_creation.synthia.scene_runner \
@@ -16,22 +17,26 @@ Usage:
         --config pxwplanar/gt_creation/configs/synthia_default.yml
 """
 
+import argparse
+import json
 import os
 import sys
-import json
-import argparse
-import yaml
-import numpy as np
-import h5py
-from PIL import Image
-from tqdm import tqdm
 
 # Add project root to path for imports (also runnable directly, not just via -m)
 from pathlib import Path
+
+import h5py
+import numpy as np
+import yaml
+from PIL import Image
+from tqdm import tqdm
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from pxwplanar.shared.outdoor.ransac_image import (
-    depth_to_xyz, compute_normals, extract_planes_from_frame,
+    compute_normals,
+    depth_to_xyz,
+    extract_planes_from_frame,
 )
 
 # ── SYNTHIA constants ────────────────────────────────────────────────
@@ -44,11 +49,23 @@ CX, CY = 320.0, 240.0
 PLANAR = {1, 2, 3, 20}  # Ground, Sidewalk, Building, Lanemarking
 
 CLASS_NAMES = {
-    0: 'Void', 1: 'Ground', 2: 'Sidewalk', 3: 'Building',
-    4: 'Sidewalk2', 5: 'Fence', 6: 'Pole', 7: 'TrafficLight',
-    8: 'Car', 9: 'Vegetation', 10: 'Unknown', 11: 'Sky',
-    12: 'Human', 14: 'Unknown2', 20: 'Lanemarking',
-    21: 'Human', 25: 'Cyclist',
+    0: "Void",
+    1: "Ground",
+    2: "Sidewalk",
+    3: "Building",
+    4: "Sidewalk2",
+    5: "Fence",
+    6: "Pole",
+    7: "TrafficLight",
+    8: "Car",
+    9: "Vegetation",
+    10: "Unknown",
+    11: "Sky",
+    12: "Human",
+    14: "Unknown2",
+    20: "Lanemarking",
+    21: "Human",
+    25: "Cyclist",
 }
 
 # Ground + Lanemarking can merge (same road surface)
@@ -62,7 +79,9 @@ def decode_depth(depth_png):
     R = depth_png[:, :, 0].astype(np.float64)
     G = depth_png[:, :, 1].astype(np.float64)
     B = depth_png[:, :, 2].astype(np.float64)
-    return (5000.0 * (R + G * 256 + B * 256 * 256) / (256**3 - 1)).astype(np.float32)
+    return (5000.0 * (R + G * 256 + B * 256 * 256) / (256**3 - 1)).astype(
+        np.float32
+    )
 
 
 def discover_frames(scene_dir):
@@ -117,13 +136,18 @@ def process_scene(args):
 
     # Handle scenes with timestamp subdirectories
     if not os.path.isdir(os.path.join(scene_dir, "RGB")):
-        subdirs = [d for d in os.listdir(scene_dir)
-                   if os.path.isdir(os.path.join(scene_dir, d))
-                   and os.path.isdir(os.path.join(scene_dir, d, "RGB"))]
+        subdirs = [
+            d
+            for d in os.listdir(scene_dir)
+            if os.path.isdir(os.path.join(scene_dir, d))
+            and os.path.isdir(os.path.join(scene_dir, d, "RGB"))
+        ]
         if len(subdirs) == 1:
             scene_dir = os.path.join(scene_dir, subdirs[0])
         elif len(subdirs) > 1:
-            print(f"[INFO] Found {len(subdirs)} timestamp subdirs, processing all")
+            print(
+                f"[INFO] Found {len(subdirs)} timestamp subdirs, processing all"
+            )
             for subdir in sorted(subdirs):
                 sub_args = argparse.Namespace(**vars(args))
                 sub_args.scene_dir = os.path.join(args.scene_dir, subdir)
@@ -144,7 +168,7 @@ def process_scene(args):
 
     frames = frames[::5]
 
-    max_frames = getattr(args, 'max_frames', None)
+    max_frames = getattr(args, "max_frames", None)
     if max_frames is not None and len(frames) > max_frames:
         frames = frames[:max_frames]
         print(f"[INFO] Limited to {max_frames} frames (--max_frames)")
@@ -157,13 +181,13 @@ def process_scene(args):
     h5_path = os.path.join(out_dir, "scene_data.h5")
 
     # RANSAC parameters
-    ransac_iters = getattr(args, 'ransac_iters', 500)
-    dist_thresh = getattr(args, 'dist_thresh', 0.01)
-    normal_cos = getattr(args, 'normal_cos', 0.985)
-    min_inliers = getattr(args, 'min_inliers', 50)
-    max_planes = getattr(args, 'max_planes', 50)
-    merge_normal = getattr(args, 'merge_normal', 0.985)
-    merge_rel_dist = getattr(args, 'merge_rel_dist', 0.02)
+    ransac_iters = getattr(args, "ransac_iters", 500)
+    dist_thresh = getattr(args, "dist_thresh", 0.01)
+    normal_cos = getattr(args, "normal_cos", 0.985)
+    min_inliers = getattr(args, "min_inliers", 50)
+    max_planes = getattr(args, "max_planes", 50)
+    merge_normal = getattr(args, "merge_normal", 0.985)
+    merge_rel_dist = getattr(args, "merge_rel_dist", 0.02)
 
     frame_ids = []
     rgb_list = []
@@ -172,7 +196,9 @@ def process_scene(args):
     planes_list = []
     all_planes_json = []
 
-    for frame_id, rgb_path, depth_path, seg_path in tqdm(frames, desc=scene_name):
+    for frame_id, rgb_path, depth_path, seg_path in tqdm(
+        frames, desc=scene_name
+    ):
         # Load RGB
         rgb = np.array(Image.open(rgb_path))
         if rgb.shape[2] == 4:
@@ -193,7 +219,11 @@ def process_scene(args):
 
         # Extract planes
         plane_map, planes_info = extract_planes_from_frame(
-            depth, class_ids, valid, xyz, normals,
+            depth,
+            class_ids,
+            valid,
+            xyz,
+            normals,
             planar_classes=PLANAR,
             class_names=CLASS_NAMES,
             merge_compatible=MERGE_COMPATIBLE,
@@ -215,16 +245,18 @@ def process_scene(args):
 
         # JSON metadata per frame
         for pid, p in enumerate(planes_info):
-            all_planes_json.append({
-                'frame_id': frame_id,
-                'plane_id': pid + 1,
-                'n': p['n'].tolist(),
-                'd': float(p['d']),
-                'num_pixels': p['num_pixels'],
-                'p95': p['p95'],
-                'class_id': p['class_id'],
-                'class_name': p['class_name'],
-            })
+            all_planes_json.append(
+                {
+                    "frame_id": frame_id,
+                    "plane_id": pid + 1,
+                    "n": p["n"].tolist(),
+                    "d": float(p["d"]),
+                    "num_pixels": p["num_pixels"],
+                    "p95": p["p95"],
+                    "class_id": p["class_id"],
+                    "class_name": p["class_name"],
+                }
+            )
 
     if not planes_list:
         print("[WARN] No frames processed.")
@@ -233,59 +265,95 @@ def process_scene(args):
     # Save H5 with everything
     print(f"[SAVE] Writing {len(planes_list)} frames to {h5_path}")
     with h5py.File(h5_path, "w") as f:
-        f.create_dataset("rgb", data=np.stack(rgb_list), compression="gzip", compression_opts=4)
-        f.create_dataset("depth", data=np.stack(depth_list), compression="gzip", compression_opts=4)
-        f.create_dataset("semantic", data=np.stack(semseg_list), compression="gzip", compression_opts=4)
-        f.create_dataset("planes", data=np.stack(planes_list), compression="gzip", compression_opts=4)
-        f.create_dataset("frame_ids", data=np.array(frame_ids, dtype='S'))
-        f.attrs['dataset'] = 'synthia'
-        f.attrs['scene_name'] = scene_name
-        f.attrs['fx'] = FX
-        f.attrs['fy'] = FY
-        f.attrs['cx'] = CX
-        f.attrs['cy'] = CY
-        f.attrs['num_frames'] = len(frame_ids)
-        f.attrs['image_height'] = rgb_list[0].shape[0]
-        f.attrs['image_width'] = rgb_list[0].shape[1]
+        f.create_dataset(
+            "rgb",
+            data=np.stack(rgb_list),
+            compression="gzip",
+            compression_opts=4,
+        )
+        f.create_dataset(
+            "depth",
+            data=np.stack(depth_list),
+            compression="gzip",
+            compression_opts=4,
+        )
+        f.create_dataset(
+            "semantic",
+            data=np.stack(semseg_list),
+            compression="gzip",
+            compression_opts=4,
+        )
+        f.create_dataset(
+            "planes",
+            data=np.stack(planes_list),
+            compression="gzip",
+            compression_opts=4,
+        )
+        f.create_dataset("frame_ids", data=np.array(frame_ids, dtype="S"))
+        f.attrs["dataset"] = "synthia"
+        f.attrs["scene_name"] = scene_name
+        f.attrs["fx"] = FX
+        f.attrs["fy"] = FY
+        f.attrs["cx"] = CX
+        f.attrs["cy"] = CY
+        f.attrs["num_frames"] = len(frame_ids)
+        f.attrs["image_height"] = rgb_list[0].shape[0]
+        f.attrs["image_width"] = rgb_list[0].shape[1]
 
     # Save JSON
     json_path = os.path.join(out_dir, "planes.json")
-    with open(json_path, 'w') as f:
+    with open(json_path, "w") as f:
         json.dump(all_planes_json, f, indent=2)
 
     # Print summary
     total_planes = sum(int(pm.max()) for pm in planes_list)
-    print(f"[DONE] {scene_name}: {len(planes_list)} frames, "
-          f"avg {total_planes / len(planes_list):.1f} planes/frame")
+    print(
+        f"[DONE] {scene_name}: {len(planes_list)} frames, "
+        f"avg {total_planes / len(planes_list):.1f} planes/frame"
+    )
 
 
 def main():
-    parser = argparse.ArgumentParser(description='SYNTHIA Plane Extraction')
-    parser.add_argument('--scene_dir', type=str, required=True,
-                        help='Path to SYNTHIA scene directory (containing RGB/Depth/SemSeg)')
-    parser.add_argument('--config', type=str, default=None,
-                        help='Path to YAML config file')
-    parser.add_argument('--output_root', type=str, default=None,
-                        help='Output root directory')
+    parser = argparse.ArgumentParser(description="SYNTHIA Plane Extraction")
+    parser.add_argument(
+        "--scene_dir",
+        type=str,
+        required=True,
+        help="Path to SYNTHIA scene directory (containing RGB/Depth/SemSeg)",
+    )
+    parser.add_argument(
+        "--config", type=str, default=None, help="Path to YAML config file"
+    )
+    parser.add_argument(
+        "--output_root", type=str, default=None, help="Output root directory"
+    )
 
     # RANSAC parameters
-    parser.add_argument('--ransac_iters', type=int, default=500)
-    parser.add_argument('--dist_thresh', type=float, default=0.01)
-    parser.add_argument('--normal_cos', type=float, default=0.985)
-    parser.add_argument('--min_inliers', type=int, default=50)
-    parser.add_argument('--max_planes', type=int, default=50)
-    parser.add_argument('--merge_normal', type=float, default=0.985)
-    parser.add_argument('--merge_rel_dist', type=float, default=0.02)
-    parser.add_argument('--max_frames', type=int, default=None,
-                        help='Process only first N frames per scene (for testing)')
-    parser.add_argument('--output_root_override', type=str, default=None,
-                        help='Override output_root (takes priority over config)')
+    parser.add_argument("--ransac_iters", type=int, default=500)
+    parser.add_argument("--dist_thresh", type=float, default=0.01)
+    parser.add_argument("--normal_cos", type=float, default=0.985)
+    parser.add_argument("--min_inliers", type=int, default=50)
+    parser.add_argument("--max_planes", type=int, default=50)
+    parser.add_argument("--merge_normal", type=float, default=0.985)
+    parser.add_argument("--merge_rel_dist", type=float, default=0.02)
+    parser.add_argument(
+        "--max_frames",
+        type=int,
+        default=None,
+        help="Process only first N frames per scene (for testing)",
+    )
+    parser.add_argument(
+        "--output_root_override",
+        type=str,
+        default=None,
+        help="Override output_root (takes priority over config)",
+    )
 
     args = parser.parse_args()
 
     # Load config if provided
     if args.config and os.path.exists(args.config):
-        with open(args.config, 'r') as f:
+        with open(args.config) as f:
             cfg = yaml.safe_load(f)
         for key, val in cfg.items():
             if getattr(args, key, None) is None:
@@ -301,5 +369,5 @@ def main():
     process_scene(args)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

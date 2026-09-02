@@ -8,25 +8,28 @@ Mode 1 — From H5 files (ZeroPlane, etc.):
 
 Mode 2 — From MoGe inference on an RGB image (our method):
     python view_3d_planes.py --moge /path/to/image.jpg
-    python view_3d_planes.py --moge /path/to/image.jpg --checkpoint /path/to/model.pt
+    python view_3d_planes.py --moge /path/to/image.jpg \
+        --checkpoint /path/to/model.pt
 
 Save rendered images at multiple rotations:
     python view_3d_planes.py /path/to/scene_dir --save --rotations 0 1 2 3
     python view_3d_planes.py --moge /path/to/image.jpg --save --rotations 1 2 3
 
 Both methods side by side:
-    python view_3d_planes.py /path/to/scene_dir --moge /path/to/image.jpg --save --rgb
+    python view_3d_planes.py /path/to/scene_dir --moge /path/to/image.jpg \
+        --save --rgb
 """
 
 import argparse
+import copy
 import os
 import sys
-import copy
-import numpy as np
-import h5py
-import cv2
-import trimesh
 from pathlib import Path
+
+import cv2
+import h5py
+import numpy as np
+import trimesh
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
@@ -75,22 +78,37 @@ def project_onto_plane_ray(pts, p, max_displacement_factor=0.3):
 def rotation_matrix(rot_x_deg, rot_y_deg):
     rx = np.deg2rad(rot_x_deg)
     ry = np.deg2rad(rot_y_deg)
-    Rx = np.array([
-        [1, 0, 0],
-        [0, np.cos(rx), -np.sin(rx)],
-        [0, np.sin(rx), np.cos(rx)],
-    ])
-    Ry = np.array([
-        [np.cos(ry), 0, np.sin(ry)],
-        [0, 1, 0],
-        [-np.sin(ry), 0, np.cos(ry)],
-    ])
+    Rx = np.array(
+        [
+            [1, 0, 0],
+            [0, np.cos(rx), -np.sin(rx)],
+            [0, np.sin(rx), np.cos(rx)],
+        ]
+    )
+    Ry = np.array(
+        [
+            [np.cos(ry), 0, np.sin(ry)],
+            [0, 1, 0],
+            [-np.sin(ry), 0, np.cos(ry)],
+        ]
+    )
     return Ry @ Rx
 
 
-def render_pointcloud_image(pts, colors, width, height, rot_x, rot_y,
-                            bg_color=(255, 255, 255), point_radius=1):
-    """Render a colored point cloud to an image via orthographic projection with z-buffering."""
+def render_pointcloud_image(
+    pts,
+    colors,
+    width,
+    height,
+    rot_x,
+    rot_y,
+    bg_color=(255, 255, 255),
+    point_radius=1,
+):
+    """Render a colored point cloud via orthographic projection.
+
+    Uses z-buffering to resolve occlusion.
+    """
     centroid = np.median(pts, axis=0)
     pts_c = pts - centroid
 
@@ -105,14 +123,17 @@ def render_pointcloud_image(pts, colors, width, height, rot_x, rot_y,
     xrange = max(xmax - xmin, 1e-6)
     yrange = max(ymax - ymin, 1e-6)
 
-    scale = min(width * (1 - 2 * margin) / xrange,
-                height * (1 - 2 * margin) / yrange)
+    scale = min(
+        width * (1 - 2 * margin) / xrange, height * (1 - 2 * margin) / yrange
+    )
     cx, cy = width / 2.0, height / 2.0
     xmid = (xmin + xmax) / 2.0
     ymid = (ymin + ymax) / 2.0
 
     px = ((x - xmid) * scale + cx).astype(np.int32)
-    py = (-(y - ymid) * scale + cy).astype(np.int32)  # negate y: world y-up → screen y-down
+    py = (-(y - ymid) * scale + cy).astype(
+        np.int32
+    )  # negate y: world y-up → screen y-down
 
     img = np.full((height, width, 3), bg_color, dtype=np.uint8)
     zbuf = np.full((height, width), np.inf, dtype=np.float32)
@@ -128,16 +149,26 @@ def render_pointcloud_image(pts, colors, width, height, rot_x, rot_y,
             for dy in range(-r, r + 1):
                 for dx in range(-r, r + 1):
                     nx_, ny_ = xi + dx, yi + dy
-                    if 0 <= nx_ < width and 0 <= ny_ < height:
-                        if z[i] < zbuf[ny_, nx_]:
-                            zbuf[ny_, nx_] = z[i]
-                            img[ny_, nx_] = colors_sorted[i]
+                    if (0 <= nx_ < width and 0 <= ny_ < height) and (
+                        z[i] < zbuf[ny_, nx_]
+                    ):
+                        zbuf[ny_, nx_] = z[i]
+                        img[ny_, nx_] = colors_sorted[i]
 
     return img
 
 
-def render_side_by_side(pts_list, colors_list, labels_list, width, height,
-                        rot_x, rot_y, bg_color=(255, 255, 255), point_radius=1):
+def render_side_by_side(
+    pts_list,
+    colors_list,
+    labels_list,
+    width,
+    height,
+    rot_x,
+    rot_y,
+    bg_color=(255, 255, 255),
+    point_radius=1,
+):
     """Render multiple point clouds side by side.
 
     Each point cloud is centered independently (they may be in different
@@ -164,13 +195,17 @@ def render_side_by_side(pts_list, colors_list, labels_list, width, height,
     # Shared scale: use the largest extent so both panels have same zoom
     max_xrange = max(max(r[1] - r[0], 1e-6) for r in ranges)
     max_yrange = max(max(r[3] - r[2], 1e-6) for r in ranges)
-    scale = min(width * (1 - 2 * margin) / max_xrange,
-                height * (1 - 2 * margin) / max_yrange)
+    scale = min(
+        width * (1 - 2 * margin) / max_xrange,
+        height * (1 - 2 * margin) / max_yrange,
+    )
 
     img = np.full((height, total_width, 3), bg_color, dtype=np.uint8)
     zbuf = np.full((height, total_width), np.inf, dtype=np.float32)
 
-    for vi, (pts_r, colors) in enumerate(zip(rotated_list, colors_list)):
+    for vi, (pts_r, colors) in enumerate(
+        zip(rotated_list, colors_list, strict=False)
+    ):
         offset_x = vi * width
         x, y, z = pts_r[:, 0], pts_r[:, 1], pts_r[:, 2]
 
@@ -182,7 +217,9 @@ def render_side_by_side(pts_list, colors_list, labels_list, width, height,
         cy = height / 2.0
 
         px = ((x - xmid) * scale + cx).astype(np.int32)
-        py = (-(y - ymid) * scale + cy).astype(np.int32)  # negate y: world y-up → screen y-down
+        py = (-(y - ymid) * scale + cy).astype(
+            np.int32
+        )  # negate y: world y-up → screen y-down
 
         order = np.argsort(-z)
         px, py, z = px[order], py[order], z[order]
@@ -196,26 +233,32 @@ def render_side_by_side(pts_list, colors_list, labels_list, width, height,
                 for dy in range(-r, r + 1):
                     for dx in range(-r, r + 1):
                         nx_, ny_ = xi + dx, yi + dy
-                        if x_lo <= nx_ < x_hi and 0 <= ny_ < height:
-                            if z[i] < zbuf[ny_, nx_]:
-                                zbuf[ny_, nx_] = z[i]
-                                img[ny_, nx_] = colors_sorted[i]
+                        if (x_lo <= nx_ < x_hi and 0 <= ny_ < height) and (
+                            z[i] < zbuf[ny_, nx_]
+                        ):
+                            zbuf[ny_, nx_] = z[i]
+                            img[ny_, nx_] = colors_sorted[i]
 
     # Draw separator lines
     for vi in range(1, n_views):
         x_sep = vi * width
-        img[:, x_sep-1:x_sep+1, :] = 180
+        img[:, x_sep - 1 : x_sep + 1, :] = 180
 
     return img
 
 
 def build_pointcloud(pts_3d, labels, num_planes, rgb_img, args):
-    """Build point cloud arrays from 3D points and plane labels. Returns (pts, colors_rgb) or None."""
+    """Build point cloud arrays from 3D points and plane labels.
+
+    Returns (pts, colors_rgb), or None.
+    """
     H, W = labels.shape
     z = pts_3d[:, :, 2]
 
     np.random.seed(42)
-    pcolors = np.random.randint(50, 230, size=(num_planes + 1, 3), dtype=np.uint8)
+    pcolors = np.random.randint(
+        50, 230, size=(num_planes + 1, 3), dtype=np.uint8
+    )
 
     all_pts, all_colors = [], []
 
@@ -274,9 +317,12 @@ def save_renders(pts, colors, args, prefix="planes"):
     mode = "raw" if args.no_project else "projected"
     for rot_y in args.rotations:
         img = render_pointcloud_image(
-            pts, colors,
-            width=args.width, height=args.height,
-            rot_x=args.rot_x, rot_y=rot_y,
+            pts,
+            colors,
+            width=args.width,
+            height=args.height,
+            rot_x=args.rot_x,
+            rot_y=rot_y,
             point_radius=args.point_radius,
         )
         fname = f"{prefix}_{mode}_rotY{rot_y:.0f}_rotX{args.rot_x:.0f}.png"
@@ -291,16 +337,28 @@ def save_side_by_side(pts_list, colors_list, label_names, args):
     mode = "raw" if args.no_project else "projected"
     for rot_y in args.rotations:
         img = render_side_by_side(
-            pts_list, colors_list, label_names,
-            width=args.width, height=args.height,
-            rot_x=args.rot_x, rot_y=rot_y,
+            pts_list,
+            colors_list,
+            label_names,
+            width=args.width,
+            height=args.height,
+            rot_x=args.rot_x,
+            rot_y=rot_y,
             point_radius=args.point_radius,
         )
         # Add text labels
         for i, name in enumerate(label_names):
             x_pos = i * args.width + 10
-            cv2.putText(img, name, (x_pos, 30), cv2.FONT_HERSHEY_SIMPLEX,
-                        0.8, (0, 0, 0), 2, cv2.LINE_AA)
+            cv2.putText(
+                img,
+                name,
+                (x_pos, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.8,
+                (0, 0, 0),
+                2,
+                cv2.LINE_AA,
+            )
 
         fname = f"compare_{mode}_rotY{rot_y:.0f}_rotX{args.rot_x:.0f}.png"
         out_path = os.path.join(args.output_dir, fname)
@@ -312,8 +370,10 @@ def load_h5_data(args):
     """Load from H5 files and return (pts_3d, labels, num_planes, rgb_img)."""
     with h5py.File(f"{args.scene_dir}/planes.h5", "r") as f:
         labels = f["planes"][args.frame]
-        fids = [x.decode() if isinstance(x, bytes) else str(x)
-                for x in f["frame_ids"][:]]
+        fids = [
+            x.decode() if isinstance(x, bytes) else str(x)
+            for x in f["frame_ids"][:]
+        ]
     with h5py.File(f"{args.scene_dir}/planes_depth.h5", "r") as f:
         depth = f["planes_depth"][args.frame]
     with h5py.File(f"{args.scene_dir}/intrinsics.h5", "r") as f:
@@ -329,7 +389,8 @@ def load_h5_data(args):
 
     # Scale intrinsics from stored resolution to actual depth resolution.
     # ZeroPlane H5 stores K at the original capture resolution (e.g. 1920x1440
-    # for ScanNet++ iPhone).  Depth/labels are at a smaller resolution (480x640).
+    # for ScanNet++ iPhone). Depth/labels are at a smaller
+    # resolution (480x640).
     K_orig_w = K[0, 2] * 2  # approximate original width from cx
     K_orig_h = K[1, 2] * 2  # approximate original height from cy
     if K_orig_w > W * 1.5 or K_orig_h > H * 1.5:
@@ -339,11 +400,14 @@ def load_h5_data(args):
         K[1, :] *= scale_y
         print(f"[H5] Scaled K from ~{int(K_orig_w)}x{int(K_orig_h)} to {W}x{H}")
 
-    u, v = np.meshgrid(np.arange(W, dtype=np.float64), np.arange(H, dtype=np.float64))
+    u, v = np.meshgrid(
+        np.arange(W, dtype=np.float64), np.arange(H, dtype=np.float64)
+    )
     z = depth.astype(np.float64)
     # Flip y: OpenCV y-down → y-up so 3D mesh matches image orientation
-    pts_3d = np.stack([(u - K[0, 2]) * z / K[0, 0],
-                       -(v - K[1, 2]) * z / K[1, 1], z], axis=-1).astype(np.float32)
+    pts_3d = np.stack(
+        [(u - K[0, 2]) * z / K[0, 0], -(v - K[1, 2]) * z / K[1, 1], z], axis=-1
+    ).astype(np.float32)
 
     rgb_img = None
     if args.rgb:
@@ -362,6 +426,7 @@ def load_moge_data(args):
     """Run MoGe inference and return (pts_3d, labels, num_planes, rgb_img)."""
     import torch
     import torch.nn as nn
+
     from pxwplanar.moge_backend import MoGeModel
     from pxwplanar.shared.segmentation.plan2seg import compute_planar_segments
 
@@ -370,7 +435,10 @@ def load_moge_data(args):
     rgb = cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
 
     device = torch.device(
-        args.device if args.device != "mps" or torch.backends.mps.is_available() else "cpu")
+        args.device
+        if args.device != "mps" or torch.backends.mps.is_available()
+        else "cpu"
+    )
 
     print(f"[MoGe] Loading model: {args.checkpoint}")
     model = MoGeModel.from_pretrained("Ruicheng/moge-2-vitl-normal").to(device)
@@ -381,10 +449,14 @@ def load_moge_data(args):
             last_conv = (name, module)
     name, old_conv = last_conv
     new_conv = nn.Conv2d(
-        old_conv.in_channels, 1,
-        kernel_size=old_conv.kernel_size, stride=old_conv.stride,
-        padding=old_conv.padding, dilation=old_conv.dilation,
-        groups=old_conv.groups, bias=old_conv.bias is not None,
+        old_conv.in_channels,
+        1,
+        kernel_size=old_conv.kernel_size,
+        stride=old_conv.stride,
+        padding=old_conv.padding,
+        dilation=old_conv.dilation,
+        groups=old_conv.groups,
+        bias=old_conv.bias is not None,
     )
     parent = model.planarity_head
     parts = name.split(".")
@@ -397,7 +469,11 @@ def load_moge_data(args):
     model = model.float().to(device).eval()
 
     resized = cv2.resize(rgb, (644, 476))
-    tensor = torch.tensor(resized / 255.0, dtype=torch.float32).permute(2, 0, 1).to(device)
+    tensor = (
+        torch.tensor(resized / 255.0, dtype=torch.float32)
+        .permute(2, 0, 1)
+        .to(device)
+    )
 
     with torch.no_grad():
         output = model.forward(tensor.unsqueeze(0), num_tokens=args.num_tokens)
@@ -411,11 +487,17 @@ def load_moge_data(args):
 
     out_h, out_w = args.height, args.width
     depth_r = cv2.resize(depth, (out_w, out_h), interpolation=cv2.INTER_LINEAR)
-    normals_r = cv2.resize(normals, (out_w, out_h), interpolation=cv2.INTER_LINEAR)
+    normals_r = cv2.resize(
+        normals, (out_w, out_h), interpolation=cv2.INTER_LINEAR
+    )
     norm_len = np.linalg.norm(normals_r, axis=-1, keepdims=True)
     normals_r = normals_r / (norm_len + 1e-8)
-    planarity_r = cv2.resize(planarity, (out_w, out_h), interpolation=cv2.INTER_LINEAR)
-    points_r = cv2.resize(points, (out_w, out_h), interpolation=cv2.INTER_LINEAR)
+    planarity_r = cv2.resize(
+        planarity, (out_w, out_h), interpolation=cv2.INTER_LINEAR
+    )
+    points_r = cv2.resize(
+        points, (out_w, out_h), interpolation=cv2.INTER_LINEAR
+    )
     rgb_r = cv2.resize(rgb, (out_w, out_h))
 
     planarity_binary = (planarity_r > args.planarity_threshold).astype(np.uint8)
@@ -439,15 +521,28 @@ def main():
     parser = argparse.ArgumentParser(description="Interactive 3D plane viewer")
 
     # Mode 1: H5 files
-    parser.add_argument("scene_dir", type=str, nargs="?", default=None,
-                        help="Directory with planes.h5, planes_depth.h5, intrinsics.h5")
+    parser.add_argument(
+        "scene_dir",
+        type=str,
+        nargs="?",
+        default=None,
+        help="Directory with planes.h5, planes_depth.h5, intrinsics.h5",
+    )
     parser.add_argument("--frame", type=int, default=0)
 
     # Mode 2: MoGe inference
-    parser.add_argument("--moge", type=str, default=None,
-                        help="Path to RGB image for MoGe inference")
-    parser.add_argument("--checkpoint", type=str, default=planarity_model_path,
-                        help="4-head MoGe checkpoint; default: paths.planarity_model_path")
+    parser.add_argument(
+        "--moge",
+        type=str,
+        default=None,
+        help="Path to RGB image for MoGe inference",
+    )
+    parser.add_argument(
+        "--checkpoint",
+        type=str,
+        default=planarity_model_path,
+        help="4-head MoGe checkpoint; default: paths.planarity_model_path",
+    )
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--num_tokens", type=int, default=1024)
     parser.add_argument("--height", type=int, default=480)
@@ -460,16 +555,31 @@ def main():
     # Shared
     parser.add_argument("--min_plane_px", type=int, default=200)
     parser.add_argument("--no_project", action="store_true")
-    parser.add_argument("--rgb", action="store_true",
-                        help="Use RGB texture instead of random colors")
+    parser.add_argument(
+        "--rgb",
+        action="store_true",
+        help="Use RGB texture instead of random colors",
+    )
 
     # Save mode
-    parser.add_argument("--save", action="store_true",
-                        help="Save rendered images instead of interactive view")
-    parser.add_argument("--rotations", type=float, nargs="+", default=[0, 1, 2, 3],
-                        help="Y-axis rotation angles in degrees (default: 0 1 2 3)")
-    parser.add_argument("--rot_x", type=float, default=20.0,
-                        help="X-axis rotation angle in degrees")
+    parser.add_argument(
+        "--save",
+        action="store_true",
+        help="Save rendered images instead of interactive view",
+    )
+    parser.add_argument(
+        "--rotations",
+        type=float,
+        nargs="+",
+        default=[0, 1, 2, 3],
+        help="Y-axis rotation angles in degrees (default: 0 1 2 3)",
+    )
+    parser.add_argument(
+        "--rot_x",
+        type=float,
+        default=20.0,
+        help="X-axis rotation angle in degrees",
+    )
     parser.add_argument("--point_radius", type=int, default=1)
     parser.add_argument("--output_dir", type=str, default="3d_renders")
 
@@ -484,10 +594,14 @@ def main():
     # Both methods: side-by-side comparison
     if have_h5 and have_moge:
         pts_3d_h5, labels_h5, nplanes_h5, rgb_h5 = load_h5_data(args)
-        pts_h5, colors_h5 = build_pointcloud(pts_3d_h5, labels_h5, nplanes_h5, rgb_h5, args)
+        pts_h5, colors_h5 = build_pointcloud(
+            pts_3d_h5, labels_h5, nplanes_h5, rgb_h5, args
+        )
 
         pts_3d_moge, labels_moge, nplanes_moge, rgb_moge = load_moge_data(args)
-        pts_moge, colors_moge = build_pointcloud(pts_3d_moge, labels_moge, nplanes_moge, rgb_moge, args)
+        pts_moge, colors_moge = build_pointcloud(
+            pts_3d_moge, labels_moge, nplanes_moge, rgb_moge, args
+        )
 
         if pts_h5 is None or pts_moge is None:
             print("One method produced no valid planes.")
@@ -497,8 +611,10 @@ def main():
 
         if args.save:
             save_side_by_side(
-                [pts_h5, pts_moge], [colors_h5, colors_moge],
-                ["ZeroPlane", "Ours"], args,
+                [pts_h5, pts_moge],
+                [colors_h5, colors_moge],
+                ["ZeroPlane", "Ours"],
+                args,
             )
         else:
             show_interactive(

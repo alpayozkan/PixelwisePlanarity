@@ -1,21 +1,17 @@
 """
 3D to 2D projection utilities for plane visualization.
 
-This module provides functions for projecting 3D points back to 2D image coordinates
+This module provides functions for projecting 3D points back to 2D image
+coordinates
 for visualization and label mapping.
 """
 
 import numpy as np
-from typing import Tuple
 
 
 def project_points_to_image(
-    pts_world: np.ndarray,
-    K: np.ndarray,
-    T_cw: np.ndarray,
-    H: int,
-    W: int
-) -> Tuple[np.ndarray, np.ndarray]:
+    pts_world: np.ndarray, K: np.ndarray, T_cw: np.ndarray, H: int, W: int
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Project 3D world points into 2D pixel coordinates.
 
@@ -31,7 +27,9 @@ def project_points_to_image(
         visible_idx: (M,) indices into pts_world of visible points
     """
     # Convert world → camera frame
-    pts_h = np.concatenate([pts_world, np.ones((len(pts_world), 1))], axis=1)  # (N,4)
+    pts_h = np.concatenate(
+        [pts_world, np.ones((len(pts_world), 1))], axis=1
+    )  # (N,4)
     T_wc = np.linalg.inv(T_cw)  # World-to-camera
     pts_cam = (T_wc @ pts_h.T).T[:, :3]  # (N,3)
 
@@ -48,8 +46,7 @@ def project_points_to_image(
 
     # Keep only points within image bounds
     mask_inside = (
-        (uv[:, 0] >= 0) & (uv[:, 0] < W) &
-        (uv[:, 1] >= 0) & (uv[:, 1] < H)
+        (uv[:, 0] >= 0) & (uv[:, 0] < W) & (uv[:, 1] >= 0) & (uv[:, 1] < H)
     )
     uv_inside = uv[mask_inside]
 
@@ -66,7 +63,7 @@ def project_labels_to_image(
     K: np.ndarray,
     T_cw: np.ndarray,
     H: int,
-    W: int
+    W: int,
 ) -> np.ndarray:
     """
     Project 3D points with labels into a 2D label image.

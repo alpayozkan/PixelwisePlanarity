@@ -4,20 +4,12 @@ Post-processing utilities for plane segmentations.
 This module provides functions for cleaning and refining segmentation results.
 """
 
+import cv2
 import numpy as np
 from scipy import ndimage
-from scipy.ndimage import label
-from typing import Tuple
 
-import torch
-import torch.nn.functional as F
-import cc3d
-import cv2
 
-def remove_small_components(
-    label_map: np.ndarray,
-    min_size: int
-) -> np.ndarray:
+def remove_small_components(label_map: np.ndarray, min_size: int) -> np.ndarray:
     """
     Remove small connected components from segmentation.
 
@@ -26,7 +18,8 @@ def remove_small_components(
         min_size: Minimum number of pixels for a component to be kept
 
     Returns:
-        cleaned_label_map: (H,W) cleaned segmentation with small components removed
+        cleaned_label_map: (H,W) cleaned segmentation with small components
+            removed
     """
     cleaned_label_map = np.zeros_like(label_map)
     current_label = 1
@@ -36,7 +29,7 @@ def remove_small_components(
         if label == 0:
             continue  # Skip background
 
-        mask = (label_map == label)
+        mask = label_map == label
         labeled_mask, num_features = ndimage.label(mask)
         component_sizes = np.bincount(labeled_mask.ravel())
 
@@ -75,11 +68,11 @@ def plane_merge(labels, moge_signals):
         return n, d, centroid
 
     def robust_plane_distance(
-        points,        # (N,3) points from segment A
+        points,  # (N,3) points from segment A
         plane_normal,  # (3,)
-        plane_d,       # scalar
+        plane_d,  # scalar
         max_samples=500,
-        percentile=20
+        percentile=20,
     ):
         """
         Robust point-to-plane distance using subsampling + percentile.
@@ -90,14 +83,14 @@ def plane_merge(labels, moge_signals):
 
         dists = np.abs(points @ plane_normal + plane_d)
         return np.percentile(dists, percentile)
-        
+
     def merge_planar_segments_moge(
         labels,
-        points,     # (H,W,3) from MoGe
-        normals,    # (3,H,W) or (H,W,3)
+        points,  # (H,W,3) from MoGe
+        normals,  # (3,H,W) or (H,W,3)
         normal_merge_thresh_deg=5.0,
-        plane_offset_thresh=0.02,   # meters
-        min_points=200
+        plane_offset_thresh=0.02,  # meters
+        min_points=200,
         # centroid_dist_thresh=0.5,   # meters
     ):
         """
@@ -119,32 +112,34 @@ def plane_merge(labels, moge_signals):
 
         # --- 1. Fit plane per segment ---
         MAX_PLANE_POINTS = 5000
-        
+
         for lbl in np.unique(labels):
             if lbl == 0:
                 continue
-        
+
             ys, xs = np.where(labels == lbl)
             if len(xs) < min_points:
                 continue
-        
+
             pts = points[ys, xs]
             valid = np.isfinite(pts).all(axis=1)
             pts = pts[valid]
-        
+
             if pts.shape[0] < min_points:
                 continue
-        
+
             # 🔥 critical: subsample
             if pts.shape[0] > MAX_PLANE_POINTS:
-                idx = np.random.choice(pts.shape[0], MAX_PLANE_POINTS, replace=False)
+                idx = np.random.choice(
+                    pts.shape[0], MAX_PLANE_POINTS, replace=False
+                )
                 pts = pts[idx]
-        
+
             try:
                 n, d, c = fit_plane_svd(pts)
             except np.linalg.LinAlgError:
                 continue
-        
+
             # plane_info[lbl] = {
             #     "normal": n,
             #     "d": d,
@@ -153,9 +148,8 @@ def plane_merge(labels, moge_signals):
             plane_info[lbl] = {
                 "normal": n,
                 "d": d,
-                "points": pts   # 🔥 store sampled points
+                "points": pts,  # 🔥 store sampled points
             }
-
 
         kept_labels = list(plane_info.keys())
         uf = UnionFind()
@@ -174,31 +168,37 @@ def plane_merge(labels, moge_signals):
                 cosang = abs(np.dot(pi["normal"], pj["normal"]))
                 ang = np.arccos(np.clip(cosang, -1.0, 1.0))
                 if ang > ang_thresh:
-                    print('surface normal rejects')
+                    print("surface normal rejects")
                     continue
 
                 # (2) plane offset
                 if abs(pi["d"] - pj["d"]) > plane_offset_thresh:
-                    print('plane offset rejects')
+                    print("plane offset rejects")
                     continue
 
                 # (3) spatial proximity
-                # if np.linalg.norm(pi["centroid"] - pj["centroid"]) > centroid_dist_thresh:
+                # if (np.linalg.norm(pi["centroid"] - pj["centroid"])
+                #         > centroid_dist_thresh):
                 #     print('spatial proximity rejects')
                 #     continue
                 dist_ij = robust_plane_distance(
-                    plane_info[li]["points"], pj["normal"], pj["d"],
-                    max_samples=300, percentile=20
+                    plane_info[li]["points"],
+                    pj["normal"],
+                    pj["d"],
+                    max_samples=300,
+                    percentile=20,
                 )
-                
+
                 dist_ji = robust_plane_distance(
-                    plane_info[lj]["points"], pi["normal"], pi["d"],
-                    max_samples=300, percentile=20
+                    plane_info[lj]["points"],
+                    pi["normal"],
+                    pi["d"],
+                    max_samples=300,
+                    percentile=20,
                 )
-                
+
                 if max(dist_ij, dist_ji) > plane_offset_thresh * 2.0:
                     continue
-                
 
                 uf.union(li, lj)
 
@@ -216,17 +216,14 @@ def plane_merge(labels, moge_signals):
 
         return merged_labels
 
-
-    Hm, Wm = moge_signals['points'].shape[:2]
+    Hm, Wm = moge_signals["points"].shape[:2]
     labels_resized = cv2.resize(
-        labels.astype(np.int32),
-        (Wm, Hm),
-        interpolation=cv2.INTER_NEAREST
+        labels.astype(np.int32), (Wm, Hm), interpolation=cv2.INTER_NEAREST
     )
 
     labels_merged = merge_planar_segments_moge(
         labels_resized,
-        moge_signals['points'],
+        moge_signals["points"],
         np.transpose(moge_signals["normal"], (2, 0, 1)),
         normal_merge_thresh_deg=5.0,
         plane_offset_thresh=0.02,
@@ -236,7 +233,7 @@ def plane_merge(labels, moge_signals):
     labels_merged = cv2.resize(
         labels_merged.astype(np.int32),
         (labels.shape[1], labels.shape[0]),
-        interpolation=cv2.INTER_NEAREST
+        interpolation=cv2.INTER_NEAREST,
     )
 
     return labels_merged
@@ -245,6 +242,7 @@ def plane_merge(labels, moge_signals):
 # ──────────────────────────────────────────────────────────────────
 # v11 post-merge: dilation-based gap bridging + mean-normal/depth check
 # ──────────────────────────────────────────────────────────────────
+
 
 def postmerge_adjacent_segments(
     labels: np.ndarray,
@@ -280,7 +278,9 @@ def postmerge_adjacent_segments(
     # Disk structuring element for dilation
     sz = 2 * merge_gap_px + 1
     yy, xx = np.mgrid[:sz, :sz]
-    struct = ((yy - merge_gap_px) ** 2 + (xx - merge_gap_px) ** 2) <= merge_gap_px ** 2
+    struct = (
+        (yy - merge_gap_px) ** 2 + (xx - merge_gap_px) ** 2
+    ) <= merge_gap_px**2
 
     def _plane_params(labels, normal, depth):
         """label -> (mean_normal, mean_depth, pixel_count)"""

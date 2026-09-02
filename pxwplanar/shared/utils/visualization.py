@@ -7,19 +7,17 @@ This module provides functions for visualizing:
 - Surface normals
 """
 
-import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
-from typing import Optional, Tuple, List
+import numpy as np
 
 
 def visualize_top_components(
     segmentation: np.ndarray,
     k: int = 10,
     ignore_label: int = 0,
-    cmap: str = 'tab20',
-    return_colors: bool = False
-) -> Optional[np.ndarray]:
+    cmap: str = "tab20",
+    return_colors: bool = False,
+) -> np.ndarray | None:
     """
     Visualize top-k largest plane segments with distinct colors.
 
@@ -49,10 +47,7 @@ def visualize_top_components(
     colored_seg = np.zeros((*segmentation.shape, 3), dtype=np.uint8)
 
     # Get colormap
-    if isinstance(cmap, str):
-        cmap_obj = plt.get_cmap(cmap)
-    else:
-        cmap_obj = cmap
+    cmap_obj = plt.get_cmap(cmap) if isinstance(cmap, str) else cmap
 
     # Assign colors to top-k planes
     for i, label in enumerate(top_k_labels):
@@ -65,16 +60,12 @@ def visualize_top_components(
     # Display
     plt.figure(figsize=(10, 8))
     plt.imshow(colored_seg)
-    plt.title(f'Top-{k} Largest Plane Segments')
-    plt.axis('off')
+    plt.title(f"Top-{k} Largest Plane Segments")
+    plt.axis("off")
     plt.show()
 
 
-
-def generate_plane_colors(
-    n_planes: int,
-    seed: int = 42
-) -> np.ndarray:
+def generate_plane_colors(n_planes: int, seed: int = 42) -> np.ndarray:
     """
     Generate distinct colors for plane visualization.
 
@@ -89,7 +80,7 @@ def generate_plane_colors(
 
     if n_planes <= 20:
         # Use matplotlib tab20 for small numbers
-        cmap = plt.get_cmap('tab20')
+        cmap = plt.get_cmap("tab20")
         colors = np.array([cmap(i / 20)[:3] for i in range(n_planes)]) * 255
     else:
         # Generate random distinct colors
@@ -102,7 +93,7 @@ def visualize_segmentation_comparison(
     rgb: np.ndarray,
     gt_seg: np.ndarray,
     pred_seg: np.ndarray,
-    title: str = "Segmentation Comparison"
+    title: str = "Segmentation Comparison",
 ) -> None:
     """
     Visualize RGB, ground truth, and predicted segmentations side-by-side.
@@ -116,16 +107,16 @@ def visualize_segmentation_comparison(
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
 
     axes[0].imshow(rgb)
-    axes[0].set_title('RGB Image')
-    axes[0].axis('off')
+    axes[0].set_title("RGB Image")
+    axes[0].axis("off")
 
-    axes[1].imshow(gt_seg, cmap='tab20')
-    axes[1].set_title('Ground Truth')
-    axes[1].axis('off')
+    axes[1].imshow(gt_seg, cmap="tab20")
+    axes[1].set_title("Ground Truth")
+    axes[1].axis("off")
 
-    axes[2].imshow(pred_seg, cmap='tab20')
-    axes[2].set_title('Prediction')
-    axes[2].axis('off')
+    axes[2].imshow(pred_seg, cmap="tab20")
+    axes[2].set_title("Prediction")
+    axes[2].axis("off")
 
     plt.suptitle(title)
     plt.tight_layout()
@@ -133,8 +124,7 @@ def visualize_segmentation_comparison(
 
 
 def visualize_normals(
-    normal_map: np.ndarray,
-    mask: Optional[np.ndarray] = None
+    normal_map: np.ndarray, mask: np.ndarray | None = None
 ) -> np.ndarray:
     """
     Convert surface normals to RGB visualization.

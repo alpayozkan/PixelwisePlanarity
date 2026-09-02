@@ -5,17 +5,15 @@ This module handles PLY files with per-vertex or per-face labels,
 commonly used in semantic and plane segmentation.
 """
 
+from collections import Counter
+
 import numpy as np
 import open3d as o3d
 from plyfile import PlyData, PlyElement
-from collections import Counter
-from typing import Tuple
 
 
 def propagate_face_labels_to_vertices(
-    F: np.ndarray,
-    face_labels: np.ndarray,
-    num_vertices: int
+    F: np.ndarray, face_labels: np.ndarray, num_vertices: int
 ) -> np.ndarray:
     """
     Convert face-level labels to vertex-level using majority voting.
@@ -50,9 +48,7 @@ def propagate_face_labels_to_vertices(
 
 
 def save_mesh_with_vertex_labels(
-    mesh: o3d.geometry.TriangleMesh,
-    vertex_labels: np.ndarray,
-    out_path: str
+    mesh: o3d.geometry.TriangleMesh, vertex_labels: np.ndarray, out_path: str
 ) -> None:
     """
     Save Open3D mesh to PLY with per-vertex labels.
@@ -62,33 +58,36 @@ def save_mesh_with_vertex_labels(
         vertex_labels: (N,) int labels per vertex
         out_path: Output PLY file path
     """
-    assert len(mesh.vertices) == len(vertex_labels), \
+    assert len(mesh.vertices) == len(vertex_labels), (
         f"Vertex count mismatch: {len(mesh.vertices)} vs {len(vertex_labels)}"
+    )
 
     # Prepare vertex data with labels
     vertices_np = np.asarray(mesh.vertices)
-    vertex_dtype = [('x', 'f4'), ('y', 'f4'), ('z', 'f4'), ('label', 'i4')]
+    vertex_dtype = [("x", "f4"), ("y", "f4"), ("z", "f4"), ("label", "i4")]
     vertex_array = np.empty(len(vertices_np), dtype=vertex_dtype)
-    vertex_array['x'] = vertices_np[:, 0]
-    vertex_array['y'] = vertices_np[:, 1]
-    vertex_array['z'] = vertices_np[:, 2]
-    vertex_array['label'] = vertex_labels
+    vertex_array["x"] = vertices_np[:, 0]
+    vertex_array["y"] = vertices_np[:, 1]
+    vertex_array["z"] = vertices_np[:, 2]
+    vertex_array["label"] = vertex_labels
 
     # Prepare face data
     triangles_np = np.asarray(mesh.triangles)
-    face_dtype = [('vertex_indices', 'i4', (3,))]
+    face_dtype = [("vertex_indices", "i4", (3,))]
     face_array = np.empty(len(triangles_np), dtype=face_dtype)
-    face_array['vertex_indices'] = triangles_np
+    face_array["vertex_indices"] = triangles_np
 
     # Write PLY
-    vertex_element = PlyElement.describe(vertex_array, 'vertex')
-    face_element = PlyElement.describe(face_array, 'face')
+    vertex_element = PlyElement.describe(vertex_array, "vertex")
+    face_element = PlyElement.describe(face_array, "face")
     PlyData([vertex_element, face_element], text=True).write(out_path)
 
     print(f"[INFO] Mesh with vertex labels written to {out_path}")
 
 
-def load_mesh_with_vertex_labels(ply_path: str) -> Tuple[o3d.geometry.TriangleMesh, np.ndarray]:
+def load_mesh_with_vertex_labels(
+    ply_path: str,
+) -> tuple[o3d.geometry.TriangleMesh, np.ndarray]:
     """
     Load PLY mesh with per-vertex labels.
 
@@ -101,14 +100,16 @@ def load_mesh_with_vertex_labels(ply_path: str) -> Tuple[o3d.geometry.TriangleMe
     """
     # Load PLY with labels
     plydata = PlyData.read(ply_path)
-    vertex_data = plydata['vertex'].data
+    vertex_data = plydata["vertex"].data
 
     # Extract geometry and labels
-    V = np.stack([vertex_data['x'], vertex_data['y'], vertex_data['z']], axis=-1)
-    vertex_labels = vertex_data['label'].astype(np.int32)
+    V = np.stack(
+        [vertex_data["x"], vertex_data["y"], vertex_data["z"]], axis=-1
+    )
+    vertex_labels = vertex_data["label"].astype(np.int32)
 
     # Extract faces
-    face_data = plydata['face'].data['vertex_indices']
+    face_data = plydata["face"].data["vertex_indices"]
     F = np.vstack(face_data).astype(np.int32)
 
     # Build Open3D mesh
@@ -145,8 +146,11 @@ def read_ply_faces_with_plane_ids(ply_path: str):
                 raise SystemExit("[ERR] Unexpected EOF in header")
             try:
                 return b.decode("ascii", errors="strict").rstrip("\r\n")
-            except Exception:
-                raise SystemExit("[ERR] Header is not ASCII text (binary body reached before end_header).")
+            except Exception as e:
+                raise SystemExit(
+                    "[ERR] Header is not ASCII text "
+                    "(binary body reached before end_header)."
+                ) from e
 
         first = _readline()
         if not first.startswith("ply"):
@@ -189,7 +193,10 @@ def read_ply_faces_with_plane_ids(ply_path: str):
         if fmt is None or num_verts is None or num_faces is None:
             sys.exit("[ERR] Missing format/vertex/face in header")
         if not saw_vlist or not saw_plane or not saw_label:
-            sys.exit("[ERR] Face properties not as expected (need vertex_indices list + plane_id + label_int)")
+            sys.exit(
+                "[ERR] Face properties not as expected "
+                "(need vertex_indices list + plane_id + label_int)"
+            )
 
         # ---- read data section ----
         if fmt == "ascii":
@@ -211,9 +218,13 @@ def read_ply_faces_with_plane_ids(ply_path: str):
                 parts = _readline().split()
                 if len(parts) < 6:
                     sys.exit(f"[ERR] Face line {i} too short")
-                if parts[0] != '3':
-                    sys.exit(f"[ERR] Face {i} is not a triangle (count={parts[0]})")
-                F[i, 0] = int(parts[1]); F[i, 1] = int(parts[2]); F[i, 2] = int(parts[3])
+                if parts[0] != "3":
+                    sys.exit(
+                        f"[ERR] Face {i} is not a triangle (count={parts[0]})"
+                    )
+                F[i, 0] = int(parts[1])
+                F[i, 1] = int(parts[2])
+                F[i, 2] = int(parts[3])
                 plane_id_face[i] = int(parts[4])
                 label_int_face[i] = int(parts[5])
             return V, F, plane_id_face, label_int_face
@@ -231,8 +242,8 @@ def read_ply_faces_with_plane_ids(ply_path: str):
         dt_i4 = np.dtype("<i4" if little else ">i4")
 
         # vertices
-        V = np.fromfile(f, dtype=dt_v, count=num_verts*3)
-        if V.size != num_verts*3:
+        V = np.fromfile(f, dtype=dt_v, count=num_verts * 3)
+        if V.size != num_verts * 3:
             sys.exit("[ERR] Could not read all vertex data")
         V = V.reshape(num_verts, 3).astype(np.float32, copy=False)
 
@@ -248,7 +259,9 @@ def read_ply_faces_with_plane_ids(ply_path: str):
                 sys.exit(f"[ERR] Face {i}: failed to read list count")
             cnt = int(c[0])
             if cnt != 3:
-                _ = np.fromfile(f, dtype=dt_i4, count=cnt)  # drain to keep file pointer aligned
+                _ = np.fromfile(
+                    f, dtype=dt_i4, count=cnt
+                )  # drain to keep file pointer aligned
                 sys.exit(f"[ERR] Face {i} is not a triangle (count={cnt})")
             idx = np.fromfile(f, dtype=dt_i4, count=3)
             if idx.size != 3:

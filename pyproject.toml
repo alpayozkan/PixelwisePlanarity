@@ -42,6 +42,9 @@ dependencies = [
     "utils3d @ git+https://github.com/EasternJournalist/utils3d.git@3fab839f0be9931dac7c8488eb0e1600c236e183",
 ]
 
+[project.optional-dependencies]
+dev = ["ruff==0.15.20"]
+
 [build-system]
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"

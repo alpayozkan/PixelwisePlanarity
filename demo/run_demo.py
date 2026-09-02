@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """
-Demo: RGB -> MoGe 4-head model -> depth / normal / planarity / plane segmentation.
+Demo: RGB -> MoGe 4-head model -> depth / normal / planarity /
+plane segmentation.
 
 Runs the full single-image pipeline on every image in demo/inputs/ and writes,
 for each frame, demo/outputs/<frame>/:
     depth.png       metric depth (turbo colormap)
     normal.png      surface normals ((n+1)/2 as RGB)
     planarity.png   planarity probability (viridis colormap)
-    planeseg.png    plane segmentation (region growing on planarity+normal+depth)
-    combined.png    RGB | depth | normal | planarity | planeseg montage (equal panel sizes)
+    planeseg.png    plane segmentation (region growing on
+                    planarity+normal+depth)
+    combined.png    RGB | depth | normal | planarity | planeseg montage
+                    (equal panel sizes)
 
 The checkpoint defaults to paths.planarity_model_path; MoGe base weights are
 pulled from HuggingFace into the standard cache (~/.cache/huggingface;
@@ -17,28 +20,35 @@ override via HF_HOME).
 Usage (from the repo root, `pxwplanar` env, GPU recommended):
     python demo/run_demo.py [--model_path <ckpt.pt>]
 """
+
+import argparse
+import glob
 import os
 import sys
-import glob
-import argparse
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-import numpy as np
 import cv2
 import matplotlib
+import numpy as np
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from PIL import Image
 
-from pxwplanar.paths import planarity_model_path, planarity_hf_repo  # noqa: E402
+from pxwplanar.inference.planarity.moge_inference import (
+    MoGePlanarityInference,  # noqa: E402
+)
+from pxwplanar.paths import (  # noqa: E402
+    planarity_hf_repo,
+    planarity_model_path,
+)
 from pxwplanar.shared.segmentation import compute_planar_segments  # noqa: E402
-from pxwplanar.shared.utils.label_utils import remap_labels  # noqa: E402
 from pxwplanar.shared.utils import visualize_top_components  # noqa: E402
-from pxwplanar.inference.planarity.moge_inference import MoGePlanarityInference  # noqa: E402
+from pxwplanar.shared.utils.label_utils import remap_labels  # noqa: E402
 
 
 def colorize_depth(depth, mask):
@@ -74,7 +84,9 @@ def process_image(image_path, model, output_root, args):
 
     rgb = np.array(Image.open(image_path).convert("RGB"))
 
-    res = model.predict_metric(image_path, num_tokens=args.num_tokens, return_all_heads=True)
+    res = model.predict_metric(
+        image_path, num_tokens=args.num_tokens, return_all_heads=True
+    )
     depth = res["depth"]
     normal = res["normal"]
     planarity = res["planarity_probability"]
@@ -83,8 +95,11 @@ def process_image(image_path, model, output_root, args):
     # Plane segmentation with the canonical parameters (same as the benchmark).
     planarity_mask = (planarity > args.threshold_planarity).astype(np.int16)
     labels, _ = compute_planar_segments(
-        planarity_mask, normal, depth,
-        np.deg2rad(args.normal_threshold_deg), args.depth_threshold,
+        planarity_mask,
+        normal,
+        depth,
+        np.deg2rad(args.normal_threshold_deg),
+        args.depth_threshold,
         neighbor_match_count_thresh=args.neighbor_match_count_thresh,
         device=args.device,
     )
@@ -95,56 +110,92 @@ def process_image(image_path, model, output_root, args):
     # every panel has identical dimensions (model heads run at a slightly
     # different processing resolution).
     H, W = rgb.shape[:2]
-    depth_vis = cv2.resize(colorize_depth(depth, mask), (W, H), interpolation=cv2.INTER_AREA)
-    normal_vis = cv2.resize(colorize_normal(normal, mask), (W, H), interpolation=cv2.INTER_AREA)
-    planarity_vis = cv2.resize(colorize_planarity(planarity), (W, H), interpolation=cv2.INTER_AREA)
+    depth_vis = cv2.resize(
+        colorize_depth(depth, mask), (W, H), interpolation=cv2.INTER_AREA
+    )
+    normal_vis = cv2.resize(
+        colorize_normal(normal, mask), (W, H), interpolation=cv2.INTER_AREA
+    )
+    planarity_vis = cv2.resize(
+        colorize_planarity(planarity), (W, H), interpolation=cv2.INTER_AREA
+    )
     # tab20 has 20 distinct colors — show the top-20 planes so no color repeats.
-    seg_vis = visualize_top_components(labels, k=min(n_planes, 20), ignore_label=0,
-                                       return_colors=True)
+    seg_vis = visualize_top_components(
+        labels, k=min(n_planes, 20), ignore_label=0, return_colors=True
+    )
     seg_vis = cv2.resize(seg_vis, (W, H), interpolation=cv2.INTER_NEAREST)
 
-    for fname, vis in [("depth.png", depth_vis), ("normal.png", normal_vis),
-                       ("planarity.png", planarity_vis), ("planeseg.png", seg_vis)]:
-        cv2.imwrite(os.path.join(out_dir, fname), cv2.cvtColor(vis, cv2.COLOR_RGB2BGR))
+    for fname, vis in [
+        ("depth.png", depth_vis),
+        ("normal.png", normal_vis),
+        ("planarity.png", planarity_vis),
+        ("planeseg.png", seg_vis),
+    ]:
+        cv2.imwrite(
+            os.path.join(out_dir, fname), cv2.cvtColor(vis, cv2.COLOR_RGB2BGR)
+        )
 
     # Combined figure: plain pixel montage (RGB | depth | normal | planarity |
     # plane segmentation), equal panel sizes, thin white separators, no text.
     gap = np.full((H, 12, 3), 255, dtype=np.uint8)
     panels = [rgb, depth_vis, normal_vis, planarity_vis, seg_vis]
-    combined = np.hstack([np.hstack([p, gap]) for p in panels[:-1]] + [panels[-1]])
-    cv2.imwrite(os.path.join(out_dir, "combined.png"),
-                cv2.cvtColor(combined, cv2.COLOR_RGB2BGR))
+    combined = np.hstack(
+        [np.hstack([p, gap]) for p in panels[:-1]] + [panels[-1]]
+    )
+    cv2.imwrite(
+        os.path.join(out_dir, "combined.png"),
+        cv2.cvtColor(combined, cv2.COLOR_RGB2BGR),
+    )
 
     print(f"  {name}: {n_planes} planes -> {out_dir}")
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--model_path", type=str, default=planarity_model_path,
-                        help="4-head MoGe checkpoint (.pt) or HF repo id; default: "
-                             "paths.planarity_model_path, falling back to the HF release")
-    parser.add_argument("--input_dir", type=str, default=str(REPO_ROOT / "demo" / "inputs"))
-    parser.add_argument("--output_dir", type=str, default=str(REPO_ROOT / "demo" / "outputs"))
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--model_path",
+        type=str,
+        default=planarity_model_path,
+        help="4-head MoGe checkpoint (.pt) or HF repo id; default: "
+        "paths.planarity_model_path, falling back to the HF release",
+    )
+    parser.add_argument(
+        "--input_dir", type=str, default=str(REPO_ROOT / "demo" / "inputs")
+    )
+    parser.add_argument(
+        "--output_dir", type=str, default=str(REPO_ROOT / "demo" / "outputs")
+    )
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--num_tokens", type=int, default=1600)
 
     # Canonical segmentation parameters (keep in sync with the benchmark).
     parser.add_argument("--threshold_planarity", type=float, default=0.3)
     parser.add_argument("--normal_threshold_deg", type=float, default=5.0)
-    parser.add_argument("--depth_threshold", type=float, default=0.025,
-                        help="Relative depth threshold (fraction of center depth)")
+    parser.add_argument(
+        "--depth_threshold",
+        type=float,
+        default=0.025,
+        help="Relative depth threshold (fraction of center depth)",
+    )
     parser.add_argument("--neighbor_match_count_thresh", type=int, default=8)
     args = parser.parse_args()
 
-    images = sorted(glob.glob(os.path.join(args.input_dir, "*.jpg"))
-                    + glob.glob(os.path.join(args.input_dir, "*.png")))
+    images = sorted(
+        glob.glob(os.path.join(args.input_dir, "*.jpg"))
+        + glob.glob(os.path.join(args.input_dir, "*.png"))
+    )
     if not images:
         sys.exit(f"No images found in {args.input_dir}")
     if not os.path.isfile(args.model_path):
         if args.model_path == planarity_model_path:
             # Default path not present locally: fall back to the HF release.
-            print(f"[INFO] {args.model_path} not found — using HF checkpoint {planarity_hf_repo}")
+            print(
+                f"[INFO] {args.model_path} not found — "
+                f"using HF checkpoint {planarity_hf_repo}"
+            )
             args.model_path = planarity_hf_repo
         elif args.model_path.endswith(".pt") or args.model_path.count("/") != 1:
             # Explicit checkpoint file (or not shaped like a HF repo id)
@@ -153,12 +204,15 @@ def main():
 
     if args.device.startswith("cuda"):
         import torch
+
         if not torch.cuda.is_available():
             print("[WARN] CUDA not available — falling back to --device cpu")
             args.device = "cpu"
 
     print(f"Loading 4-head checkpoint {args.model_path} ...")
-    model = MoGePlanarityInference.from_pretrained(args.model_path, device=args.device)
+    model = MoGePlanarityInference.from_pretrained(
+        args.model_path, device=args.device
+    )
 
     print(f"Processing {len(images)} image(s) -> {args.output_dir}")
     for image_path in images:

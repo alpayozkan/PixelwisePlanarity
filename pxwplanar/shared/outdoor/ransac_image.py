@@ -1,7 +1,9 @@
 """
-Image-based LO-RANSAC plane extraction for outdoor synthetic datasets (SYNTHIA, VKITTI2).
+Image-based LO-RANSAC plane extraction for outdoor synthetic datasets
+(SYNTHIA, VKITTI2).
 
-Key differences from the RANSAC in pxwplanar/shared/plane_fitting/planefit.py (used by ScanNet++/Hypersim):
+Key differences from the RANSAC in pxwplanar/shared/plane_fitting/planefit.py
+(used by ScanNet++/Hypersim):
   - Depth-adaptive distance threshold (scales with depth beyond z_ref)
   - Degenerate normal handling (skips normal check when norm < 0.5)
   - More LO iterations (10 vs 5)
@@ -10,8 +12,9 @@ Key differences from the RANSAC in pxwplanar/shared/plane_fitting/planefit.py (u
   - Stricter defaults: dist_thresh=0.01, normal_cos=0.985
 """
 
-import numpy as np
 from collections import defaultdict
+
+import numpy as np
 
 
 def depth_to_xyz(depth, fx, fy, cx, cy):
@@ -51,7 +54,8 @@ def fit_plane_svd(points):
 
 
 def _inlier_mask(dists, dots, nrm, dist_thresh, normal_cos, depths, z_ref=10.0):
-    """Depth-adaptive distance gate + normal gate (skip for degenerate normals)."""
+    """Depth-adaptive distance gate + normal gate
+    (skip for degenerate normals)."""
     adaptive = dist_thresh * np.maximum(1.0, depths / z_ref)
     nrm_len = np.linalg.norm(nrm, axis=-1)
     degenerate = nrm_len < 0.5
@@ -74,10 +78,18 @@ def local_optimize(n, d, points, nrm, dist_thresh, normal_cos, lo_iters=10):
     return n, d, inlier
 
 
-def ransac_with_removal(points, nrm, indices,
-                        ransac_iters=500, dist_thresh=0.05,
-                        normal_cos=0.94, min_inliers=50,
-                        max_planes=50, lo_iters=10, seed=0):
+def ransac_with_removal(
+    points,
+    nrm,
+    indices,
+    ransac_iters=500,
+    dist_thresh=0.05,
+    normal_cos=0.94,
+    min_inliers=50,
+    max_planes=50,
+    lo_iters=10,
+    seed=0,
+):
     """
     LO-RANSAC with sequential plane removal.
 
@@ -126,12 +138,15 @@ def ransac_with_removal(points, nrm, indices,
 
             dists = np.abs(pts @ n - d_val)
             dots = np.abs(nrm_pool @ n)
-            inlier = _inlier_mask(dists, dots, nrm_pool, dist_thresh, normal_cos, pts[:, 2])
+            inlier = _inlier_mask(
+                dists, dots, nrm_pool, dist_thresh, normal_cos, pts[:, 2]
+            )
             count = inlier.sum()
 
             if count > best_count:
                 n_lo, d_lo, inlier_lo = local_optimize(
-                    n, d_val, pts, nrm_pool, dist_thresh, normal_cos, lo_iters)
+                    n, d_val, pts, nrm_pool, dist_thresh, normal_cos, lo_iters
+                )
                 count_lo = inlier_lo.sum()
 
                 if count_lo > best_count:
@@ -147,12 +162,15 @@ def ransac_with_removal(points, nrm, indices,
         residuals = np.abs(points[inlier_global] @ best_n - best_d)
         p95 = float(np.percentile(residuals, 95))
 
-        planes.append({
-            'n': best_n, 'd': best_d,
-            'pixel_indices': [indices[i] for i in inlier_global],
-            'num_pixels': int(len(inlier_global)),
-            'p95': p95,
-        })
+        planes.append(
+            {
+                "n": best_n,
+                "d": best_d,
+                "pixel_indices": [indices[i] for i in inlier_global],
+                "num_pixels": int(len(inlier_global)),
+                "p95": p95,
+            }
+        )
 
         alive[inlier_global] = False
 
@@ -163,15 +181,17 @@ def classes_can_merge(c1, c2, merge_compatible):
     """Check if two semantic classes are allowed to merge."""
     if c1 == c2:
         return True
-    for group in merge_compatible:
-        if c1 in group and c2 in group:
-            return True
-    return False
+    return any(c1 in group and c2 in group for group in merge_compatible)
 
 
-def merge_planes(planes, xyz, merge_compatible=None,
-                 normal_thresh=0.985, rel_dist_thresh=0.02,
-                 abs_merge_dist=0.1):
+def merge_planes(
+    planes,
+    xyz,
+    merge_compatible=None,
+    normal_thresh=0.985,
+    rel_dist_thresh=0.02,
+    abs_merge_dist=0.1,
+):
     """
     Merge planes with similar normals and close distances using union-find.
 
@@ -207,27 +227,27 @@ def merge_planes(planes, xyz, merge_compatible=None,
         for j in range(i + 1, n_planes):
             pi, pj = planes[i], planes[j]
 
-            if not classes_can_merge(pi.get('class_id', -1),
-                                     pj.get('class_id', -2),
-                                     merge_compatible):
+            if not classes_can_merge(
+                pi.get("class_id", -1), pj.get("class_id", -2), merge_compatible
+            ):
                 continue
 
-            if abs(float(pi['n'] @ pj['n'])) < normal_thresh:
+            if abs(float(pi["n"] @ pj["n"])) < normal_thresh:
                 continue
 
-            mean_d = (pi['d'] + pj['d']) / 2.0
+            mean_d = (pi["d"] + pj["d"]) / 2.0
             thresh = max(abs_merge_dist, rel_dist_thresh * mean_d)
 
-            pix_i = pi['pixel_indices']
-            pix_j = pj['pixel_indices']
-            sample_i = pix_i[::max(1, len(pix_i) // 500)]
-            sample_j = pix_j[::max(1, len(pix_j) // 500)]
+            pix_i = pi["pixel_indices"]
+            pix_j = pj["pixel_indices"]
+            sample_i = pix_i[:: max(1, len(pix_i) // 500)]
+            sample_j = pix_j[:: max(1, len(pix_j) // 500)]
 
             pts_i = np.array([xyz[y, x] for y, x in sample_i])
             pts_j = np.array([xyz[y, x] for y, x in sample_j])
 
-            d_i_to_j = np.median(np.abs(pts_i @ pj['n'] - pj['d']))
-            d_j_to_i = np.median(np.abs(pts_j @ pi['n'] - pi['d']))
+            d_i_to_j = np.median(np.abs(pts_i @ pj["n"] - pj["d"]))
+            d_j_to_i = np.median(np.abs(pts_j @ pi["n"] - pi["d"]))
 
             if max(d_i_to_j, d_j_to_i) < thresh:
                 union(i, j)
@@ -237,36 +257,50 @@ def merge_planes(planes, xyz, merge_compatible=None,
         groups[find(i)].append(i)
 
     merged = []
-    for root, members in groups.items():
+    for _root, members in groups.items():
         all_pixels = []
         for m in members:
-            all_pixels.extend(planes[m]['pixel_indices'])
+            all_pixels.extend(planes[m]["pixel_indices"])
 
         pts = np.array([xyz[y, x] for y, x in all_pixels])
         n, d = fit_plane_svd(pts)
         residuals = np.abs(pts @ n - d)
 
-        largest = max(members, key=lambda m: len(planes[m]['pixel_indices']))
-        merged.append({
-            'n': n, 'd': d,
-            'pixel_indices': all_pixels,
-            'num_pixels': len(all_pixels),
-            'p95': float(np.percentile(residuals, 95)),
-            'class_id': planes[largest].get('class_id', -1),
-            'class_name': planes[largest].get('class_name', ''),
-        })
+        largest = max(members, key=lambda m: len(planes[m]["pixel_indices"]))
+        merged.append(
+            {
+                "n": n,
+                "d": d,
+                "pixel_indices": all_pixels,
+                "num_pixels": len(all_pixels),
+                "p95": float(np.percentile(residuals, 95)),
+                "class_id": planes[largest].get("class_id", -1),
+                "class_name": planes[largest].get("class_name", ""),
+            }
+        )
 
     return merged
 
 
-def extract_planes_from_frame(depth, class_ids, valid, xyz, normals,
-                              planar_classes, class_names,
-                              merge_compatible=None,
-                              ransac_iters=500, dist_thresh=0.01,
-                              normal_cos=0.985, min_inliers=50,
-                              max_planes=50, merge_normal=0.985,
-                              merge_rel_dist=0.02,
-                              abs_merge_dist=0.1, seed=0):
+def extract_planes_from_frame(
+    depth,
+    class_ids,
+    valid,
+    xyz,
+    normals,
+    planar_classes,
+    class_names,
+    merge_compatible=None,
+    ransac_iters=500,
+    dist_thresh=0.01,
+    normal_cos=0.985,
+    min_inliers=50,
+    max_planes=50,
+    merge_normal=0.985,
+    merge_rel_dist=0.02,
+    abs_merge_dist=0.1,
+    seed=0,
+):
     """
     Full plane extraction pipeline for a single frame.
 
@@ -301,10 +335,12 @@ def extract_planes_from_frame(depth, class_ids, valid, xyz, normals,
         nrm = normals[yx[:, 0], yx[:, 1]]
         indices = [(int(y), int(x)) for y, x in yx]
 
-        name = class_names.get(label, f'Class_{label}')
+        name = class_names.get(label, f"Class_{label}")
 
         planes = ransac_with_removal(
-            pts, nrm, indices,
+            pts,
+            nrm,
+            indices,
             ransac_iters=ransac_iters,
             dist_thresh=dist_thresh,
             normal_cos=normal_cos,
@@ -313,24 +349,27 @@ def extract_planes_from_frame(depth, class_ids, valid, xyz, normals,
             seed=seed,
         )
         for p in planes:
-            p['class_id'] = int(label)
-            p['class_name'] = name
+            p["class_id"] = int(label)
+            p["class_name"] = name
 
         all_planes.extend(planes)
 
     # Merge
     if merge_compatible is None:
         merge_compatible = []
-    all_planes = merge_planes(all_planes, xyz,
-                              merge_compatible=merge_compatible,
-                              normal_thresh=merge_normal,
-                              rel_dist_thresh=merge_rel_dist,
-                              abs_merge_dist=abs_merge_dist)
+    all_planes = merge_planes(
+        all_planes,
+        xyz,
+        merge_compatible=merge_compatible,
+        normal_thresh=merge_normal,
+        rel_dist_thresh=merge_rel_dist,
+        abs_merge_dist=abs_merge_dist,
+    )
 
     # Build pixel map (0 = non-planar, 1+ = plane ID)
     plane_map = np.zeros((H, W), dtype=np.int32)
     for pid, p in enumerate(all_planes):
-        for y, x in p['pixel_indices']:
+        for y, x in p["pixel_indices"]:
             plane_map[y, x] = pid + 1
 
     return plane_map, all_planes

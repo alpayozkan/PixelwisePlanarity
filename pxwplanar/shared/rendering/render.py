@@ -8,14 +8,13 @@ This module provides functions for:
 
 import numpy as np
 import open3d as o3d
-from typing import Tuple
 
 
 def render_rgb(
     mesh: o3d.geometry.TriangleMesh,
     K: np.ndarray,
-    img_res: Tuple[int, int],
-    c2w: np.ndarray
+    img_res: tuple[int, int],
+    c2w: np.ndarray,
 ) -> np.ndarray:
     """
     Render RGB image from mesh using Open3D offscreen renderer.
@@ -30,7 +29,9 @@ def render_rgb(
         color_np: (H,W,3) RGB image as uint8 array
     """
     W, H = img_res
-    intr = o3d.camera.PinholeCameraIntrinsic(W, H, K[0, 0], K[1, 1], K[0, 2], K[1, 2])
+    intr = o3d.camera.PinholeCameraIntrinsic(
+        W, H, K[0, 0], K[1, 1], K[0, 2], K[1, 2]
+    )
 
     renderer = o3d.visualization.rendering.OffscreenRenderer(W, H)
     renderer.scene.set_background([0, 0, 0, 1])
@@ -57,9 +58,9 @@ def render_rgb(
 def render_rgb_depth(
     mesh: o3d.geometry.TriangleMesh,
     K: np.ndarray,
-    img_res: Tuple[int, int],
-    c2w: np.ndarray
-) -> Tuple[np.ndarray, np.ndarray]:
+    img_res: tuple[int, int],
+    c2w: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Render RGB and depth images from mesh.
 
@@ -74,7 +75,9 @@ def render_rgb_depth(
         depth_np: (H,W) depth image in meters (Z-depth in view space)
     """
     W, H = img_res
-    intr = o3d.camera.PinholeCameraIntrinsic(W, H, K[0, 0], K[1, 1], K[0, 2], K[1, 2])
+    intr = o3d.camera.PinholeCameraIntrinsic(
+        W, H, K[0, 0], K[1, 1], K[0, 2], K[1, 2]
+    )
 
     renderer = o3d.visualization.rendering.OffscreenRenderer(W, H)
     renderer.scene.set_background([0, 0, 0, 1])
@@ -104,8 +107,8 @@ def raycast_semantic(
     sem_mesh: o3d.geometry.TriangleMesh,
     vertex_labels: np.ndarray,
     K: np.ndarray,
-    img_res: Tuple[int, int],
-    c2w: np.ndarray
+    img_res: tuple[int, int],
+    c2w: np.ndarray,
 ) -> np.ndarray:
     """
     Raycast vertex labels from mesh to 2D image using Open3D raycasting.
@@ -149,10 +152,12 @@ def raycast_semantic(
 
     # Raycast
     rays = np.concatenate([rays_o, dirs_world], axis=-1).astype(np.float32)
-    rays_o3d = o3d.core.Tensor(rays.reshape(-1, 6), dtype=o3d.core.Dtype.Float32)
+    rays_o3d = o3d.core.Tensor(
+        rays.reshape(-1, 6), dtype=o3d.core.Dtype.Float32
+    )
     ans = scene.cast_rays(rays_o3d)
 
-    triangle_ids = ans['primitive_ids'].numpy().reshape(H, W)
+    triangle_ids = ans["primitive_ids"].numpy().reshape(H, W)
     hit_mask = triangle_ids != o3d.t.geometry.RaycastingScene.INVALID_ID
 
     # Find nearest vertex for each hit
@@ -160,13 +165,17 @@ def raycast_semantic(
     hit_triangles = triangles[hit_tri_ids]  # (N_hit, 3)
 
     # Get hit points
-    t_hit = ans['t_hit'].numpy().reshape(H, W)[hit_mask]
+    t_hit = ans["t_hit"].numpy().reshape(H, W)[hit_mask]
     dirs_flat = dirs_world[hit_mask].reshape(-1, 3)
     origins_flat = rays_o[hit_mask].reshape(-1, 3)
     hit_pts = origins_flat + t_hit[:, None] * dirs_flat
 
     # Compute distances to 3 vertices of each triangle
-    v0, v1, v2 = verts[hit_triangles[:, 0]], verts[hit_triangles[:, 1]], verts[hit_triangles[:, 2]]
+    v0, v1, v2 = (
+        verts[hit_triangles[:, 0]],
+        verts[hit_triangles[:, 1]],
+        verts[hit_triangles[:, 2]],
+    )
     d0 = np.sum((hit_pts - v0) ** 2, axis=1)
     d1 = np.sum((hit_pts - v1) ** 2, axis=1)
     d2 = np.sum((hit_pts - v2) ** 2, axis=1)
@@ -189,8 +198,8 @@ def raycast_semantic_face_labels(
     sem_mesh: o3d.geometry.TriangleMesh,
     face_labels: np.ndarray,
     K: np.ndarray,
-    img_res: Tuple[int, int],
-    c2w: np.ndarray
+    img_res: tuple[int, int],
+    c2w: np.ndarray,
 ) -> np.ndarray:
     """
     Raycast face labels from mesh to 2D image.
@@ -228,10 +237,12 @@ def raycast_semantic_face_labels(
 
     # Raycast
     rays = np.concatenate([rays_o, dirs_world], axis=-1).astype(np.float32)
-    rays_o3d = o3d.core.Tensor(rays.reshape(-1, 6), dtype=o3d.core.Dtype.Float32)
+    rays_o3d = o3d.core.Tensor(
+        rays.reshape(-1, 6), dtype=o3d.core.Dtype.Float32
+    )
     ans = scene.cast_rays(rays_o3d)
 
-    triangle_ids = ans['primitive_ids'].numpy().reshape(H, W)
+    triangle_ids = ans["primitive_ids"].numpy().reshape(H, W)
     hit_mask = triangle_ids != o3d.t.geometry.RaycastingScene.INVALID_ID
 
     # Assign face labels
@@ -244,8 +255,8 @@ def raycast_semantic_face_labels(
 def raycast_depth(
     mesh: o3d.geometry.TriangleMesh,
     K: np.ndarray,
-    img_res: Tuple[int, int],
-    c2w: np.ndarray
+    img_res: tuple[int, int],
+    c2w: np.ndarray,
 ) -> np.ndarray:
     """
     Raycast view-space Z-depth from mesh, using the same camera model and ray
@@ -285,22 +296,35 @@ def raycast_depth(
 
     # Raycast
     rays = np.concatenate([rays_o, dirs_world], axis=-1).astype(np.float32)
-    rays_o3d = o3d.core.Tensor(rays.reshape(-1, 6), dtype=o3d.core.Dtype.Float32)
+    rays_o3d = o3d.core.Tensor(
+        rays.reshape(-1, 6), dtype=o3d.core.Dtype.Float32
+    )
     ans = scene.cast_rays(rays_o3d)
 
-    t_hit = ans['t_hit'].numpy().reshape(H, W)
+    t_hit = ans["t_hit"].numpy().reshape(H, W)
     hit_mask = np.isfinite(t_hit)
 
     # t_hit is euclidean distance along the unit ray; view-space Z-depth is its
     # projection onto the camera forward axis: t / ||dir_unnormalized||
     depth_img = np.zeros((H, W), dtype=np.float32)
-    depth_img[hit_mask] = (t_hit[hit_mask] / norms[..., 0][hit_mask]).astype(np.float32)
+    depth_img[hit_mask] = (t_hit[hit_mask] / norms[..., 0][hit_mask]).astype(
+        np.float32
+    )
 
     return depth_img
 
-def raycast_semantic_face_labels_mcam(sem_mesh, face_labels, M_cam_from_uv,
-                                      R_world_from_cam, cam_position, width, height):
-    """Raycast per-face semantic labels using Hypersim's M_cam_from_uv convention.
+
+def raycast_semantic_face_labels_mcam(
+    sem_mesh,
+    face_labels,
+    M_cam_from_uv,
+    R_world_from_cam,
+    cam_position,
+    width,
+    height,
+):
+    """Raycast per-face semantic labels using Hypersim's M_cam_from_uv
+    convention.
 
     This matches V-Ray's pixel sampling exactly, avoiding the ~0.5px error of
     approximating a pinhole K from Hypersim's M_proj (whose principal point is
@@ -332,7 +356,7 @@ def raycast_semantic_face_labels_mcam(sem_mesh, face_labels, M_cam_from_uv,
 
     # Camera-space ray directions via M_cam_from_uv
     uvs = np.stack([uu, vv, np.ones_like(uu)], axis=-1)  # (H, W, 3)
-    dirs_cam = uvs @ M_cam_from_uv.T                      # (H, W, 3)
+    dirs_cam = uvs @ M_cam_from_uv.T  # (H, W, 3)
 
     # World-space ray directions
     dirs_world = dirs_cam @ R_world_from_cam.T
@@ -345,10 +369,9 @@ def raycast_semantic_face_labels_mcam(sem_mesh, face_labels, M_cam_from_uv,
         o3d.core.Tensor(rays.reshape(-1, 6), dtype=o3d.core.Dtype.Float32)
     )
 
-    triangle_ids = ans['primitive_ids'].numpy().reshape(H, W)
+    triangle_ids = ans["primitive_ids"].numpy().reshape(H, W)
     hit_mask = triangle_ids != o3d.t.geometry.RaycastingScene.INVALID_ID
 
     semantic_img = np.full((H, W), fill_value=-1, dtype=np.int32)
     semantic_img[hit_mask] = face_labels[triangle_ids[hit_mask]]
     return semantic_img  # NO flipud needed — y-flip built into UV grid
-

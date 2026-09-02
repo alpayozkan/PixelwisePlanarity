@@ -5,13 +5,14 @@ Adapted for original Hypersim dataset format (not merged files).
 """
 
 import os
+
+import cv2
 import h5py
 import numpy as np
-import torch
-from torch.utils.data import Dataset
-import cv2
-from natsort import natsorted
 import pandas as pd
+import torch
+from natsort import natsorted
+from torch.utils.data import Dataset
 
 
 class HypersimPlaneDataset(Dataset):
@@ -51,27 +52,33 @@ class HypersimPlaneDataset(Dataset):
         params_root: Root directory containing camera parameters
         split_txt_dir: Directory containing split files
         split: 'train', 'val', or 'test'
-        metadata_csv: Path to metadata_camera_parameters.csv (optional, for intrinsics)
+        metadata_csv: Path to metadata_camera_parameters.csv
+            (optional, for intrinsics)
         image_height: Target image height
         image_width: Target image width
         max_scenes: Maximum number of scenes to load
     """
-    def __init__(self,
-                 hypersim_root,
-                 plane_label_root,
-                 params_root,
-                 split_txt_dir,
-                 split='train',
-                 metadata_csv=None,
-                 image_height=768,
-                 image_width=1024,
-                 max_scenes=None,
-                 use_raycasted_depth=False):
+
+    def __init__(
+        self,
+        hypersim_root,
+        plane_label_root,
+        params_root,
+        split_txt_dir,
+        split="train",
+        metadata_csv=None,
+        image_height=768,
+        image_width=1024,
+        max_scenes=None,
+        use_raycasted_depth=False,
+    ):
         """
         Args:
             use_raycasted_depth: Controls depth source.
-                False (default): Use original V-Ray depth_meters.hdf5 (Euclidean, needs conversion).
-                True or "zdepth": Use raycasted z-depth from *_raycast/ (no conversion needed).
+                False (default): Use original V-Ray depth_meters.hdf5
+                    (Euclidean, needs conversion).
+                True or "zdepth": Use raycasted z-depth from *_raycast/
+                    (no conversion needed).
                 "euclidean": Use raycasted Euclidean depth from *_raycast_euc/
                     (no conversion needed, use with backproject_mcam).
         """
@@ -86,7 +93,9 @@ class HypersimPlaneDataset(Dataset):
         # Load metadata for intrinsics if available
         self.metadata = None
         if metadata_csv is None:
-            metadata_csv = os.path.join(os.path.dirname(__file__), "metadata_camera_parameters.csv")
+            metadata_csv = os.path.join(
+                os.path.dirname(__file__), "metadata_camera_parameters.csv"
+            )
         if metadata_csv and os.path.exists(metadata_csv):
             self.metadata = pd.read_csv(metadata_csv, index_col="scene_name")
 
@@ -95,7 +104,7 @@ class HypersimPlaneDataset(Dataset):
         if not os.path.exists(split_file):
             raise FileNotFoundError(f"Missing split file: {split_file}")
 
-        with open(split_file, 'r') as f:
+        with open(split_file) as f:
             scene_ids = [line.strip() for line in f if line.strip()]
         scene_ids = natsorted(scene_ids)
         if max_scenes is not None:
@@ -119,8 +128,11 @@ class HypersimPlaneDataset(Dataset):
                 continue
 
             # Find all plane HDF5 files (one per camera)
-            plane_files = [f for f in os.listdir(plane_scene_dir)
-                          if f.startswith("rendered_planes_") and f.endswith(".h5")]
+            plane_files = [
+                f
+                for f in os.listdir(plane_scene_dir)
+                if f.startswith("rendered_planes_") and f.endswith(".h5")
+            ]
 
             if len(plane_files) == 0:
                 print(f"[SKIP] No plane files in {plane_scene_dir}")
@@ -129,50 +141,85 @@ class HypersimPlaneDataset(Dataset):
             scene_frame_count = 0
             for plane_file in plane_files:
                 # Extract camera name: rendered_planes_cam_00.h5 -> cam_00
-                cam_name = plane_file.replace("rendered_planes_", "").replace(".h5", "")
+                cam_name = plane_file.replace("rendered_planes_", "").replace(
+                    ".h5", ""
+                )
                 plane_h5_path = os.path.join(plane_scene_dir, plane_file)
 
                 # Check camera directories exist
-                rgb_dir = os.path.join(images_dir, f"scene_{cam_name}_final_hdf5")
-                depth_dir = os.path.join(images_dir, f"scene_{cam_name}_geometry_hdf5")
+                rgb_dir = os.path.join(
+                    images_dir, f"scene_{cam_name}_final_hdf5"
+                )
+                depth_dir = os.path.join(
+                    images_dir, f"scene_{cam_name}_geometry_hdf5"
+                )
 
                 if not os.path.exists(rgb_dir):
-                    print(f"[WARN] Missing RGB dir for {scene_id}/{cam_name}: {rgb_dir}")
+                    print(
+                        f"[WARN] Missing RGB dir for "
+                        f"{scene_id}/{cam_name}: {rgb_dir}"
+                    )
                     continue
                 if not os.path.exists(depth_dir):
-                    print(f"[WARN] Missing depth dir for {scene_id}/{cam_name}: {depth_dir}")
+                    print(
+                        f"[WARN] Missing depth dir for "
+                        f"{scene_id}/{cam_name}: {depth_dir}"
+                    )
                     continue
 
                 # Get intrinsics (at native render resolution)
                 try:
-                    K, native_wh = self._get_intrinsics(scene_id, cam_name, params_scene_dir)
+                    K, native_wh = self._get_intrinsics(
+                        scene_id, cam_name, params_scene_dir
+                    )
                 except Exception as e:
-                    print(f"[WARN] Failed to get intrinsics for {scene_id}/{cam_name}: {e}")
+                    print(
+                        f"[WARN] Failed to get intrinsics for "
+                        f"{scene_id}/{cam_name}: {e}"
+                    )
                     continue
 
                 # Read frame_ids from plane HDF5
                 try:
                     with h5py.File(plane_h5_path, "r") as f:
-                        frame_ids = [fid.decode("utf-8") if isinstance(fid, bytes) else str(fid)
-                                    for fid in f["frame_ids"][:]]
+                        frame_ids = [
+                            fid.decode("utf-8")
+                            if isinstance(fid, bytes)
+                            else str(fid)
+                            for fid in f["frame_ids"][:]
+                        ]
                 except Exception as e:
-                    print(f"[SKIP] Error reading frame_ids from {plane_h5_path}: {e}")
+                    print(
+                        f"[SKIP] Error reading frame_ids from "
+                        f"{plane_h5_path}: {e}"
+                    )
                     continue
 
                 # Add valid pairs
                 for idx, fid in enumerate(frame_ids):
                     rgb_path = os.path.join(rgb_dir, f"frame.{fid}.color.hdf5")
-                    depth_path = os.path.join(depth_dir, f"frame.{fid}.depth_meters.hdf5")
+                    depth_path = os.path.join(
+                        depth_dir, f"frame.{fid}.depth_meters.hdf5"
+                    )
 
                     if not os.path.exists(rgb_path):
                         continue
                     if not os.path.exists(depth_path):
                         continue
 
-                    self.valid_pairs.append((
-                        scene_id, cam_name, idx, fid,
-                        rgb_path, depth_path, plane_h5_path, K, native_wh
-                    ))
+                    self.valid_pairs.append(
+                        (
+                            scene_id,
+                            cam_name,
+                            idx,
+                            fid,
+                            rgb_path,
+                            depth_path,
+                            plane_h5_path,
+                            K,
+                            native_wh,
+                        )
+                    )
                     scene_frame_count += 1
 
             if scene_frame_count > 0:
@@ -180,7 +227,10 @@ class HypersimPlaneDataset(Dataset):
                 print(f"[DEBUG] Scene {scene_id} → {scene_frame_count} frames")
 
         self.scene_ids = valid_scene_ids
-        print(f"[Hypersim] {split} split → {len(self.valid_pairs)} pairs from {len(self.scene_ids)} scenes")
+        print(
+            f"[Hypersim] {split} split → {len(self.valid_pairs)} pairs "
+            f"from {len(self.scene_ids)} scenes"
+        )
 
     def _get_intrinsics(self, scene_id, cam_name, params_scene_dir):
         """Compute intrinsics matrix from metadata or use default.
@@ -194,24 +244,36 @@ class HypersimPlaneDataset(Dataset):
         if self.metadata is not None and scene_id in self.metadata.index:
             row = self.metadata.loc[scene_id]
             # Use native render resolution from metadata
-            native_w = int(row["settings_output_img_width"]) if "settings_output_img_width" in row.index else 1024
-            native_h = int(row["settings_output_img_height"]) if "settings_output_img_height" in row.index else 768
-            M_proj = np.array([[row[f"M_proj_{i}{j}"] for j in range(4)] for i in range(4)])
+            native_w = (
+                int(row["settings_output_img_width"])
+                if "settings_output_img_width" in row.index
+                else 1024
+            )
+            native_h = (
+                int(row["settings_output_img_height"])
+                if "settings_output_img_height" in row.index
+                else 768
+            )
+            M_proj = np.array(
+                [[row[f"M_proj_{i}{j}"] for j in range(4)] for i in range(4)]
+            )
 
             W1 = native_w - 1  # M_screen_from_ndc uses (W-1), not W
             H1 = native_h - 1
-            fx =  M_proj[0, 0] * 0.5 * W1
+            fx = M_proj[0, 0] * 0.5 * W1
             fy = -M_proj[1, 1] * 0.5 * H1
             cx = -M_proj[0, 2] * 0.5 * W1 + 0.5 * W1
-            cy =  M_proj[1, 2] * 0.5 * H1 + 0.5 * H1
-            K = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]], dtype=np.float32)
+            cy = M_proj[1, 2] * 0.5 * H1 + 0.5 * H1
+            K = np.array(
+                [[fx, 0, cx], [0, fy, cy], [0, 0, 1]], dtype=np.float32
+            )
             return K, (native_w, native_h)
 
         # Default intrinsics at native Hypersim resolution (1024x768)
         native_w, native_h = 1024, 768
         fx = fy = 886.81
-        cx = (native_w - 1) / 2.0   # 511.5
-        cy = (native_h - 1) / 2.0   # 383.5
+        cx = (native_w - 1) / 2.0  # 511.5
+        cy = (native_h - 1) / 2.0  # 383.5
         K = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]], dtype=np.float32)
         return K, (native_w, native_h)
 
@@ -228,7 +290,10 @@ class HypersimPlaneDataset(Dataset):
         row = self.metadata.loc[scene_id]
         try:
             return np.array(
-                [[row[f"M_cam_from_uv_{i}{j}"] for j in range(3)] for i in range(3)],
+                [
+                    [row[f"M_cam_from_uv_{i}{j}"] for j in range(3)]
+                    for i in range(3)
+                ],
                 dtype=np.float64,
             )
         except KeyError:
@@ -236,20 +301,23 @@ class HypersimPlaneDataset(Dataset):
 
     @staticmethod
     def _euclidean_to_zdepth(depth_euc, K):
-        """Convert Euclidean ray distance to z-depth using pinhole K (APPROXIMATE).
+        """Convert Euclidean ray distance to z-depth using pinhole K
+        (APPROXIMATE).
 
         .. warning::
 
-            This is a **pinhole approximation** of V-Ray's camera model.  Hypersim
-            rays are actually generated by ``M_cam_from_uv`` (a 3x3 matrix that can
-            have cross-terms and a non-unit z-component).  The pinhole model assumes
-            every ray has z-component = 1, which is not true for M_cam_from_uv.
+            This is a **pinhole approximation** of V-Ray's camera model.
+            Hypersim rays are actually generated by ``M_cam_from_uv`` (a 3x3
+            matrix that can have cross-terms and a non-unit z-component).
+            The pinhole model assumes every ray has z-component = 1, which
+            is not true for M_cam_from_uv.
 
-            The approximation is *self-consistent* with ``backproject/v2`` (which
-            also use pinhole K), so errors partially cancel.  However, the resulting
-            3D points are placed along pinhole ray directions instead of the true
-            V-Ray ray directions, causing systematic position errors that grow toward
-            image edges (~0.5-1 mm at tight thresholds).
+            The approximation is *self-consistent* with ``backproject/v2``
+            (which also use pinhole K), so errors partially cancel.
+            However, the resulting 3D points are placed along pinhole ray
+            directions instead of the true V-Ray ray directions, causing
+            systematic position errors that grow toward image edges
+            (~0.5-1 mm at tight thresholds).
 
             For exact conversion, use ``_euclidean_to_zdepth_mcam()`` instead.
 
@@ -259,16 +327,18 @@ class HypersimPlaneDataset(Dataset):
         H, W = depth_euc.shape
         fx, fy = K[0, 0], K[1, 1]
         cx, cy = K[0, 2], K[1, 2]
-        u, v = np.meshgrid(np.arange(W, dtype=np.float32),
-                           np.arange(H, dtype=np.float32))
+        u, v = np.meshgrid(
+            np.arange(W, dtype=np.float32), np.arange(H, dtype=np.float32)
+        )
         x_n = (u - cx) / fx
         y_n = (v - cy) / fy
-        ray_length = np.sqrt(x_n ** 2 + y_n ** 2 + 1.0)
+        ray_length = np.sqrt(x_n**2 + y_n**2 + 1.0)
         return depth_euc / ray_length
 
     @staticmethod
     def _euclidean_to_zdepth_mcam(depth_euc, M_cam_from_uv, native_w, native_h):
-        """Convert Euclidean ray distance to z-depth using V-Ray's M_cam_from_uv.
+        """Convert Euclidean ray distance to z-depth using V-Ray's
+        M_cam_from_uv.
 
         This is the **exact** conversion that matches V-Ray's camera model.
 
@@ -317,31 +387,45 @@ class HypersimPlaneDataset(Dataset):
         # cos(theta) = |z_component| / |ray|
         # V-Ray camera looks along -Z, so d_cam.z is typically negative.
         ray_lengths = np.linalg.norm(dirs_cam, axis=-1)  # (H, W)
-        z_abs = np.abs(dirs_cam[:, :, 2])                # (H, W)
+        z_abs = np.abs(dirs_cam[:, :, 2])  # (H, W)
 
         cos_theta = np.where(ray_lengths > 0, z_abs / ray_lengths, 1.0)
 
         return (depth_euc * cos_theta).astype(np.float32)
 
     def __getitem__(self, idx):
-        scene_id, cam_name, frame_idx, fid, rgb_path, depth_path, plane_h5, K, native_wh = self.valid_pairs[idx]
+        (
+            scene_id,
+            cam_name,
+            frame_idx,
+            fid,
+            rgb_path,
+            depth_path,
+            plane_h5,
+            K,
+            native_wh,
+        ) = self.valid_pairs[idx]
 
         # --- Load plane labels ---
         try:
             with h5py.File(plane_h5, "r") as f:
                 plane = f["planes"][frame_idx]
             plane[plane < 0] = 0
-            plane = torch.from_numpy(plane.astype(np.int32)).unsqueeze(0)  # [1, H, W]
+            plane = torch.from_numpy(plane.astype(np.int32)).unsqueeze(
+                0
+            )  # [1, H, W]
             H, W = plane.shape[1:]
         except Exception as e:
-            print(f"[WARN] Failed plane label from {plane_h5} [{frame_idx}]: {e}")
+            print(
+                f"[WARN] Failed plane label from {plane_h5} [{frame_idx}]: {e}"
+            )
             H, W = self.image_height, self.image_width
             plane = torch.zeros((1, H, W), dtype=torch.int32)
 
         # --- Rescale intrinsics to match actual image dimensions ---
         # K was computed at native render resolution; scale to plane-label dims
         native_w, native_h = native_wh
-        if W != native_w or H != native_h:
+        if native_w != W or native_h != H:
             scale_x = W / native_w
             scale_y = H / native_h
             K = K.copy()
@@ -367,27 +451,29 @@ class HypersimPlaneDataset(Dataset):
                 rgb = self._tonemap_rgb_robust(rgb.astype(np.float32))
 
             rgb = cv2.resize(rgb, (W, H), interpolation=cv2.INTER_LINEAR)
-            image = torch.tensor(rgb, dtype=torch.float32).permute(2, 0, 1)  # [3, H, W]
+            image = torch.tensor(rgb, dtype=torch.float32).permute(
+                2, 0, 1
+            )  # [3, H, W]
         except Exception as e:
             print(f"[WARN] Failed RGB from {rgb_path}: {e}")
             import traceback
+
             traceback.print_exc()
             image = torch.zeros((3, H, W), dtype=torch.float32)
 
         # --- Load depth ---
         try:
             # Determine depth source based on use_raycasted_depth:
-            #   False        → original V-Ray depth (Euclidean, needs conversion)
+            #   False        → original V-Ray depth (Euclidean, needs
+            #                  conversion)
             #   True/zdepth  → raycasted z-depth from *_raycast/ (ready to use)
-            #   "euclidean"  → raycasted Euclidean from *_raycast_euc/ (ready to use)
+            #   "euclidean"  → raycasted Euclidean from *_raycast_euc/
+            #                  (ready to use)
             actual_depth_path = depth_path
             is_raycasted = False
             urd = self.use_raycasted_depth
             if urd:
-                if urd == "euclidean":
-                    dir_suffix = "raycast_euc"
-                else:
-                    dir_suffix = "raycast"
+                dir_suffix = "raycast_euc" if urd == "euclidean" else "raycast"
                 raycast_depth_path = depth_path.replace(
                     f"scene_{cam_name}_geometry_hdf5/",
                     f"scene_{cam_name}_geometry_hdf5_{dir_suffix}/",
@@ -399,7 +485,9 @@ class HypersimPlaneDataset(Dataset):
             with h5py.File(actual_depth_path, "r") as f:
                 key = list(f.keys())[0]
                 depth_raw = f[key][:].astype(np.float32)
-            depth_raw = cv2.resize(depth_raw, (W, H), interpolation=cv2.INTER_LINEAR)
+            depth_raw = cv2.resize(
+                depth_raw, (W, H), interpolation=cv2.INTER_LINEAR
+            )
 
             if is_raycasted:
                 # Raycasted depth (both zdepth and euclidean) — use directly
@@ -408,7 +496,9 @@ class HypersimPlaneDataset(Dataset):
                 # V-Ray depth is Euclidean — convert to z-depth
                 M_cam = self._get_M_cam_from_uv(scene_id)
                 if M_cam is not None:
-                    depth = self._euclidean_to_zdepth_mcam(depth_raw, M_cam, native_w, native_h)
+                    depth = self._euclidean_to_zdepth_mcam(
+                        depth_raw, M_cam, native_w, native_h
+                    )
                 else:
                     depth = self._euclidean_to_zdepth(depth_raw, K)
             depth = torch.from_numpy(depth).unsqueeze(0)  # [1, H, W]
@@ -445,7 +535,8 @@ class HypersimPlaneDataset(Dataset):
         # Ensure non-negative
         hdr = np.maximum(hdr, 0.0)
 
-        # Find max value for normalization (use median of top values to avoid outliers)
+        # Find max value for normalization (use median of top values to
+        # avoid outliers)
         max_val = np.max(hdr)
         if max_val > 0:
             # Sort and take 99th percentile as max to avoid extreme outliers

@@ -7,20 +7,18 @@ trained MoGe 4-head checkpoints. Normal/points outputs are (H, W, 3)
 (MoGe v2 native format; no transpose applied).
 """
 
-import os
-import sys
-from pathlib import Path
-import glob
 import argparse
+import copy
+import glob
+import os
+
+import cv2
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import torch.nn.functional as F
-import cv2
-from tqdm import tqdm
-import matplotlib.pyplot as plt
-from PIL import Image
-import copy
 import torch.nn as nn
+import torch.nn.functional as F
+from tqdm import tqdm
 
 # MoGe backend: the MoGe/ submodule in a checkout, the installed `moge`
 # distribution in a library install (see pxwplanar/moge_backend.py).
@@ -31,11 +29,15 @@ DEFAULT_HF_REPO = "alpayozkan/pxwplanar-moge2-planarity"
 
 
 class MoGePlanarityInference:
-    """Class for performing inference with trained MoGe 4-head planarity model."""
+    """Inference with a trained MoGe 4-head planarity model."""
 
     @classmethod
-    def from_pretrained(cls, pretrained_model_name_or_path=DEFAULT_HF_REPO,
-                        device='cuda', **hf_kwargs):
+    def from_pretrained(
+        cls,
+        pretrained_model_name_or_path=DEFAULT_HF_REPO,
+        device="cuda",
+        **hf_kwargs,
+    ):
         """Load from a local checkpoint path or a Hugging Face repo id.
 
         Args:
@@ -49,12 +51,16 @@ class MoGePlanarityInference:
             model_path = pretrained_model_name_or_path
         else:
             from huggingface_hub import hf_hub_download
-            model_path = hf_hub_download(repo_id=pretrained_model_name_or_path,
-                                         repo_type="model", filename="model.pt",
-                                         **hf_kwargs)
+
+            model_path = hf_hub_download(
+                repo_id=pretrained_model_name_or_path,
+                repo_type="model",
+                filename="model.pt",
+                **hf_kwargs,
+            )
         return cls(model_path, device=device)
 
-    def __init__(self, model_path, device='cuda'):
+    def __init__(self, model_path, device="cuda"):
         """
         Args:
             model_path: Path to a model checkpoint (.pt file), in either
@@ -66,24 +72,30 @@ class MoGePlanarityInference:
                 module tree).
             device: Device for inference
         """
-        self.device = torch.device(device if torch.cuda.is_available() else 'cpu')
+        self.device = torch.device(
+            device if torch.cuda.is_available() else "cpu"
+        )
         print(f"Using device: {self.device}")
 
         # Load the trained model
         print(f"Loading model from: {model_path}")
-        checkpoint = torch.load(model_path, map_location=self.device, weights_only=True)
+        checkpoint = torch.load(
+            model_path, map_location=self.device, weights_only=True
+        )
 
-        if 'model_config' in checkpoint:
+        if "model_config" in checkpoint:
             # Native MoGe format: config travels with the weights, so the
             # 4-head module tree (planarity_head included) builds directly.
-            self.model = MoGeModel(**checkpoint['model_config']).to(self.device)
-            self.model.load_state_dict(checkpoint['model'])
+            self.model = MoGeModel(**checkpoint["model_config"]).to(self.device)
+            self.model.load_state_dict(checkpoint["model"])
         else:
             # Legacy training checkpoint: rebuild the module tree from the
             # MoGe-2 base weights and graft the planarity head onto it.
-            self.model = MoGeModel.from_pretrained("Ruicheng/moge-2-vitl-normal").to(self.device)
+            self.model = MoGeModel.from_pretrained(
+                "Ruicheng/moge-2-vitl-normal"
+            ).to(self.device)
             self._add_planarity_head()
-            self.model.load_state_dict(checkpoint['model_state_dict'])
+            self.model.load_state_dict(checkpoint["model_state_dict"])
         self.model = self.model.float()
         self.model = self.model.to(self.device, dtype=torch.float32)
         self.model.eval()
@@ -91,27 +103,30 @@ class MoGePlanarityInference:
         print("Model loaded successfully!")
 
         # Verify planarity head exists
-        if not hasattr(self.model, 'planarity_head'):
-            raise ValueError("Loaded model does not have planarity_head! Make sure you're loading a 4-head model.")
+        if not hasattr(self.model, "planarity_head"):
+            raise ValueError(
+                "Loaded model does not have planarity_head! "
+                "Make sure you're loading a 4-head model."
+            )
 
         print("✓ Planarity head found in model")
 
         # Print model info if available
-        if 'epoch' in checkpoint:
+        if "epoch" in checkpoint:
             print(f"Model trained for {checkpoint['epoch']} epochs")
         # if 'val_loss' in checkpoint:
         #     print(f"Final validation loss: {checkpoint['val_loss']:.4f}")
         # if 'best_val_loss' in checkpoint:
         #     print(f"Best validation loss: {checkpoint['best_val_loss']:.4f}")
-        if 'val_loss' in checkpoint:
-            val_loss = checkpoint['val_loss']
+        if "val_loss" in checkpoint:
+            val_loss = checkpoint["val_loss"]
             if val_loss is not None:
                 print(f"Final validation loss: {val_loss:.4f}")
             else:
                 print("Final validation loss: None")
 
-        if 'best_val_loss' in checkpoint:
-            best_val_loss = checkpoint['best_val_loss']
+        if "best_val_loss" in checkpoint:
+            best_val_loss = checkpoint["best_val_loss"]
             if best_val_loss is not None:
                 print(f"Best validation loss: {best_val_loss:.4f}")
             else:
@@ -137,12 +152,12 @@ class MoGePlanarityInference:
             padding=old_conv.padding,
             dilation=old_conv.dilation,
             groups=old_conv.groups,
-            bias=old_conv.bias is not None
+            bias=old_conv.bias is not None,
         )
 
         # Assign new conv
         parent = self.model.planarity_head
-        parts = name.split('.')
+        parts = name.split(".")
         for p in parts[:-1]:
             parent = getattr(parent, p)
         setattr(parent, parts[-1], new_conv)
@@ -175,7 +190,9 @@ class MoGePlanarityInference:
         image_resized = cv2.resize(image, (target_width, target_height))
 
         # Convert to tensor and normalize to [0, 1]
-        image_tensor = torch.tensor(image_resized / 255.0, dtype=torch.float32).permute(2, 0, 1)
+        image_tensor = torch.tensor(
+            image_resized / 255.0, dtype=torch.float32
+        ).permute(2, 0, 1)
 
         # Add batch dimension
         image_tensor = image_tensor.unsqueeze(0).to(self.device)
@@ -188,17 +205,28 @@ class MoGePlanarityInference:
         device, dtype = images.device, images.dtype
 
         aspect_ratio = img_w / img_h
-        base_h, base_w = int((num_tokens / aspect_ratio) ** 0.5), int((num_tokens * aspect_ratio) ** 0.5)
+        base_h, base_w = (
+            int((num_tokens / aspect_ratio) ** 0.5),
+            int((num_tokens * aspect_ratio) ** 0.5),
+        )
         num_tokens = base_h * base_w
 
         # Backbone encoding
-        features, cls_token = self.model.encoder(images, base_h, base_w, return_class_token=True)
+        features, cls_token = self.model.encoder(
+            images, base_h, base_w, return_class_token=True
+        )
         features = [features, None, None, None, None]
 
         # Concat UVs for aspect ratio input
 
         for level in range(5):
-            uv = normalized_view_plane_uv(width=base_w * 2 ** level, height=base_h * 2 ** level, aspect_ratio=aspect_ratio, dtype=dtype, device=device)
+            uv = normalized_view_plane_uv(
+                width=base_w * 2**level,
+                height=base_h * 2**level,
+                aspect_ratio=aspect_ratio,
+                dtype=dtype,
+                device=device,
+            )
             uv = uv.permute(2, 0, 1).unsqueeze(0).expand(batch_size, -1, -1, -1)
             if features[level] is None:
                 features[level] = uv
@@ -212,30 +240,54 @@ class MoGePlanarityInference:
         outputs = {}
 
         # Planarity head (our main target)
-        if hasattr(self.model, 'planarity_head'):
+        if hasattr(self.model, "planarity_head"):
             planarity_raw_logits = self.model.planarity_head(features)[-1]
-            planarity_raw_logits = F.interpolate(planarity_raw_logits, (img_h, img_w), mode='bilinear', align_corners=False, antialias=False)
-            outputs['planarity_logits'] = planarity_raw_logits
-            outputs['planarity'] = torch.sigmoid(planarity_raw_logits)
+            planarity_raw_logits = F.interpolate(
+                planarity_raw_logits,
+                (img_h, img_w),
+                mode="bilinear",
+                align_corners=False,
+                antialias=False,
+            )
+            outputs["planarity_logits"] = planarity_raw_logits
+            outputs["planarity"] = torch.sigmoid(planarity_raw_logits)
 
         # Mask head
-        if hasattr(self.model, 'mask_head'):
+        if hasattr(self.model, "mask_head"):
             mask_raw = self.model.mask_head(features)[-1]
-            mask_raw = F.interpolate(mask_raw, (img_h, img_w), mode='bilinear', align_corners=False, antialias=False)
-            outputs['mask_logits'] = mask_raw
-            outputs['mask'] = torch.sigmoid(mask_raw)
+            mask_raw = F.interpolate(
+                mask_raw,
+                (img_h, img_w),
+                mode="bilinear",
+                align_corners=False,
+                antialias=False,
+            )
+            outputs["mask_logits"] = mask_raw
+            outputs["mask"] = torch.sigmoid(mask_raw)
 
         # Normal head
-        if hasattr(self.model, 'normal_head'):
+        if hasattr(self.model, "normal_head"):
             normal_raw = self.model.normal_head(features)[-1]
-            normal_raw = F.interpolate(normal_raw, (img_h, img_w), mode='bilinear', align_corners=False, antialias=False)
-            outputs['normal'] = normal_raw
+            normal_raw = F.interpolate(
+                normal_raw,
+                (img_h, img_w),
+                mode="bilinear",
+                align_corners=False,
+                antialias=False,
+            )
+            outputs["normal"] = normal_raw
 
         # Points head
-        if hasattr(self.model, 'points_head'):
+        if hasattr(self.model, "points_head"):
             points_raw = self.model.points_head(features)[-1]
-            points_raw = F.interpolate(points_raw, (img_h, img_w), mode='bilinear', align_corners=False, antialias=False)
-            outputs['points'] = points_raw
+            points_raw = F.interpolate(
+                points_raw,
+                (img_h, img_w),
+                mode="bilinear",
+                align_corners=False,
+                antialias=False,
+            )
+            outputs["points"] = points_raw
 
         return outputs
 
@@ -256,13 +308,20 @@ class MoGePlanarityInference:
             image_tensor, original_size = self.preprocess_image(image_path)
 
             # Forward pass with autocast for efficiency
-            # with torch.autocast(device_type=self.device.type, dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16):
+            # with torch.autocast(
+            #     device_type=self.device.type,
+            #     dtype=torch.bfloat16
+            #     if torch.cuda.is_bf16_supported()
+            #     else torch.float16,
+            # ):
             #     try:
             #         # Try built-in forward first
             #         outputs = self.model(image_tensor, num_tokens=num_tokens)
             #         if 'planarity' not in outputs:
             #             # Fall back to manual forward
-            #             outputs = self._manual_forward(image_tensor, num_tokens)
+            #     outputs = self._manual_forward(
+            #         image_tensor, num_tokens
+            #     )
             #     except:
             #         # Fall back to manual forward
             #         outputs = self._manual_forward(image_tensor, num_tokens)
@@ -272,42 +331,54 @@ class MoGePlanarityInference:
             results = {}
 
             # Main planarity prediction
-            if 'planarity' in outputs:
-                planarity_prob = outputs['planarity'].squeeze().cpu().numpy()
+            if "planarity" in outputs:
+                planarity_prob = outputs["planarity"].squeeze().cpu().numpy()
                 planarity_binary = (planarity_prob > 0.5).astype(np.uint8)
 
-                results['planarity_probability'] = planarity_prob
-                results['planarity_binary'] = planarity_binary
+                results["planarity_probability"] = planarity_prob
+                results["planarity_binary"] = planarity_binary
 
                 # Resize back to original image size
                 if original_size != planarity_prob.shape:
-                    planarity_prob_resized = cv2.resize(planarity_prob, (original_size[1], original_size[0]))
-                    planarity_binary_resized = cv2.resize(planarity_binary, (original_size[1], original_size[0]), interpolation=cv2.INTER_NEAREST)
+                    planarity_prob_resized = cv2.resize(
+                        planarity_prob, (original_size[1], original_size[0])
+                    )
+                    planarity_binary_resized = cv2.resize(
+                        planarity_binary,
+                        (original_size[1], original_size[0]),
+                        interpolation=cv2.INTER_NEAREST,
+                    )
 
-                    results['planarity_probability_full'] = planarity_prob_resized
-                    results['planarity_binary_full'] = planarity_binary_resized
+                    results["planarity_probability_full"] = (
+                        planarity_prob_resized
+                    )
+                    results["planarity_binary_full"] = planarity_binary_resized
 
             # Additional heads if requested
             if return_all_heads:
-                if 'mask' in outputs:
-                    mask_prob = outputs['mask'].squeeze().cpu().numpy()
-                    results['mask'] = mask_prob
+                if "mask" in outputs:
+                    mask_prob = outputs["mask"].squeeze().cpu().numpy()
+                    results["mask"] = mask_prob
 
-                if 'normal' in outputs:
-                    # FIX: MoGe v2 already outputs (B, H, W, 3), squeeze gives (H, W, 3)
-                    normal = outputs['normal'].squeeze().cpu().numpy()
+                if "normal" in outputs:
+                    # MoGe v2 already outputs (B, H, W, 3);
+                    # squeeze gives (H, W, 3)
+                    normal = outputs["normal"].squeeze().cpu().numpy()
                     # No transpose needed - already in HWC format
-                    results['normal'] = normal
+                    results["normal"] = normal
 
-                if 'points' in outputs:
-                    # FIX: MoGe v2 already outputs (B, H, W, 3), squeeze gives (H, W, 3)
-                    points = outputs['points'].squeeze().cpu().numpy()
+                if "points" in outputs:
+                    # MoGe v2 already outputs (B, H, W, 3);
+                    # squeeze gives (H, W, 3)
+                    points = outputs["points"].squeeze().cpu().numpy()
                     # No transpose needed - already in HWC format
-                    results['points'] = points
+                    results["points"] = points
 
             return results
 
-    def predict_metric(self, image_path, num_tokens=1024, return_all_heads=False):
+    def predict_metric(
+        self, image_path, num_tokens=1024, return_all_heads=False
+    ):
         """
         Perform planarity prediction with metric depth via model.infer().
 
@@ -320,7 +391,8 @@ class MoGePlanarityInference:
         Return dict keys (when return_all_heads=True):
           - planarity_probability: (H, W) float32 [0, 1]
           - planarity_binary: (H, W) uint8
-          - planarity_probability_full / planarity_binary_full: resized to original
+          - planarity_probability_full / planarity_binary_full: resized
+            to the original resolution
           - depth: (H, W) float32, metric z-depth in meters (0 where masked)
           - normal: (H, W, 3) float32, unit normals (0 where masked)
           - points: (H, W, 3) float32, metric 3D points (0 where masked)
@@ -344,48 +416,57 @@ class MoGePlanarityInference:
             results = {}
 
             # Planarity (infer() applies mask: zeros where invalid)
-            if 'planarity' in outputs:
-                planarity_prob = outputs['planarity'].squeeze().cpu().numpy()
+            if "planarity" in outputs:
+                planarity_prob = outputs["planarity"].squeeze().cpu().numpy()
                 planarity_binary = (planarity_prob > 0.5).astype(np.uint8)
 
-                results['planarity_probability'] = planarity_prob
-                results['planarity_binary'] = planarity_binary
+                results["planarity_probability"] = planarity_prob
+                results["planarity_binary"] = planarity_binary
 
                 if original_size != planarity_prob.shape:
-                    results['planarity_probability_full'] = cv2.resize(
+                    results["planarity_probability_full"] = cv2.resize(
                         planarity_prob, (original_size[1], original_size[0])
                     )
-                    results['planarity_binary_full'] = cv2.resize(
-                        planarity_binary, (original_size[1], original_size[0]),
+                    results["planarity_binary_full"] = cv2.resize(
+                        planarity_binary,
+                        (original_size[1], original_size[0]),
                         interpolation=cv2.INTER_NEAREST,
                     )
 
             if return_all_heads:
-                if 'mask' in outputs:
+                if "mask" in outputs:
                     # infer() returns bool mask (not sigmoid float)
-                    results['mask'] = outputs['mask'].squeeze().cpu().numpy()
+                    results["mask"] = outputs["mask"].squeeze().cpu().numpy()
 
-                if 'depth' in outputs:
-                    depth = outputs['depth'].squeeze().cpu().numpy()
+                if "depth" in outputs:
+                    depth = outputs["depth"].squeeze().cpu().numpy()
                     # Replace inf (masked pixels) with 0 for downstream compat
-                    depth = np.where(np.isfinite(depth), depth, 0.0).astype(np.float32)
-                    results['depth'] = depth
+                    depth = np.where(np.isfinite(depth), depth, 0.0).astype(
+                        np.float32
+                    )
+                    results["depth"] = depth
 
-                if 'normal' in outputs:
-                    normal = outputs['normal'].squeeze().cpu().numpy()
-                    results['normal'] = normal
+                if "normal" in outputs:
+                    normal = outputs["normal"].squeeze().cpu().numpy()
+                    results["normal"] = normal
 
-                if 'points' in outputs:
-                    points = outputs['points'].squeeze().cpu().numpy()
-                    points = np.where(np.isfinite(points), points, 0.0).astype(np.float32)
-                    results['points'] = points
+                if "points" in outputs:
+                    points = outputs["points"].squeeze().cpu().numpy()
+                    points = np.where(np.isfinite(points), points, 0.0).astype(
+                        np.float32
+                    )
+                    results["points"] = points
 
-                if 'intrinsics' in outputs:
-                    results['intrinsics'] = outputs['intrinsics'].squeeze().cpu().numpy()
+                if "intrinsics" in outputs:
+                    results["intrinsics"] = (
+                        outputs["intrinsics"].squeeze().cpu().numpy()
+                    )
 
             return results
 
-    def predict_batch_fast_metric(self, image_paths, num_tokens=1024, return_all_heads=False):
+    def predict_batch_fast_metric(
+        self, image_paths, num_tokens=1024, return_all_heads=False
+    ):
         """
         Batch prediction with metric depth via model.infer().
 
@@ -409,35 +490,43 @@ class MoGePlanarityInference:
                 res = {}
                 h0, w0 = original_sizes[i]
 
-                planarity = outputs['planarity'][i].cpu().numpy()
+                planarity = outputs["planarity"][i].cpu().numpy()
                 planarity_bin = (planarity > 0.5).astype(np.uint8)
 
-                res['planarity_probability'] = planarity
-                res['planarity_probability_full'] = cv2.resize(planarity, (w0, h0))
-                res['planarity_binary'] = planarity_bin
-                res['planarity_binary_full'] = cv2.resize(
+                res["planarity_probability"] = planarity
+                res["planarity_probability_full"] = cv2.resize(
+                    planarity, (w0, h0)
+                )
+                res["planarity_binary"] = planarity_bin
+                res["planarity_binary_full"] = cv2.resize(
                     planarity_bin, (w0, h0), interpolation=cv2.INTER_NEAREST
                 )
 
                 if return_all_heads:
-                    if 'mask' in outputs:
-                        res['mask'] = outputs['mask'][i].cpu().numpy()
+                    if "mask" in outputs:
+                        res["mask"] = outputs["mask"][i].cpu().numpy()
 
-                    if 'depth' in outputs:
-                        depth = outputs['depth'][i].cpu().numpy()
-                        depth = np.where(np.isfinite(depth), depth, 0.0).astype(np.float32)
-                        res['depth'] = depth
+                    if "depth" in outputs:
+                        depth = outputs["depth"][i].cpu().numpy()
+                        depth = np.where(np.isfinite(depth), depth, 0.0).astype(
+                            np.float32
+                        )
+                        res["depth"] = depth
 
-                    if 'normal' in outputs:
-                        res['normal'] = outputs['normal'][i].cpu().numpy()
+                    if "normal" in outputs:
+                        res["normal"] = outputs["normal"][i].cpu().numpy()
 
-                    if 'points' in outputs:
-                        points = outputs['points'][i].cpu().numpy()
-                        points = np.where(np.isfinite(points), points, 0.0).astype(np.float32)
-                        res['points'] = points
+                    if "points" in outputs:
+                        points = outputs["points"][i].cpu().numpy()
+                        points = np.where(
+                            np.isfinite(points), points, 0.0
+                        ).astype(np.float32)
+                        res["points"] = points
 
-                    if 'intrinsics' in outputs:
-                        res['intrinsics'] = outputs['intrinsics'][i].cpu().numpy()
+                    if "intrinsics" in outputs:
+                        res["intrinsics"] = (
+                            outputs["intrinsics"][i].cpu().numpy()
+                        )
 
                 results.append(res)
 
@@ -457,20 +546,28 @@ class MoGePlanarityInference:
         """
         results = []
 
-        for i in tqdm(range(0, len(image_paths), batch_size), desc="Processing images"):
-            batch_paths = image_paths[i:i+batch_size]
+        for i in tqdm(
+            range(0, len(image_paths), batch_size), desc="Processing images"
+        ):
+            batch_paths = image_paths[i : i + batch_size]
             batch_results = []
 
             for path in batch_paths:
                 result = self.predict(path, num_tokens)
-                result['image_path'] = path
+                result["image_path"] = path
                 batch_results.append(result)
 
             results.extend(batch_results)
 
         return results
 
-    def visualize_prediction(self, image_path, save_path=None, show_overlay=True, return_all_heads=False):
+    def visualize_prediction(
+        self,
+        image_path,
+        save_path=None,
+        show_overlay=True,
+        return_all_heads=False,
+    ):
         """
         Visualize planarity prediction results.
 
@@ -487,7 +584,9 @@ class MoGePlanarityInference:
         results = self.predict(image_path, return_all_heads=return_all_heads)
 
         # Load original image
-        original_image = cv2.cvtColor(cv2.imread(str(image_path)), cv2.COLOR_BGR2RGB)
+        original_image = cv2.cvtColor(
+            cv2.imread(str(image_path)), cv2.COLOR_BGR2RGB
+        )
 
         # Determine number of subplots: image + probability + binary,
         # plus overlay, plus mask + normal when all heads are requested
@@ -497,7 +596,7 @@ class MoGePlanarityInference:
         if return_all_heads:
             num_cols += 2
 
-        fig, axes = plt.subplots(1, num_cols, figsize=(5*num_cols, 5))
+        fig, axes = plt.subplots(1, num_cols, figsize=(5 * num_cols, 5))
         if num_cols == 1:
             axes = [axes]
 
@@ -505,78 +604,85 @@ class MoGePlanarityInference:
 
         # Original image
         axes[col_idx].imshow(original_image)
-        axes[col_idx].set_title('Original Image')
-        axes[col_idx].axis('off')
+        axes[col_idx].set_title("Original Image")
+        axes[col_idx].axis("off")
         col_idx += 1
 
         # Planarity probability
-        if 'planarity_probability_full' in results:
-            planarity_vis = results['planarity_probability_full']
+        if "planarity_probability_full" in results:
+            planarity_vis = results["planarity_probability_full"]
         else:
-            planarity_vis = results['planarity_probability']
+            planarity_vis = results["planarity_probability"]
 
-        axes[col_idx].imshow(planarity_vis, cmap='gray', vmin=0, vmax=1)
-        axes[col_idx].set_title('Planarity Probability')
-        axes[col_idx].axis('off')
+        axes[col_idx].imshow(planarity_vis, cmap="gray", vmin=0, vmax=1)
+        axes[col_idx].set_title("Planarity Probability")
+        axes[col_idx].axis("off")
         col_idx += 1
 
         # Binary planarity
-        if 'planarity_binary_full' in results:
-            binary_vis = results['planarity_binary_full']
+        if "planarity_binary_full" in results:
+            binary_vis = results["planarity_binary_full"]
         else:
-            binary_vis = results['planarity_binary']
+            binary_vis = results["planarity_binary"]
 
-        axes[col_idx].imshow(binary_vis, cmap='gray', vmin=0, vmax=1)
-        axes[col_idx].set_title('Binary Planarity')
-        axes[col_idx].axis('off')
+        axes[col_idx].imshow(binary_vis, cmap="gray", vmin=0, vmax=1)
+        axes[col_idx].set_title("Binary Planarity")
+        axes[col_idx].axis("off")
         col_idx += 1
 
         # Overlay visualization
         if show_overlay:
             overlay = original_image.copy()
-            if 'planarity_binary_full' in results:
-                binary_mask = results['planarity_binary_full']
+            if "planarity_binary_full" in results:
+                binary_mask = results["planarity_binary_full"]
             else:
-                binary_mask = cv2.resize(results['planarity_binary'].astype(np.uint8),
-                                       (original_image.shape[1], original_image.shape[0]),
-                                       interpolation=cv2.INTER_NEAREST)
+                binary_mask = cv2.resize(
+                    results["planarity_binary"].astype(np.uint8),
+                    (original_image.shape[1], original_image.shape[0]),
+                    interpolation=cv2.INTER_NEAREST,
+                )
 
             # Add blue overlay for planar regions
             overlay[:, :, 2] = np.maximum(overlay[:, :, 2], binary_mask * 200)
 
             axes[col_idx].imshow(overlay)
-            axes[col_idx].set_title('Planarity Overlay (Blue)')
-            axes[col_idx].axis('off')
+            axes[col_idx].set_title("Planarity Overlay (Blue)")
+            axes[col_idx].axis("off")
             col_idx += 1
 
         # Additional heads if requested
         if return_all_heads:
-            if 'mask' in results:
-                axes[col_idx].imshow(results['mask'], cmap='gray', vmin=0, vmax=1)
-                axes[col_idx].set_title('Mask')
-                axes[col_idx].axis('off')
+            if "mask" in results:
+                axes[col_idx].imshow(
+                    results["mask"], cmap="gray", vmin=0, vmax=1
+                )
+                axes[col_idx].set_title("Mask")
+                axes[col_idx].axis("off")
                 col_idx += 1
 
-            if 'normal' in results:
-                normal_vis = results['normal']
+            if "normal" in results:
+                normal_vis = results["normal"]
                 if normal_vis.ndim == 3:
                     # Normalize normal map for visualization
-                    normal_vis = (normal_vis + 1) / 2  # Convert from [-1,1] to [0,1]
+                    normal_vis = (
+                        normal_vis + 1
+                    ) / 2  # Convert from [-1,1] to [0,1]
                 axes[col_idx].imshow(normal_vis)
-                axes[col_idx].set_title('Normal Map')
-                axes[col_idx].axis('off')
+                axes[col_idx].set_title("Normal Map")
+                axes[col_idx].axis("off")
                 col_idx += 1
 
         plt.tight_layout()
 
         if save_path:
-            plt.savefig(save_path, dpi=150, bbox_inches='tight')
+            plt.savefig(save_path, dpi=150, bbox_inches="tight")
             print(f"Visualization saved to: {save_path}")
 
         return fig
 
-
-    def preprocess_images(self, image_paths, target_height=512, target_width=768):
+    def preprocess_images(
+        self, image_paths, target_height=512, target_width=768
+    ):
         images = []
         original_sizes = []
 
@@ -599,7 +705,9 @@ class MoGePlanarityInference:
         images = torch.stack(images, dim=0).to(self.device)
         return images, original_sizes
 
-    def predict_batch_fast(self, image_paths, num_tokens=1024, return_all_heads=False):
+    def predict_batch_fast(
+        self, image_paths, num_tokens=1024, return_all_heads=False
+    ):
         with torch.no_grad():
             images, original_sizes = self.preprocess_images(image_paths)
 
@@ -627,11 +735,13 @@ class MoGePlanarityInference:
 
                 if return_all_heads:
                     if "normal" in outputs:
-                        # FIX: MoGe v2 already outputs (B, H, W, 3), no transpose needed
+                        # MoGe v2 already outputs (B, H, W, 3);
+                        # no transpose needed
                         normal = outputs["normal"][i].cpu().numpy()
                         res["normal"] = normal
                     if "points" in outputs:
-                        # FIX: MoGe v2 already outputs (B, H, W, 3), no transpose needed
+                        # MoGe v2 already outputs (B, H, W, 3);
+                        # no transpose needed
                         points = outputs["points"][i].cpu().numpy()
                         res["points"] = points
 
@@ -641,33 +751,68 @@ class MoGePlanarityInference:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="MoGe 4-head planarity inference")
+    parser = argparse.ArgumentParser(
+        description="MoGe 4-head planarity inference"
+    )
 
     # Model arguments
-    parser.add_argument("--model_path", type=str, required=True,
-                       help="Path to trained model checkpoint (.pt file)")
-    parser.add_argument("--device", type=str, default="cuda",
-                       help="Device for inference (cuda/cpu)")
+    parser.add_argument(
+        "--model_path",
+        type=str,
+        required=True,
+        help="Path to trained model checkpoint (.pt file)",
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="cuda",
+        help="Device for inference (cuda/cpu)",
+    )
 
     # Input arguments
-    parser.add_argument("--input", type=str, required=True,
-                       help="Input image path or directory containing images")
-    parser.add_argument("--output_dir", type=str, default="./inference_results",
-                       help="Output directory for results")
+    parser.add_argument(
+        "--input",
+        type=str,
+        required=True,
+        help="Input image path or directory containing images",
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        default="./inference_results",
+        help="Output directory for results",
+    )
 
     # Inference arguments
-    parser.add_argument("--num_tokens", type=int, default=1024,
-                       help="Number of tokens for the model")
-    parser.add_argument("--batch_size", type=int, default=4,
-                       help="Batch size for inference")
-    parser.add_argument("--save_raw", action="store_true",
-                       help="Save raw probability maps as .npy files")
-    parser.add_argument("--save_binary", action="store_true",
-                       help="Save binary masks as .png files")
-    parser.add_argument("--save_visualization", action="store_true",
-                       help="Save visualization images")
-    parser.add_argument("--return_all_heads", action="store_true",
-                       help="Include outputs from all heads (mask, normal, points)")
+    parser.add_argument(
+        "--num_tokens",
+        type=int,
+        default=1024,
+        help="Number of tokens for the model",
+    )
+    parser.add_argument(
+        "--batch_size", type=int, default=4, help="Batch size for inference"
+    )
+    parser.add_argument(
+        "--save_raw",
+        action="store_true",
+        help="Save raw probability maps as .npy files",
+    )
+    parser.add_argument(
+        "--save_binary",
+        action="store_true",
+        help="Save binary masks as .png files",
+    )
+    parser.add_argument(
+        "--save_visualization",
+        action="store_true",
+        help="Save visualization images",
+    )
+    parser.add_argument(
+        "--return_all_heads",
+        action="store_true",
+        help="Include outputs from all heads (mask, normal, points)",
+    )
 
     args = parser.parse_args()
 
@@ -683,7 +828,9 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
 
     # Initialize inference model
-    inference_model = MoGePlanarityInference(args.model_path, device=args.device)
+    inference_model = MoGePlanarityInference(
+        args.model_path, device=args.device
+    )
 
     # Prepare input images
     if os.path.isfile(args.input):
@@ -691,14 +838,16 @@ def main():
         image_paths = [args.input]
     elif os.path.isdir(args.input):
         # Directory of images
-        extensions = ['*.jpg', '*.jpeg', '*.png', '*.bmp', '*.tiff', '*.tif']
+        extensions = ["*.jpg", "*.jpeg", "*.png", "*.bmp", "*.tiff", "*.tif"]
         image_paths = []
         for ext in extensions:
             image_paths.extend(glob.glob(os.path.join(args.input, ext)))
             image_paths.extend(glob.glob(os.path.join(args.input, ext.upper())))
         image_paths.sort()
     else:
-        raise ValueError(f"Input path {args.input} is not a valid file or directory")
+        raise ValueError(
+            f"Input path {args.input} is not a valid file or directory"
+        )
 
     print(f"Found {len(image_paths)} images to process")
 
@@ -708,55 +857,73 @@ def main():
         image_path = image_paths[0]
         print(f"Processing: {image_path}")
 
-        result = inference_model.predict(image_path,
-                                       num_tokens=args.num_tokens,
-                                       return_all_heads=args.return_all_heads)
+        result = inference_model.predict(
+            image_path,
+            num_tokens=args.num_tokens,
+            return_all_heads=args.return_all_heads,
+        )
 
         # Save results
         base_name = os.path.splitext(os.path.basename(image_path))[0]
 
         if args.save_raw:
-            prob_path = os.path.join(args.output_dir, f"{base_name}_planarity_prob.npy")
-            np.save(prob_path, result['planarity_probability'])
+            prob_path = os.path.join(
+                args.output_dir, f"{base_name}_planarity_prob.npy"
+            )
+            np.save(prob_path, result["planarity_probability"])
             print(f"Saved probability map: {prob_path}")
 
         if args.save_binary:
-            binary_path = os.path.join(args.output_dir, f"{base_name}_planarity_binary.png")
-            cv2.imwrite(binary_path, result['planarity_binary'] * 255)
+            binary_path = os.path.join(
+                args.output_dir, f"{base_name}_planarity_binary.png"
+            )
+            cv2.imwrite(binary_path, result["planarity_binary"] * 255)
             print(f"Saved binary mask: {binary_path}")
 
         if args.save_visualization:
-            vis_path = os.path.join(args.output_dir, f"{base_name}_visualization.png")
-            fig = inference_model.visualize_prediction(image_path,
-                                                     save_path=vis_path,
-                                                     return_all_heads=args.return_all_heads)
+            vis_path = os.path.join(
+                args.output_dir, f"{base_name}_visualization.png"
+            )
+            fig = inference_model.visualize_prediction(
+                image_path,
+                save_path=vis_path,
+                return_all_heads=args.return_all_heads,
+            )
             plt.close(fig)
 
     else:
         # Batch processing
         print("Processing images in batch...")
-        results = inference_model.predict_batch(image_paths,
-                                               num_tokens=args.num_tokens,
-                                               batch_size=args.batch_size)
+        results = inference_model.predict_batch(
+            image_paths, num_tokens=args.num_tokens, batch_size=args.batch_size
+        )
 
         # Save results
         for result in tqdm(results, desc="Saving results"):
-            image_path = result['image_path']
+            image_path = result["image_path"]
             base_name = os.path.splitext(os.path.basename(image_path))[0]
 
             if args.save_raw:
-                prob_path = os.path.join(args.output_dir, f"{base_name}_planarity_prob.npy")
-                np.save(prob_path, result['planarity_probability'])
+                prob_path = os.path.join(
+                    args.output_dir, f"{base_name}_planarity_prob.npy"
+                )
+                np.save(prob_path, result["planarity_probability"])
 
             if args.save_binary:
-                binary_path = os.path.join(args.output_dir, f"{base_name}_planarity_binary.png")
-                cv2.imwrite(binary_path, result['planarity_binary'] * 255)
+                binary_path = os.path.join(
+                    args.output_dir, f"{base_name}_planarity_binary.png"
+                )
+                cv2.imwrite(binary_path, result["planarity_binary"] * 255)
 
             if args.save_visualization:
-                vis_path = os.path.join(args.output_dir, f"{base_name}_visualization.png")
-                fig = inference_model.visualize_prediction(image_path,
-                                                         save_path=vis_path,
-                                                         return_all_heads=args.return_all_heads)
+                vis_path = os.path.join(
+                    args.output_dir, f"{base_name}_visualization.png"
+                )
+                fig = inference_model.visualize_prediction(
+                    image_path,
+                    save_path=vis_path,
+                    return_all_heads=args.return_all_heads,
+                )
                 plt.close(fig)
 
     print("Inference completed!")

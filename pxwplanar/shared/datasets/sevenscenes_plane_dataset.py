@@ -13,11 +13,13 @@ NPZ contents (identical to ParallelDomain "_d2" format):
     raw_depth:          (192, 256)    float64
     high_res_depth:     (1, 480, 640) float64
     high_res_raw_depth: (480, 640)    float64
-    segmentation:       (192, 256)    int64, plane IDs 0..N-1, label 20 = non-planar
+    segmentation:       (192, 256)    int64, plane IDs 0..N-1,
+                                      label 20 = non-planar
     plane:              (N, 3)        float64, n/d format (n^T x = 1)
     num_planes:         scalar        int64
     intrinsic:          (3, 3)        int64, at 256x192 resolution
-    origin_img_path:    scalar str    e.g. ".../<scene>/seq-XX/frame-NNNNNN.color.png"
+    origin_img_path:    scalar str    e.g.
+        ".../<scene>/seq-XX/frame-NNNNNN.color.png"
 
 Scene names are extracted from origin_img_path: chess, fire, heads, office,
 pumpkin, redkitchen, stairs.
@@ -47,8 +49,13 @@ _NON_PLANAR = 20
 
 # Canonical 7-Scenes scene names (used to robustly extract scene from path)
 _SEVEN_SCENES = {
-    "chess", "fire", "heads", "office",
-    "pumpkin", "redkitchen", "stairs",
+    "chess",
+    "fire",
+    "heads",
+    "office",
+    "pumpkin",
+    "redkitchen",
+    "stairs",
 }
 
 
@@ -88,8 +95,11 @@ class SevenScenesPlaneDataset(Dataset):
 
         all_files = os.listdir(data_root)
         npz_candidates = sorted(
-            [f for f in all_files
-             if f.startswith(f"{split}_") and f.endswith("_d2.npz")],
+            [
+                f
+                for f in all_files
+                if f.startswith(f"{split}_") and f.endswith("_d2.npz")
+            ],
             key=lambda f: int(f.split("_")[1]),
         )
         if not npz_candidates:
@@ -107,8 +117,10 @@ class SevenScenesPlaneDataset(Dataset):
                 continue
             npz_files.append(f)
         if n_skipped:
-            print(f"[7Scenes] WARNING: skipped {n_skipped} zero-byte NPZ files "
-                  f"(out of {len(npz_candidates)})")
+            print(
+                f"[7Scenes] WARNING: skipped {n_skipped} zero-byte NPZ files "
+                f"(out of {len(npz_candidates)})"
+            )
 
         if max_samples is not None:
             npz_files = npz_files[:max_samples]
@@ -120,7 +132,9 @@ class SevenScenesPlaneDataset(Dataset):
             if fname.endswith(f"_{split}.json"):
                 json_name = fname
                 break
-        self._json_path = os.path.join(data_root, json_name) if json_name else None
+        self._json_path = (
+            os.path.join(data_root, json_name) if json_name else None
+        )
         self._json_cache = None
 
         # Build sample_idx -> origin_img_path map from JSON (if present).
@@ -134,7 +148,9 @@ class SevenScenesPlaneDataset(Dataset):
                     idx_to_origin[int(stem)] = ann.get("origin_img_path", "")
 
         # Read intrinsics from first valid sample (constant across dataset)
-        first = np.load(os.path.join(data_root, npz_files[0]), allow_pickle=True)
+        first = np.load(
+            os.path.join(data_root, npz_files[0]), allow_pickle=True
+        )
         self._K_native = first["intrinsic"].astype(np.float32)  # at 256x192
         self._native_h, self._native_w = 192, 256
         self._hires_h, self._hires_w = 480, 640
@@ -168,8 +184,9 @@ class SevenScenesPlaneDataset(Dataset):
     def _extract_scene(origin_img_path):
         """Extract scene name from origin_img_path string.
 
-        Path looks like ``.../sevenscenes/<scene>/seq-XX/frame-NNNNNN.color.png``;
-        we match on canonical 7-Scenes names to be robust to absolute-path drift.
+        Path looks like
+        ``.../sevenscenes/<scene>/seq-XX/frame-NNNNNN.color.png``; we match
+        on canonical 7-Scenes names to be robust to absolute-path drift.
         """
         for part in origin_img_path.split("/"):
             if part in _SEVEN_SCENES:
@@ -189,7 +206,7 @@ class SevenScenesPlaneDataset(Dataset):
     def _load_json(self):
         """Lazy-load and cache JSON metadata."""
         if self._json_cache is None and self._json_path is not None:
-            with open(self._json_path, "r") as f:
+            with open(self._json_path) as f:
                 self._json_cache = json.load(f)
         return self._json_cache
 
@@ -200,7 +217,7 @@ class SevenScenesPlaneDataset(Dataset):
         """
         out = np.empty_like(seg, dtype=np.int32)
         non_planar_mask = seg == _NON_PLANAR
-        out[~non_planar_mask] = seg[~non_planar_mask] + 1   # 0..N-1 -> 1..N
+        out[~non_planar_mask] = seg[~non_planar_mask] + 1  # 0..N-1 -> 1..N
         out[non_planar_mask] = 0
         return out
 
@@ -212,40 +229,47 @@ class SevenScenesPlaneDataset(Dataset):
         d = np.load(npz_path, allow_pickle=True)
 
         H, W = self.image_height, self.image_width
-        use_hires = (H >= self._hires_h) or (W >= self._hires_w)
+        use_hires = (self._hires_h <= H) or (self._hires_w <= W)
 
         # --- RGB (BGR -> RGB) ---
         if use_hires:
-            rgb_raw = d["raw_image"][:, :, ::-1].copy()      # (480, 640, 3)
+            rgb_raw = d["raw_image"][:, :, ::-1].copy()  # (480, 640, 3)
         else:
-            rgb_raw = d["image"][:, :, ::-1].copy()           # (192, 256, 3)
+            rgb_raw = d["image"][:, :, ::-1].copy()  # (192, 256, 3)
 
         H_src, W_src = rgb_raw.shape[:2]
-        need_resize = (H != H_src) or (W != W_src)
+        need_resize = (H_src != H) or (W_src != W)
 
         if need_resize:
-            rgb_raw = cv2.resize(rgb_raw, (W, H), interpolation=cv2.INTER_LINEAR)
-        image = torch.from_numpy(
-            rgb_raw.astype(np.float32) / 255.0
-        ).permute(2, 0, 1)  # (3, H, W)
+            rgb_raw = cv2.resize(
+                rgb_raw, (W, H), interpolation=cv2.INTER_LINEAR
+            )
+        image = torch.from_numpy(rgb_raw.astype(np.float32) / 255.0).permute(
+            2, 0, 1
+        )  # (3, H, W)
 
         # --- Depth ---
         if use_hires:
             depth_raw = d["high_res_raw_depth"].astype(np.float32)  # (480, 640)
         else:
-            depth_raw = d["raw_depth"].astype(np.float32)           # (192, 256)
+            depth_raw = d["raw_depth"].astype(np.float32)  # (192, 256)
         if need_resize:
-            depth_raw = cv2.resize(depth_raw, (W, H), interpolation=cv2.INTER_LINEAR)
+            depth_raw = cv2.resize(
+                depth_raw, (W, H), interpolation=cv2.INTER_LINEAR
+            )
         depth = torch.from_numpy(depth_raw).unsqueeze(0)  # (1, H, W)
 
         # --- Plane labels (remap to standard convention) ---
         seg_raw = d["segmentation"]  # (192, 256), always at low-res
-        if H != self._native_h or W != self._native_w:
+        if self._native_h != H or self._native_w != W:
             seg_raw = cv2.resize(
-                seg_raw.astype(np.float32), (W, H),
+                seg_raw.astype(np.float32),
+                (W, H),
                 interpolation=cv2.INTER_NEAREST,
             ).astype(np.int64)
-        plane = torch.from_numpy(self._remap_labels(seg_raw)).unsqueeze(0)  # (1, H, W)
+        plane = torch.from_numpy(self._remap_labels(seg_raw)).unsqueeze(
+            0
+        )  # (1, H, W)
 
         # --- Semantic labels (not available - zeros) ---
         sem = torch.zeros(1, H, W, dtype=torch.int64)
@@ -286,7 +310,7 @@ class SevenScenesPlaneDataset(Dataset):
         npz_path, sample_idx, _scene, _origin = self.valid_pairs[idx]
         d = np.load(npz_path, allow_pickle=True)
 
-        plane_params = d["plane"]                           # (N, 3) n/d format
+        plane_params = d["plane"]  # (N, 3) n/d format
         num_planes = int(np.asarray(d["num_planes"]).flat[0])
         seg = d["segmentation"]
 
