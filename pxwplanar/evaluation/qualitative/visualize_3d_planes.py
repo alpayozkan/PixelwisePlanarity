@@ -24,7 +24,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from MoGe.moge.model.v2 import MoGeModel
+from pxwplanar.moge_backend import MoGeModel
 from pxwplanar.paths import planarity_model_path
 from pxwplanar.shared.segmentation.plan2seg import compute_planar_segments
 from pxwplanar.shared.plane_fitting.planefit import refine_plane_least_squares

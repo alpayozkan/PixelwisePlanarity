@@ -22,13 +22,9 @@ from PIL import Image
 import copy
 import torch.nn as nn
 
-# Add project root to path (for MoGe submodule at repo root)
-script_dir = Path(__file__).resolve().parent
-project_root = script_dir.parent.parent.parent
-sys.path.insert(0, str(project_root))
-
-from MoGe.moge.model.v2 import MoGeModel
-from MoGe.moge.model.v2 import normalized_view_plane_uv
+# MoGe backend: the MoGe/ submodule in a checkout, the installed `moge`
+# distribution in a library install (see pxwplanar/moge_backend.py).
+from pxwplanar.moge_backend import MoGeModel, normalized_view_plane_uv
 
 # Released 4-head checkpoint on the Hugging Face Hub (MoGe-native format).
 DEFAULT_HF_REPO = "alpayozkan/pxwplanar-moge2-planarity"
@@ -166,8 +162,8 @@ class MoGePlanarityInference:
             Preprocessed image tensor
         """
         # Load image
-        if isinstance(image_path, str):
-            image = cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
+        if isinstance(image_path, (str, os.PathLike)):
+            image = cv2.cvtColor(cv2.imread(str(image_path)), cv2.COLOR_BGR2RGB)
         else:
             # Assume it's already a numpy array
             image = image_path
@@ -491,7 +487,7 @@ class MoGePlanarityInference:
         results = self.predict(image_path, return_all_heads=return_all_heads)
 
         # Load original image
-        original_image = cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
+        original_image = cv2.cvtColor(cv2.imread(str(image_path)), cv2.COLOR_BGR2RGB)
 
         # Determine number of subplots: image + probability + binary,
         # plus overlay, plus mask + normal when all heads are requested
@@ -585,8 +581,8 @@ class MoGePlanarityInference:
         original_sizes = []
 
         for p in image_paths:
-            if isinstance(p, str):
-                img = cv2.cvtColor(cv2.imread(p), cv2.COLOR_BGR2RGB)
+            if isinstance(p, (str, os.PathLike)):
+                img = cv2.cvtColor(cv2.imread(str(p)), cv2.COLOR_BGR2RGB)
             else:
                 img = p
 
