@@ -5,7 +5,7 @@
 </p>
 <p align="center"><sub><sup>*</sup> equal contribution</sub></p>
 
-<p align="center"><b>ECCV 2026</b></p>
+<p align="center"><b>ECCV 2026</b> &middot; <a href="https://arxiv.org/abs/2609.13246">arXiv</a></p>
 
 <p align="center">
   <img src="demo/assets/demo.gif" alt="Demo: RGB | depth | normal | planarity | planes" width="100%">
